@@ -150,19 +150,23 @@ jobs:
           }
           Push-Location pjproject
 
-          # config_site.h enables TLS, SRTP, BCG729, Opus, WASAPI
-          @"
-#define PJ_HAS_IPV6                 1
-#define PJ_HAS_SSL_SOCK             1
-#define PJMEDIA_HAS_SRTP            1
-#define PJMEDIA_HAS_BCG729          1
-#define PJMEDIA_HAS_OPUS_CODEC      1
-#define PJMEDIA_AUDIO_DEV_HAS_WASAPI 1
-#define PJMEDIA_AUDIO_DEV_HAS_WMME  1
-#define PJSUA_MAX_ACC               32
-#define PJSUA_MAX_CALLS             16
-#include <pj/config_site_sample.h>
-"@ | Set-Content -Encoding ASCII pjlib\include\pj\config_site.h
+          # config_site.h enables TLS, SRTP, BCG729, Opus, WASAPI.
+          # NOTE: a PowerShell here-string (@"..."@) cannot live inside a YAML
+          # `run: |` block because the closing "@ must start at column 1, which
+          # YAML doesn't allow. Use an array of literal strings instead.
+          $configSite = @(
+            '#define PJ_HAS_IPV6                 1',
+            '#define PJ_HAS_SSL_SOCK             1',
+            '#define PJMEDIA_HAS_SRTP            1',
+            '#define PJMEDIA_HAS_BCG729          1',
+            '#define PJMEDIA_HAS_OPUS_CODEC      1',
+            '#define PJMEDIA_AUDIO_DEV_HAS_WASAPI 1',
+            '#define PJMEDIA_AUDIO_DEV_HAS_WMME  1',
+            '#define PJSUA_MAX_ACC               32',
+            '#define PJSUA_MAX_CALLS             16',
+            '#include <pj/config_site_sample.h>'
+          )
+          Set-Content -Encoding ASCII -Path pjlib\include\pj\config_site.h -Value $configSite
 
           $env:OPENSSL_DIR = (Resolve-Path ..\openssl-install).Path
           $env:BCG729_DIR  = (Resolve-Path ..\bcg729-install).Path
