@@ -1,0 +1,29 @@
+/* Preview-card shared base. Cards are ~700px wide; no chrome
+   (the asset pane draws the frame). Keep contents minimal. */
+@import url('../colors_and_type.css');
+
+html, body {
+  background: var(--bg-base);
+  color: var(--fg-1);
+  margin: 0;
+  padding: 24px;
+  width: 700px;
+  overflow: hidden;
+}
+.card { display: block; }
+.row  { display: flex; gap: 12px; align-items: stretch; }
+.col  { display: flex; flex-direction: column; gap: 8px; }
+.grow { flex: 1; min-width: 0; }
+.swatch {
+  border-radius: var(--radius-2);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.swatch .name { font-size: 11px; font-weight: 600; }
+.swatch .hex  { font-family: var(--font-mono); font-size: 11px; opacity: 0.85; }
+.token-label { font-size: 11px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.06em; }
+.divider { height: 1px; background: var(--border); margin: 12px 0; }

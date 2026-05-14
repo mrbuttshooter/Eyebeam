@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · slide template</title>
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  deck-stage:not(:defined) { visibility: hidden; }
+  html, body { background: #000; margin: 0; }
+
+  /* ----- Slide canvas ----- */
+  deck-stage section {
+    background: var(--bg-deep);
+    color: var(--fg-1);
+    font-family: var(--font-ui);
+    position: relative;
+    overflow: hidden;
+    width: 1920px;
+    height: 1080px;
+    box-sizing: border-box;
+  }
+
+  /* ----- Slide chrome ----- */
+  .chrome-top {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 48px;
+    border-bottom: 1px solid var(--border);
+    background: #0A0D11;
+    display: flex; align-items: center;
+    padding: 0 28px;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    user-select: none;
+  }
+  .chrome-top .crumb { color: var(--fg-2); }
+  .chrome-top .crumb b { color: var(--fg-1); font-weight: 500; }
+  .chrome-top .crumb .sep { color: var(--fg-3); margin: 0 10px; }
+  .chrome-top .spacer { flex: 1; }
+  .chrome-top .idx { color: var(--beam-cyan); }
+  .chrome-top .meta { color: var(--fg-3); margin-left: 24px; }
+
+  .chrome-bot {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: 40px;
+    border-top: 1px solid var(--border);
+    background: #0A0D11;
+    display: flex; align-items: center;
+    padding: 0 28px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    user-select: none;
+  }
+  .chrome-bot .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--success);
+    margin-right: 10px;
+  }
+  .chrome-bot .right { margin-left: auto; }
+  .chrome-bot .wordmark { color: var(--fg-1); font-weight: 500; letter-spacing: 0; }
+  .chrome-bot .wordmark u { text-decoration: none; color: var(--beam-cyan); }
+
+  /* ----- Slide body region ----- */
+  .body {
+    position: absolute;
+    top: 48px; bottom: 40px; left: 0; right: 0;
+    padding: 80px 100px;
+    display: flex;
+    flex-direction: column;
+  }
+  .body.tight { padding: 64px 100px; }
+
+  /* ----- Eyebrow / prompt ----- */
+  .prompt {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    color: var(--fg-3);
+    letter-spacing: 0.02em;
+    margin-bottom: 24px;
+  }
+  .prompt .caret { color: var(--beam-cyan); }
+  .prompt .cmd { color: var(--fg-1); }
+
+  /* ----- Display headings ----- */
+  h1.display {
+    font-family: var(--font-mono);
+    font-size: 96px;
+    font-weight: 600;
+    color: var(--fg-1);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0 0 28px;
+  }
+  h1.display .sip { color: var(--beam-cyan); }
+  h1.display .uri { color: var(--fg-1); }
+  h1.display .sip2 { color: var(--fg-3); }
+  h1.display .cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 1em;
+    background: var(--beam-cyan);
+    margin-left: 0.1em;
+    vertical-align: -0.16em;
+    animation: blink 1.05s steps(2, end) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  h2.section {
+    font-family: var(--font-ui);
+    font-size: 88px;
+    font-weight: 600;
+    color: var(--fg-1);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+
+  h3.lead {
+    font-family: var(--font-ui);
+    font-size: 56px;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    color: var(--fg-1);
+    margin: 0 0 32px;
+    max-width: 1500px;
+    text-wrap: pretty;
+  }
+
+  .deck { color: var(--fg-2); font-size: 28px; line-height: 1.5; max-width: 1280px; text-wrap: pretty; }
+  .deck strong { color: var(--fg-1); font-weight: 600; }
+  .deck code { font-family: var(--font-mono); color: var(--beam-amber); font-size: 26px; }
+
+  /* ----- Big stat ----- */
+  .stat {
+    font-family: var(--font-mono);
+    font-size: 320px;
+    line-height: 1;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    color: var(--beam-cyan);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .unit { color: var(--fg-3); font-size: 120px; margin-left: 8px; }
+  .stat-label {
+    font-family: var(--font-ui);
+    color: var(--fg-2);
+    font-size: 32px;
+    margin-top: 28px;
+    max-width: 1200px;
+    line-height: 1.4;
+  }
+  .stat-label b { color: var(--fg-1); font-weight: 600; }
+
+  /* ----- Terminal bullets ----- */
+  ul.term {
+    list-style: none;
+    padding: 0; margin: 0;
+    font-family: var(--font-ui);
+    font-size: 36px;
+    line-height: 1.45;
+    color: var(--fg-1);
+    display: flex; flex-direction: column; gap: 22px;
+  }
+  ul.term li {
+    display: flex; gap: 22px; align-items: baseline;
+    text-wrap: pretty;
+  }
+  ul.term li::before {
+    content: ">";
+    color: var(--beam-cyan);
+    font-family: var(--font-mono);
+    font-size: 36px;
+    font-weight: 600;
+    flex-shrink: 0;
+    width: 24px;
+  }
+  ul.term li code {
+    font-family: var(--font-mono);
+    color: var(--beam-amber);
+    font-size: 32px;
+  }
+  ul.term li .muted { color: var(--fg-3); }
+
+  /* ----- Comparison ----- */
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0; flex: 1; }
+  .compare > div { padding: 0 64px; display: flex; flex-direction: column; justify-content: flex-start; }
+  .compare > div + div { border-left: 1px solid var(--border); }
+  .compare > div:first-child { padding-left: 0; }
+  .compare > div:last-child { padding-right: 0; }
+  .compare h4 {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--fg-3);
+    font-weight: 500;
+    margin: 0 0 28px;
+  }
+  .compare h4 .v { color: var(--fg-1); text-transform: none; letter-spacing: -0.02em; font-size: 56px; font-family: var(--font-ui); display: block; margin-top: 12px; font-weight: 600; }
+  .compare h4.right .v u { text-decoration: none; color: var(--beam-cyan); }
+  .compare ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 16px; }
+  .compare li { font-size: 28px; color: var(--fg-2); display: flex; gap: 16px; align-items: baseline; line-height: 1.4; }
+  .compare li::before { content: "—"; color: var(--fg-3); flex-shrink: 0; }
+  .compare .right li::before { content: "+"; color: var(--beam-cyan); }
+  .compare .right li { color: var(--fg-1); }
+
+  /* ----- Trace excerpt slide ----- */
+  .trace {
+    flex: 1;
+    background: #08090C;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 36px 44px;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    line-height: 1.55;
+    overflow: hidden;
+    white-space: pre;
+    position: relative;
+  }
+  .trace .rx { color: var(--beam-cyan); }
+  .trace .tx { color: var(--beam-amber); }
+  .trace .body-row { color: #E0E0E0; }
+  .trace .hl { background: rgba(255, 92, 122, 0.18); color: #FF8198; padding: 1px 6px; border-radius: 2px; }
+  .trace .comment { color: var(--fg-3); font-style: italic; }
+  .trace-annot {
+    position: absolute;
+    right: 60px;
+    width: 380px;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--danger);
+    border-radius: 4px;
+    padding: 16px 18px;
+    font-family: var(--font-ui);
+    font-size: 22px;
+    line-height: 1.4;
+    color: var(--fg-1);
+  }
+  .trace-annot .label {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--danger);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    margin-bottom: 8px;
+    display: block;
+  }
+
+  /* ----- Quote slide ----- */
+  .quote-block {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 1500px;
+  }
+  .quote-block .marker {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    color: var(--beam-amber);
+    margin-bottom: 36px;
+    letter-spacing: 0.04em;
+  }
+  blockquote {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: 68px;
+    line-height: 1.18;
+    font-weight: 500;
+    color: var(--fg-1);
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  blockquote .em { color: var(--beam-cyan); }
+  .attribution {
+    margin-top: 40px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    color: var(--fg-3);
+  }
+  .attribution .name { color: var(--fg-1); font-weight: 500; }
+  .attribution .at { color: var(--beam-cyan); }
+
+  /* ----- Closing slide ----- */
+  .closing {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 40px;
+  }
+  .closing .glyph {
+    font-family: var(--font-mono);
+    font-size: 360px;
+    line-height: 1;
+    color: var(--bg-elev-2);
+    letter-spacing: -0.04em;
+  }
+  .closing .glyph u { text-decoration: none; color: var(--beam-cyan); }
+  .closing .glyph i { font-style: normal; color: var(--beam-amber); }
+  .closing .text {
+    font-family: var(--font-mono);
+    font-size: 32px;
+    color: var(--fg-3);
+    letter-spacing: 0.08em;
+  }
+  .closing .text b { color: var(--fg-1); font-weight: 500; }
+
+  /* ----- Cover slide ----- */
+  .cover-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 80px;
+  }
+  .cover-header .who {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    color: var(--fg-3);
+    line-height: 1.6;
+  }
+  .cover-header .who b { color: var(--fg-1); font-weight: 500; }
+  .cover-header .stamp {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    color: var(--fg-3);
+    border: 1px solid var(--border);
+    padding: 10px 16px;
+    border-radius: 2px;
+    background: var(--bg-elev-1);
+  }
+
+  /* SIP-header style metadata block */
+  .sip-meta {
+    margin-top: 56px;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    line-height: 1.7;
+    color: var(--fg-2);
+    max-width: 1200px;
+  }
+  .sip-meta .k { color: var(--fg-3); display: inline-block; min-width: 130px; }
+  .sip-meta .v { color: var(--fg-1); }
+</style>
+</head>
+<body>
+
+<script type="application/json" id="speaker-notes">
+[]
+</script>
+
+<deck-stage width="1920" height="1080">
+
+  <!-- ============================================================
+       01 — Cover / title (SIP-method styled)
+       ============================================================ -->
+  <section data-label="Cover">
+    <div class="chrome-top">
+      <span class="crumb"><b>NOC_Beam</b><span class="sep">·</span>Q3 retrospective<span class="sep">·</span>NOC engineering</span>
+      <span class="spacer"></span>
+      <span class="meta">14 Nov 2025</span>
+      <span class="idx" style="margin-left:24px;">01 / 08</span>
+    </div>
+
+    <div class="body">
+      <div class="cover-header">
+        <div class="who">
+          <b>From:</b> &lt;sip:nadia@noc.internal&gt;<br>
+          <b>To:</b>   &lt;sip:engineering-all@noc.internal&gt;
+        </div>
+        <div class="stamp">REGISTER · 200 OK</div>
+      </div>
+
+      <div class="prompt"><span class="caret">$</span> <span class="cmd">cat retrospective.q3</span></div>
+      <h1 class="display"><span class="sip">INVITE</span> <span class="uri">sip:q3-retrospective@noc</span> <span class="sip2">SIP/2.0</span><span class="cursor"></span></h1>
+
+      <div class="sip-meta">
+        <div><span class="k">Subject:</span><span class="v"> What broke, what didn't, what we shipped instead of Eyebeam</span></div>
+        <div><span class="k">Speaker:</span><span class="v"> Nadia · lead, voice infra</span></div>
+        <div><span class="k">Audience:</span><span class="v"> Engineering · 30 minutes · open Q&amp;A</span></div>
+        <div><span class="k">CSeq:</span><span class="v"> 3 INVITE</span></div>
+      </div>
+    </div>
+
+    <div class="chrome-bot">
+      <span class="dot"></span>
+      <span>SIP endpoint started · 4 accounts registered</span>
+      <span class="right"><span class="wordmark">NOC<u>_</u>Beam</span> · 0.1.0</span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       02 — Big stat
+       ============================================================ -->
+  <section data-label="Stat — uptime">
+    <div class="chrome-top">
+      <span class="crumb"><b>Q3 retrospective</b><span class="sep">/</span><span style="color:var(--fg-3);">01 · headline</span></span>
+      <span class="spacer"></span>
+      <span class="idx">02 / 08</span>
+    </div>
+
+    <div class="body">
+      <div class="prompt"><span class="caret">$</span> <span class="cmd">grep "200 OK" registrations.log | wc -l</span></div>
+      <div class="stat">99.97<span class="unit">%</span></div>
+      <div class="stat-label">
+        Quarterly <b>SIP registration success</b> across 14 trunks, 6 SBCs, and 280 test endpoints. Up from <b>97.4%</b> in Q2. Target was <b>99.5</b>.
+      </div>
+    </div>
+
+    <div class="chrome-bot">
+      <span class="dot"></span><span>1 of 8 — Stat</span>
+      <span class="right"><span class="wordmark">NOC<u>_</u>Beam</span></span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       03 — Section divider
+       ============================================================ -->
+  <section data-label="Section — The trace">
+    <div class="chrome-top">
+      <span class="crumb"><b>Q3 retrospective</b><span class="sep">/</span><span style="color:var(--fg-3);">02 · the trace</span></span>
+      <span class="spacer"></span>
+      <span class="idx">03 / 08</span>
+    </div>
+
+    <div class="body" style="justify-content:center;">
+      <div class="prompt" style="font-size:28px; margin-bottom:36px;">
+        <span class="caret">$</span> <span class="cmd">noc_beam --trace --filter "401|407"</span>
+      </div>
+      <h2 class="section">02&nbsp; <span style="color:var(--fg-3);">·</span>&nbsp; The trace that paid for itself</h2>
+      <div class="deck" style="margin-top:36px; font-size:32px;">
+        In Q2 we shipped <code>NOC_Beam</code> as an internal replacement for Eyebeam — primarily so on-call could see <strong>what the wire actually said</strong>. Here is the message that solved the May outage.
+      </div>
+    </div>
+
+    <div class="chrome-bot">
+      <span class="dot"></span><span>Section 2</span>
+      <span class="right"><span class="wordmark">NOC<u>_</u>Beam</span></span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       04 — Full-bleed SIP trace with annotation
+       ============================================================ -->
+  <section data-label="Trace excerpt">
+    <div class="chrome-top">
+      <span class="crumb"><b>Q3 retrospective</b><span class="sep">/</span><span style="color:var(--fg-3);">02 · the trace</span></span>
+      <span class="spacer"></span>
+      <span class="idx">04 / 08</span>
+    </div>
+
+    <div class="body tight">
+      <div class="prompt" style="font-size:20px; margin-bottom:18px;">
+        <span class="caret">$</span> <span class="cmd">noc_beam.trace</span><span style="color:var(--fg-3);">  ·  2025-05-14 03:11 UTC  ·  alice@lab → sbc-east</span>
+      </div>
+
+      <div class="trace"><span class="tx">[03:11:42.118] TX  sbc-east.noc.internal:5061</span>
+<span class="body-row">REGISTER sip:sbc-east.noc.internal SIP/2.0
+Via: SIP/2.0/TLS 10.4.1.55:5061;branch=z9hG4bK-r3g-9f2a
+From: &lt;sip:alice@lab.noc.internal&gt;;tag=8f3e
+To: &lt;sip:alice@lab.noc.internal&gt;
+Contact: &lt;sip:alice@10.4.1.55:5061;transport=tls&gt;
+CSeq: 1 REGISTER
+Expires: 3600
+Content-Length: 0</span>
+
+<span class="rx">[03:11:42.244] RX  sbc-east.noc.internal:5061</span>
+<span class="body-row">SIP/2.0 <span class="hl">401 Unauthorized</span>
+WWW-Authenticate: Digest realm="noc.internal", nonce="abc123",
+  algorithm=<span class="hl">MD5</span>, qop="auth"            <span class="comment">// ← rejected by hardened SBC</span>
+CSeq: 1 REGISTER
+Content-Length: 0</span>
+
+<span class="tx">[03:11:42.260] TX  sbc-east.noc.internal:5061</span>
+<span class="body-row">REGISTER sip:sbc-east.noc.internal SIP/2.0
+Authorization: Digest username="alice", realm="noc.internal",
+  algorithm=MD5, response="9b2..."
+CSeq: 2 REGISTER</span>
+
+<span class="rx">[03:11:42.310] RX  sbc-east.noc.internal:5061</span>
+<span class="body-row">SIP/2.0 <span class="hl">401 Unauthorized</span>     <span class="comment">// ← same nonce, second time</span></span>
+
+        <div class="trace-annot" style="top: 184px;">
+          <span class="label">Root cause</span>
+          The SBC was rotated to SHA-256 digest at 02:54 UTC. Our endpoints still negotiate MD5. <b>4 hours of "registration loop"</b> until somebody opened the trace.
+        </div>
+      </div>
+    </div>
+
+    <div class="chrome-bot">
+      <span class="dot" style="background:var(--danger);"></span>
+      <span style="color:var(--danger);">401 Unauthorized · MD5 vs SHA-256 mismatch</span>
+      <span class="right"><span class="wordmark">NOC<u>_</u>Beam</span></span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       05 — Bullets (terminal-style)
+       ============================================================ -->
+  <section data-label="What changed">
+    <div class="chrome-top">
+      <span class="crumb"><b>Q3 retrospective</b><span class="sep">/</span><span style="color:var(--fg-3);">03 · what changed</span></span>
+      <span class="spacer"></span>
+      <span class="idx">05 / 08</span>
+    </div>
+
+    <div class="body">
+      <div class="prompt"><span class="caret">$</span> <span class="cmd">git log --since=Q3 --oneline</span></div>
+      <h3 class="lead">Five changes that moved the line.</h3>
+      <ul class="term">
+        <li>Rolled <code>NOC_Beam 0.1.0</code> to <strong>all 12 NOC desks</strong> — Eyebeam decommissioned <span class="muted">(closes #218)</span></li>
+        <li>Added <strong>SHA-256 digest</strong> to the SIP auth path; gated the SBC rotation behind it</li>
+        <li>Standardised on <code>opus/48000/2</code> as the default codec; relegated <code>G.711</code> to fallback</li>
+        <li>Synthetic-call canary now runs every <strong>90s</strong> across every trunk; PagerDuty page on <code>3 consecutive 4xx</code></li>
+        <li>Trace export is wired into the on-call ticket template — no more "can you DM me the log?"</li>
+      </ul>
+    </div>
+
+    <div class="chrome-bot">
+      <span class="dot"></span><span>5 commits · 12 desks · 14 trunks</span>
+      <span class="right"><span class="wordmark">NOC<u>_</u>Beam</span></span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       06 — Comparison
+       ============================================================ -->
+  <section data-label="Eyebeam vs NOC_Beam">
+    <div class="chrome-top">
+      <span class="crumb"><b>Q3 retrospective</b><span class="sep">/</span><span style="color:var(--fg-3);">04 · why we left Eyebeam</span></span>
+      <span class="spacer"></span>
+      <span class="idx">06 / 08</span>
+    </div>
+
+    <div class="body">
+      <div class="prompt"><span class="caret">$</span> <span class="cmd">diff eyebeam noc_beam</span></div>
+      <h3 class="lead" style="margin-bottom:48px;">What we left, what we built.</h3>
+
+      <div class="compare">
+        <div>
+          <h4>Before<span class="v">Eyebeam 1.5</span></h4>
+          <ul>
+            <li>Closed-source, last release 2012</li>
+            <li>No SIP trace — opaque failure modes</li>
+            <li>One account at a time; switching loses state</li>
+            <li>TLS but no SRTP; no per-account toggles</li>
+            <li>Windows-only · installer ships with toolbar adware</li>
+            <li>Licence cost: $$$ per seat, per year</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="right">After<span class="v">NOC<u>_</u>Beam 0.1</span></h4>
+          <ul>
+            <li>PySide6 + PJSIP, owned by us, audited quarterly</li>
+            <li>Live SIP trace, RX/TX coloured, filterable</li>
+            <li>Multi-account; switching is a combo, not a relaunch</li>
+            <li>TLS + SRTP optional/mandatory per account</li>
+            <li>Single-file <code>.exe</code> via PyInstaller; no installer</li>
+            <li>Free, internal, repo-driven release process</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="chrome-bot">
+      <span class="dot"></span><span>Migration: 100% · Q2 → Q3</span>
+      <span class="right"><span class="wordmark">NOC<u>_</u>Beam</span></span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       07 — Quote
+       ============================================================ -->
+  <section data-label="Quote">
+    <div class="chrome-top">
+      <span class="crumb"><b>Q3 retrospective</b><span class="sep">/</span><span style="color:var(--fg-3);">05 · field report</span></span>
+      <span class="spacer"></span>
+      <span class="idx">07 / 08</span>
+    </div>
+
+    <div class="body">
+      <div class="quote-block">
+        <div class="marker">/* on-call, week of May 14 */</div>
+        <blockquote>
+          "Took thirty seconds to see the <span class="em">401 loop</span> once the trace was on. <br>Took six minutes to ship a patch. <br>Took <span class="em">four hours</span> the time before."
+        </blockquote>
+        <div class="attribution">
+          <span class="name">Priya R.</span><span class="at">@</span>voice-infra · <span style="color:var(--fg-3);">incident #482 retro</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="chrome-bot">
+      <span class="dot"></span><span>Quote · field report</span>
+      <span class="right"><span class="wordmark">NOC<u>_</u>Beam</span></span>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       08 — Closing
+       ============================================================ -->
+  <section data-label="End of trace">
+    <div class="chrome-top">
+      <span class="crumb"><b>Q3 retrospective</b><span class="sep">·</span><span style="color:var(--fg-3);">end of file</span></span>
+      <span class="spacer"></span>
+      <span class="idx">08 / 08</span>
+    </div>
+
+    <div class="body">
+      <div class="closing">
+        <div class="glyph">[ <u>_</u><i>•</i> ]</div>
+        <div class="text"><b>End of trace.</b> &nbsp; Questions &gt; <span style="color:var(--beam-cyan);">#voice-infra</span></div>
+      </div>
+    </div>
+
+    <div class="chrome-bot">
+      <span class="dot"></span><span>BYE · 200 OK</span>
+      <span class="right"><span class="wordmark">NOC<u>_</u>Beam</span> · 0.1.0 · PJSIP 2.14</span>
+    </div>
+  </section>
+
+</deck-stage>
+<script src="deck-stage.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field label { font-size: 11px; color: var(--fg-3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .input, .select {
+    font-family: var(--font-ui); font-size: 13px;
+    background: var(--bg-deep); color: var(--fg-1);
+    border: 1px solid var(--border); border-radius: 2px;
+    padding: 7px 10px; min-height: 32px;
+  }
+  .input::placeholder { color: var(--fg-3); }
+  .input:focus, .select:focus { outline: none; border-color: var(--beam-cyan); }
+  .checkbox { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--fg-1); }
+  .checkbox .box { width:14px; height:14px; border:1px solid var(--border-strong); border-radius:2px; background:var(--bg-deep); display:inline-block; }
+  .checkbox.checked .box { background:var(--beam-cyan); border-color:var(--beam-cyan); position:relative; }
+  .checkbox.checked .box::after { content:""; position:absolute; left:3px; top:0px; width:5px; height:9px; border:solid #0E1116; border-width:0 2px 2px 0; transform:rotate(45deg); }
+</style>
+</head><body><div class="card">
+  <div class="row" style="gap:14px;">
+    <div class="field grow"><label>Display name</label><input class="input" value="Alice (lab gateway)"></div>
+    <div class="field grow"><label>Transport</label>
+      <select class="select"><option>tls</option><option>tcp</option><option>udp</option></select>
+    </div>
+  </div>
+  <div style="height:10px;"></div>
+  <div class="row" style="gap:14px;">
+    <div class="field grow"><label>Domain / registrar</label><input class="input" placeholder="proxy.example.com"></div>
+    <div class="field" style="width:140px;"><label>SIP port</label><input class="input num-tabular" value="5060"></div>
+  </div>
+  <div style="height:10px;"></div>
+  <div class="field"><label>Dialpad entry</label>
+    <input class="input" style="font-size:18px; text-align:center; border-radius:6px; min-height:44px;" placeholder="Enter number or SIP URI">
+  </div>
+  <div style="height:10px;"></div>
+  <div class="row" style="gap:18px;">
+    <div class="checkbox checked"><span class="box"></span>Register on add</div>
+    <div class="checkbox checked"><span class="box"></span>Enabled</div>
+    <div class="checkbox"><span class="box"></span>SRTP mandatory</div>
+  </div>
+</div></body></html>

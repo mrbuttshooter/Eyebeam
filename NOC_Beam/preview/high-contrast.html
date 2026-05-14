@@ -1,0 +1,351 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+  body { width: 720px; padding: 0; }
+  .wrap { padding: 20px 24px; }
+  .head {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .head b { color: var(--fg-1); font-weight: 500; }
+  .head .small {
+    color: var(--fg-3);
+    font-size: 10px;
+    text-transform: none;
+    letter-spacing: 0.04em;
+    margin-left: 8px;
+    font-weight: 400;
+  }
+
+  .modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .mode {
+    padding: 14px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .mode + .mode { border-left: 1px solid var(--border); }
+  .mode.dark  { background: var(--bg-base); color: var(--fg-1); }
+  .mode.hc    { background: #000; color: #fff; }
+
+  .mode .lbl {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .mode .lbl b { color: var(--fg-1); font-weight: 500; }
+  .mode.hc .lbl   { color: #C8C8C8; }
+  .mode.hc .lbl b { color: #fff; }
+
+  /* ------ Sample widgets in both modes ------ */
+
+  /* Trace row */
+  .ex-trace {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    background: var(--bg-deep);
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--trace-body);
+    white-space: pre-line;
+  }
+  .ex-trace .rx { color: var(--beam-cyan); }
+  .ex-trace .tx { color: var(--beam-amber); }
+  .ex-trace .ok { color: var(--success); }
+  .ex-trace .err { color: var(--danger); background: rgba(255, 92, 122, 0.18); padding: 0 4px; border-radius: 2px; }
+  .ex-trace .meta { color: var(--fg-3); font-style: italic; }
+
+  .mode.hc .ex-trace {
+    background: #000;
+    border-color: #fff;
+    color: #fff;
+  }
+  .mode.hc .ex-trace .rx  { color: #00E5FF; }
+  .mode.hc .ex-trace .tx  { color: #FFB000; }
+  .mode.hc .ex-trace .ok  { color: #00FF7F; }
+  .mode.hc .ex-trace .err { color: #FFD700; background: #2A0606; padding: 0 4px; border-radius: 2px; }
+  .mode.hc .ex-trace .meta { color: #C8C8C8; }
+
+  /* Primary button */
+  .ex-btn {
+    height: 28px;
+    padding: 0 14px;
+    background: var(--beam-cyan);
+    color: var(--bg-deep);
+    border: none;
+    border-radius: var(--radius-2);
+    font: 500 12px var(--font-ui);
+  }
+  .mode.hc .ex-btn {
+    background: #00E5FF;
+    color: #000;
+    border: 2px solid #fff;
+  }
+
+  /* Hangup */
+  .ex-hangup {
+    height: 28px;
+    padding: 0 14px;
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: var(--radius-2);
+    font: 600 12px var(--font-ui);
+  }
+  .mode.hc .ex-hangup {
+    background: #FF6B6B;
+    color: #000;
+    border: 2px solid #fff;
+  }
+
+  /* Registered chip */
+  .ex-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    background: var(--success-12);
+    color: var(--success);
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .ex-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .mode.hc .ex-chip {
+    background: #002818;
+    color: #00FF7F;
+    border: 1px solid #00FF7F;
+  }
+
+  /* Focus ring demo */
+  .ex-focus {
+    height: 28px;
+    width: 90px;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    font: 12px var(--font-ui);
+    box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3px var(--beam-cyan);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mode.hc .ex-focus {
+    background: #000;
+    border: 1px solid #fff;
+    color: #fff;
+    box-shadow: 0 0 0 2px #000, 0 0 0 4px #FFFF00;
+  }
+
+  /* Row */
+  .ex-row {
+    display: grid;
+    grid-template-columns: 8px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    background: var(--beam-cyan-12);
+    border-radius: var(--radius-2);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-1);
+  }
+  .ex-row .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--beam-cyan); }
+  .ex-row .meta { color: var(--fg-3); }
+  .mode.hc .ex-row {
+    background: #001A24;
+    color: #fff;
+    outline: 1px solid #00E5FF;
+    outline-offset: -1px;
+  }
+  .mode.hc .ex-row .dot  { background: #00E5FF; }
+  .mode.hc .ex-row .meta { color: #C8C8C8; }
+
+  .mode .row-of-widgets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* ------ Token table at the bottom ------ */
+  .tokens {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 0.7fr;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .tokens .h {
+    background: var(--bg-deep);
+    color: var(--fg-3);
+    font-size: 9.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tokens .r {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(42, 51, 64, 0.5);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tokens .r:nth-last-of-type(-n+4) { border-bottom: none; }
+  .tokens .k { color: var(--fg-2); font-weight: 500; }
+  .tokens .v { color: var(--fg-1); display: inline-flex; align-items: center; gap: 8px; }
+  .tokens .sw { width: 14px; height: 14px; border-radius: 2px; border: 1px solid var(--border); flex-shrink: 0; }
+  .tokens .ratio { color: var(--fg-2); }
+  .tokens .ratio.ok    { color: var(--success); }
+  .tokens .ratio.fail  { color: var(--danger); }
+
+  .legend {
+    margin-top: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--fg-3);
+  }
+  .legend b { color: var(--fg-1); font-weight: 500; }
+  .legend code { color: var(--beam-cyan); }
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="head">
+  <b>HIGH-CONTRAST MODE</b>
+  <span class="small">Windows forced-colors + opt-in <code style="color: var(--beam-cyan);">html.hc</code> — AA at minimum, AAA on body text</span>
+</div>
+
+<div class="modes">
+
+  <!-- Default dark -->
+  <div class="mode dark">
+    <div class="lbl"><b>Default dark</b> &nbsp;·&nbsp; brand palette</div>
+
+    <div class="ex-trace">
+<span class="tx">TX →</span> INVITE sip:marcus@lab.noc.internal
+<span class="rx">RX ←</span> <span class="ok">100 Trying</span>
+<span class="rx">RX ←</span> <span class="err">401 Unauthorized</span>
+  <span class="meta">// algorithm mismatch</span></div>
+
+    <div class="row-of-widgets">
+      <button class="ex-btn">Call</button>
+      <button class="ex-hangup">End</button>
+      <span class="ex-chip"><span class="dot"></span>REGISTERED</span>
+      <button class="ex-focus">Focused</button>
+    </div>
+
+    <div class="ex-row">
+      <span class="dot"></span>
+      <span>Marcus Lin <span class="meta">sip:marcus@lab.noc.internal</span></span>
+      <span class="meta">04:38</span>
+    </div>
+  </div>
+
+  <!-- High-contrast -->
+  <div class="mode hc">
+    <div class="lbl"><b>High contrast</b> &nbsp;·&nbsp; <code style="color:#00E5FF;">html.hc</code> / forced-colors</div>
+
+    <div class="ex-trace">
+<span class="tx">TX →</span> INVITE sip:marcus@lab.noc.internal
+<span class="rx">RX ←</span> <span class="ok">100 Trying</span>
+<span class="rx">RX ←</span> <span class="err">401 Unauthorized</span>
+  <span class="meta">// algorithm mismatch</span></div>
+
+    <div class="row-of-widgets">
+      <button class="ex-btn">Call</button>
+      <button class="ex-hangup">End</button>
+      <span class="ex-chip"><span class="dot"></span>REGISTERED</span>
+      <button class="ex-focus">Focused</button>
+    </div>
+
+    <div class="ex-row">
+      <span class="dot"></span>
+      <span>Marcus Lin <span class="meta">sip:marcus@lab.noc.internal</span></span>
+      <span class="meta">04:38</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===========================
+     Token audit
+     =========================== -->
+<div class="tokens">
+  <div class="h">Pair</div>
+  <div class="h">Dark</div>
+  <div class="h">HC</div>
+  <div class="h">Δ</div>
+
+  <div class="r"><span class="k">fg-1 on bg-base</span> &nbsp;<span class="ratio">body text</span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#E6EDF3"></span><span class="sw" style="background:#161B22"></span> <span class="ratio ok">13.5:1</span></span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#FFFFFF"></span><span class="sw" style="background:#000000"></span> <span class="ratio ok">21:1</span></span></div>
+  <div class="r"><span class="ratio">+7.5</span></div>
+
+  <div class="r"><span class="k">fg-3 on bg-base</span> &nbsp;<span class="ratio">muted</span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#7C8696"></span><span class="sw" style="background:#161B22"></span> <span class="ratio ok">4.6:1</span></span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#C8C8C8"></span><span class="sw" style="background:#000000"></span> <span class="ratio ok">15.2:1</span></span></div>
+  <div class="r"><span class="ratio">+10.6</span></div>
+
+  <div class="r"><span class="k">beam-cyan on bg-deep</span> &nbsp;<span class="ratio">RX trace, links</span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#7FD3FF"></span><span class="sw" style="background:#0E1116"></span> <span class="ratio ok">9.7:1</span></span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#00E5FF"></span><span class="sw" style="background:#000000"></span> <span class="ratio ok">12.6:1</span></span></div>
+  <div class="r"><span class="ratio">+2.9</span></div>
+
+  <div class="r"><span class="k">beam-amber on bg-deep</span> &nbsp;<span class="ratio">TX trace</span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#FFB86C"></span><span class="sw" style="background:#0E1116"></span> <span class="ratio ok">9.9:1</span></span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#FFB000"></span><span class="sw" style="background:#000000"></span> <span class="ratio ok">11.4:1</span></span></div>
+  <div class="r"><span class="ratio">+1.5</span></div>
+
+  <div class="r"><span class="k">danger on bg-base</span> &nbsp;<span class="ratio">hang up</span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#FF5C7A"></span><span class="sw" style="background:#161B22"></span> <span class="ratio ok">5.1:1</span></span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#FF6B6B"></span><span class="sw" style="background:#000000"></span> <span class="ratio ok">6.3:1</span></span></div>
+  <div class="r"><span class="ratio">+1.2</span></div>
+
+  <div class="r"><span class="k">success on bg-base</span> &nbsp;<span class="ratio">REGISTERED</span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#66D19E"></span><span class="sw" style="background:#161B22"></span> <span class="ratio ok">8.2:1</span></span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#00FF7F"></span><span class="sw" style="background:#000000"></span> <span class="ratio ok">17.9:1</span></span></div>
+  <div class="r"><span class="ratio">+9.7</span></div>
+
+  <div class="r"><span class="k">focus ring</span> &nbsp;<span class="ratio">3px outer</span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#7FD3FF"></span> cyan</span></div>
+  <div class="r"><span class="v"><span class="sw" style="background:#FFFF00"></span> yellow · system Highlight</span></div>
+  <div class="r"><span class="ratio">—</span></div>
+
+  <div class="r"><span class="k">elevation</span> &nbsp;<span class="ratio">cards/panels</span></div>
+  <div class="r"><span class="v">bg lift +1 step</span></div>
+  <div class="r"><span class="v">1px solid border, no lift</span></div>
+  <div class="r"><span class="ratio">—</span></div>
+</div>
+
+<div class="legend">
+  Auto-activates under <b>Windows High-Contrast</b> and Edge Forced Colors via <code>@media (forced-colors: active)</code>, mapping to system tokens (<code>Canvas</code>, <code>CanvasText</code>, <code>Highlight</code>, <code>LinkText</code>, <code>Mark</code>, <code>GrayText</code>). The opt-in <b><code>html.hc</code></b> class wires the same intent to fixed values so the audit above is reproducible. <b>Layout, density and motion don't change.</b> Tinted backgrounds (12% accents) get a 1px border in HC so semantic regions don't disappear into the background. Full spec lives in <code>a11y.md</code>.
+</div>
+
+</div></body></html>

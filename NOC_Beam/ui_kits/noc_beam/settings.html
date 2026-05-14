@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · settings</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* --- Settings IA --- */
+  .settings {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    height: 100%;
+    gap: 0;
+  }
+  .settings-nav {
+    border-right: 1px solid var(--border);
+    padding: 18px 10px;
+    overflow: auto;
+  }
+  .settings-nav .section {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 14px 10px 6px;
+  }
+  .settings-nav button {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--fg-2);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.3;
+  }
+  .settings-nav button:hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .settings-nav button.on { background: var(--beam-cyan-12); color: var(--fg-1); }
+  .settings-nav button.on::before {
+    content: '';
+    width: 3px; height: 14px;
+    background: var(--beam-cyan);
+    border-radius: 2px;
+    margin-left: -10px;
+    margin-right: 7px;
+  }
+  .settings-nav button .meta {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+  }
+
+  .settings-body {
+    padding: 28px 36px 36px;
+    overflow: auto;
+  }
+  .settings-body h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--fg-1);
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+  .settings-body .lede {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-3);
+    margin-bottom: 26px;
+  }
+  .settings-body .lede a { color: var(--beam-cyan); text-decoration: none; }
+
+  /* Setting rows: key | value | description */
+  .setting {
+    display: grid;
+    grid-template-columns: 220px 1fr 280px;
+    align-items: start;
+    gap: 24px;
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+  }
+  .setting:first-of-type { border-top: none; }
+  .setting .k {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .setting .k .name { font-size: 13px; font-weight: 500; color: var(--fg-1); }
+  .setting .k .id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+  .setting .v { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .setting .help {
+    font-size: 12px;
+    color: var(--fg-3);
+    line-height: 1.5;
+  }
+  .setting .help b { color: var(--fg-2); font-weight: 500; }
+
+  /* Group header */
+  .group-head {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 26px 0 4px;
+  }
+
+  /* Form inputs */
+  .input {
+    height: 32px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    padding: 0 10px;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: border-color var(--dur-fast);
+  }
+  .input:focus { border-color: var(--beam-cyan); }
+  .select {
+    height: 32px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    padding: 0 28px 0 10px;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%),
+                      linear-gradient(135deg, var(--fg-3) 50%, transparent 50%);
+    background-position: right 12px center, right 7px center;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  /* Device meter */
+  .device-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .device-row .select { flex: 1; }
+  .meter {
+    display: flex;
+    gap: 2px;
+    align-items: end;
+    height: 18px;
+  }
+  .meter .bar {
+    width: 4px;
+    background: var(--success);
+    border-radius: 1px;
+    opacity: 0.3;
+  }
+  .meter .bar.on { opacity: 1; }
+  .meter .bar.warn { background: var(--warning); }
+  .meter .bar.danger { background: var(--danger); }
+
+  /* Slider */
+  .slider-row { display: flex; gap: 12px; align-items: center; }
+  .slider {
+    flex: 1;
+    height: 4px;
+    background: var(--bg-elev-2);
+    border-radius: 2px;
+    position: relative;
+  }
+  .slider .fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--beam-cyan);
+    border-radius: 2px;
+  }
+  .slider .knob {
+    position: absolute;
+    top: 50%;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--fg-1);
+    border: 2px solid var(--beam-cyan);
+    transform: translate(-50%, -50%);
+  }
+  .slider-val {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-1);
+    min-width: 48px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Toggle */
+  .toggle {
+    width: 36px; height: 20px;
+    background: var(--bg-elev-2);
+    border-radius: 10px;
+    position: relative;
+    cursor: pointer;
+    transition: background var(--dur-fast);
+    flex-shrink: 0;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    left: 3px; top: 3px;
+    width: 14px; height: 14px;
+    background: var(--fg-2);
+    border-radius: 50%;
+    transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast);
+  }
+  .toggle.on { background: var(--beam-cyan-dim); }
+  .toggle.on::after { transform: translateX(16px); background: var(--fg-1); }
+
+  .row-flex { display: flex; align-items: center; gap: 12px; }
+
+  /* Codec list (drag-reorderable visual) */
+  .codec-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .codec-row {
+    display: grid;
+    grid-template-columns: 16px 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 7px 12px;
+    cursor: grab;
+  }
+  .codec-row .grip {
+    font-family: var(--font-mono);
+    color: var(--fg-3);
+    line-height: 1;
+    letter-spacing: -2px;
+  }
+  .codec-row .name { font-size: 13px; color: var(--fg-1); }
+  .codec-row .name b { font-family: var(--font-mono); font-weight: 500; }
+  .codec-row .name .desc { color: var(--fg-3); font-size: 11px; margin-left: 6px; }
+  .codec-row.disabled { opacity: 0.45; }
+  .codec-row .pref {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    background: var(--bg-elev-1);
+    border-radius: 2px;
+    padding: 2px 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Save bar */
+  .save-bar {
+    position: sticky;
+    bottom: -28px;
+    margin: 28px -36px -36px;
+    padding: 14px 36px;
+    background: var(--bg-deep);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-3);
+  }
+  .save-bar .grow { flex: 1; }
+  .save-bar button {
+    height: 32px;
+    border-radius: var(--radius-2);
+    border: 1px solid var(--border);
+    padding: 0 14px;
+    font: inherit;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--bg-elev-1);
+    color: var(--fg-1);
+    cursor: pointer;
+  }
+  .save-bar button.primary {
+    background: var(--beam-cyan);
+    color: var(--bg-deep);
+    border-color: transparent;
+  }
+  .save-bar .changed { color: var(--warning); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 12"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.36.16.66.43.86.76.2.33.31.71.31 1.1V12c0 .39-.11.77-.31 1.1-.2.33-.5.6-.86.76Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app" data-screen-label="05 Settings — audio">
+
+  <div class="titlebar">
+    <div class="tb-brand">
+      <svg viewBox="0 0 360 72" width="160" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g font-family="'Cascadia Code', ui-monospace, monospace" font-weight="600">
+          <text x="8" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-1">NOC</text>
+          <text x="100" y="50" font-size="40" fill="#7FD3FF">_</text>
+        </g>
+        <g font-family="'Inter', sans-serif" font-weight="600">
+          <text x="124" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-0.5">Beam</text>
+        </g>
+        <line x1="244" y1="32" x2="352" y2="32" stroke="#7FD3FF" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="352" cy="32" r="4" fill="#FFB86C"/>
+      </svg>
+      <span class="ver">0.1.0</span>
+    </div>
+    <div class="tb-account">
+      <span class="dot"></span>
+      <span class="name">priya.r</span>
+      <span class="at">@</span>
+      <span class="host">sbc-east.noc.internal</span>
+      <svg class="chev" viewBox="0 0 24 24" width="12" height="12"><use href="#i-chev"/></svg>
+    </div>
+    <label class="tb-uri">
+      <span class="prompt">dial</span>
+      <span class="caret">›</span>
+      <input type="text" placeholder="sip:peer@host  ·  +1 555 …  ·  *97">
+      <kbd>⌘K</kbd>
+    </label>
+    <div class="tb-winctl">
+      <button>—</button><button>▢</button><button class="close">✕</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="rail">
+      <div class="nav">
+        <button class="rail-btn"><svg><use href="#i-phone"/></svg><span class="lbl">Calls</span></button>
+        <button class="rail-btn"><svg><use href="#i-activity"/></svg><span class="lbl">Trace</span></button>
+        <button class="rail-btn"><svg><use href="#i-clock"/></svg><span class="lbl">History</span></button>
+        <button class="rail-btn"><svg><use href="#i-users"/></svg><span class="lbl">Accounts</span></button>
+        <button class="rail-btn active"><svg><use href="#i-settings"/></svg><span class="lbl">Settings</span></button>
+      </div>
+      <div class="spacer"></div>
+      <div class="rail-status">
+        <span class="dot"></span>
+        <span class="lbl">4 / 4</span>
+        <span class="sub">REGISTERED</span>
+      </div>
+    </nav>
+
+    <section class="content">
+      <div class="view-header">
+        <div class="title">Settings</div>
+        <div class="crumbs">
+          <span>~/settings</span>
+          <span class="sep">/</span>
+          <span style="color:var(--fg-1);">audio</span>
+        </div>
+      </div>
+
+      <div class="view-body" style="padding: 0;">
+        <div class="settings">
+
+          <!-- SUB-NAV -->
+          <nav class="settings-nav">
+            <div class="section">Sip</div>
+            <button>Accounts <span class="meta">4</span></button>
+            <button>Trunks &amp; SBCs <span class="meta">3</span></button>
+            <button>Routing</button>
+            <button>Diagnostics</button>
+
+            <div class="section">Device</div>
+            <button class="on">Audio</button>
+            <button>Network</button>
+            <button>Codecs &amp; quality</button>
+            <button>Recording &amp; trace</button>
+
+            <div class="section">App</div>
+            <button>Appearance</button>
+            <button>Keyboard</button>
+            <button>Notifications</button>
+            <button>Updates <span class="meta">0.1.1</span></button>
+
+            <div class="section">Advanced</div>
+            <button>PJSIP tuning</button>
+            <button>Certificates</button>
+            <button>Logging</button>
+            <button>About</button>
+          </nav>
+
+          <!-- BODY -->
+          <div class="settings-body">
+            <h1>Audio</h1>
+            <div class="lede">Devices, levels and ringtone. Per-account overrides live in <a href="#">Accounts</a>.</div>
+
+            <div class="group-head">Devices</div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Input device</span>
+                <span class="id">audio.input.device</span>
+              </div>
+              <div class="v">
+                <div class="device-row">
+                  <select class="select">
+                    <option>Shure MV7 (USB Audio)</option>
+                    <option>Default — Microphone Array</option>
+                    <option>AirPods Pro 2</option>
+                  </select>
+                  <div class="meter" title="Input level">
+                    <div class="bar on" style="height: 25%;"></div>
+                    <div class="bar on" style="height: 35%;"></div>
+                    <div class="bar on" style="height: 55%;"></div>
+                    <div class="bar on" style="height: 70%;"></div>
+                    <div class="bar on" style="height: 85%;"></div>
+                    <div class="bar on warn" style="height: 95%;"></div>
+                    <div class="bar" style="height: 100%;"></div>
+                    <div class="bar" style="height: 100%;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="help">
+                Device used for outgoing audio. <b>Speak now</b> — meter should peak around 6 bars; if it clips, lower input gain below.
+              </div>
+            </div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Input gain</span>
+                <span class="id">audio.input.gain_db</span>
+              </div>
+              <div class="v">
+                <div class="slider-row">
+                  <div class="slider">
+                    <div class="fill" style="width: 56%;"></div>
+                    <div class="knob" style="left: 56%;"></div>
+                  </div>
+                  <div class="slider-val">+2 dB</div>
+                </div>
+              </div>
+              <div class="help">Applied before sending to the codec. Range <b>−12 dB</b> to <b>+12 dB</b>.</div>
+            </div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Output device</span>
+                <span class="id">audio.output.device</span>
+              </div>
+              <div class="v">
+                <select class="select">
+                  <option>Speakers (Realtek HD Audio)</option>
+                  <option>AirPods Pro 2</option>
+                </select>
+              </div>
+              <div class="help">Where call audio plays. Ringtone uses a separate output, set below.</div>
+            </div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Ringtone output</span>
+                <span class="id">audio.ringtone.device</span>
+              </div>
+              <div class="v">
+                <select class="select">
+                  <option>Speakers (Realtek HD Audio)</option>
+                  <option>Default — System</option>
+                </select>
+              </div>
+              <div class="help">Plays incoming-call ringtone. <b>Use a different device</b> when wearing headphones at low volume.</div>
+            </div>
+
+            <div class="group-head">Processing</div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Echo cancellation</span>
+                <span class="id">audio.aec</span>
+              </div>
+              <div class="v">
+                <div class="row-flex">
+                  <div class="toggle on"></div>
+                  <span style="font-family:var(--font-mono); font-size:12px; color:var(--success);">on · WebRTC AEC3</span>
+                </div>
+              </div>
+              <div class="help">Removes the far-end voice from your microphone signal. Disable only when using a hardware AEC (USB headset, conference phone).</div>
+            </div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Noise suppression</span>
+                <span class="id">audio.ns</span>
+              </div>
+              <div class="v">
+                <div class="row-flex">
+                  <div class="toggle on"></div>
+                  <span style="font-family:var(--font-mono); font-size:12px; color:var(--success);">on · medium</span>
+                  <select class="select" style="height:28px; font-size:12px;">
+                    <option>Low</option>
+                    <option selected>Medium</option>
+                    <option>High</option>
+                  </select>
+                </div>
+              </div>
+              <div class="help">Suppresses fan, keyboard, room tone. <b>High</b> can soften consonants — leave on <b>medium</b> unless the room is loud.</div>
+            </div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Automatic gain control</span>
+                <span class="id">audio.agc</span>
+              </div>
+              <div class="v">
+                <div class="row-flex">
+                  <div class="toggle"></div>
+                  <span style="font-family:var(--font-mono); font-size:12px; color:var(--fg-3);">off</span>
+                </div>
+              </div>
+              <div class="help">Adjusts mic gain to match a target loudness. Off by default — most decent mics don't need it and AGC fights with manual gain.</div>
+            </div>
+
+            <div class="group-head">Behaviour</div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Mute on join</span>
+                <span class="id">audio.mute_on_answer</span>
+              </div>
+              <div class="v">
+                <div class="row-flex">
+                  <div class="toggle"></div>
+                  <span style="font-family:var(--font-mono); font-size:12px; color:var(--fg-3);">off</span>
+                </div>
+              </div>
+              <div class="help">Start every accepted call with your mic muted. Useful for bridges where you join silently first.</div>
+            </div>
+
+            <div class="setting">
+              <div class="k">
+                <span class="name">Push-to-talk</span>
+                <span class="id">audio.ptt_keybind</span>
+              </div>
+              <div class="v">
+                <div class="row-flex">
+                  <div class="toggle on"></div>
+                  <input class="input" value="Space" style="width: 120px;">
+                </div>
+              </div>
+              <div class="help">Hold this key to unmute. Released → muted. Captured globally (works while another window has focus).</div>
+            </div>
+
+            <div class="save-bar">
+              <span class="changed">● 3 changes unsaved</span>
+              <span>—</span>
+              <span>last saved <b style="color:var(--fg-2); font-weight:500;">14:02:11 UTC</b></span>
+              <div class="grow"></div>
+              <button>Discard</button>
+              <button class="primary">Save changes</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+</body>
+</html>

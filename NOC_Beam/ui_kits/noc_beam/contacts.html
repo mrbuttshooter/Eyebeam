@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · contacts</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* ============================================================
+     CONTACTS — directory + presence + detail
+     ============================================================ */
+  .ct {
+    display: grid;
+    grid-template-columns: 200px 360px 1fr;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* ----- Group sidebar (left) ----- */
+  .ct-groups {
+    border-right: 1px solid var(--border);
+    padding: 14px 10px;
+    overflow: auto;
+    background: var(--bg-deep);
+  }
+  .ct-groups .section {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 10px 10px 6px;
+  }
+  .ct-groups button {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--fg-2);
+    font: 13px var(--font-ui);
+    padding: 6px 10px;
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    line-height: 1.3;
+  }
+  .ct-groups button:hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .ct-groups button.on {
+    background: var(--beam-cyan-12);
+    color: var(--fg-1);
+  }
+  .ct-groups button .ct-num {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+  }
+  .ct-groups button.on .ct-num { color: var(--beam-cyan); }
+  .ct-groups button svg { width: 13px; height: 13px; color: var(--fg-3); stroke-width: 1.75; }
+  .ct-groups button.on svg { color: var(--beam-cyan); }
+
+  .ct-groups .add-btn {
+    width: 100%;
+    height: 30px;
+    background: transparent;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-2);
+    color: var(--fg-3);
+    font: 12px var(--font-ui);
+    margin-top: 10px;
+    cursor: pointer;
+  }
+  .ct-groups .add-btn:hover { color: var(--fg-1); border-color: var(--fg-3); }
+
+  /* ----- Directory column (middle) ----- */
+  .ct-dir {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .ct-dir-head {
+    height: 48px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .ct-dir-head .title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg-1);
+  }
+  .ct-dir-head .count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+  }
+  .ct-dir-head .grow { flex: 1; }
+  .ct-dir-head button {
+    width: 28px; height: 28px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--fg-2);
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ct-dir-head button:hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .ct-dir-head button svg { width: 13px; height: 13px; stroke-width: 1.75; }
+
+  .ct-search {
+    height: 36px;
+    margin: 8px 12px 6px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .ct-search:focus-within { border-color: var(--beam-cyan); }
+  .ct-search svg { width: 13px; height: 13px; color: var(--fg-3); stroke-width: 1.75; }
+  .ct-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--fg-1);
+    font: 12px var(--font-mono);
+  }
+  .ct-search input::placeholder { color: var(--fg-3); }
+
+  .ct-letters {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+  }
+
+  .ct-letter {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    padding: 12px 16px 4px;
+    background: var(--bg-base);
+    position: sticky;
+    top: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ct-row {
+    display: grid;
+    grid-template-columns: 8px 32px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 9px 16px;
+    border-bottom: 1px solid rgba(42, 51, 64, 0.5);
+    cursor: pointer;
+    transition: background var(--dur-fast);
+    position: relative;
+  }
+  .ct-row:hover { background: var(--bg-elev-1); }
+  .ct-row.focused {
+    background: var(--beam-cyan-12);
+  }
+  .ct-row.focused::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 6px; bottom: 6px;
+    width: 3px;
+    background: var(--beam-cyan);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .ct-row .presence {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+  }
+  .ct-row .presence.away { background: var(--warning); }
+  .ct-row .presence.busy { background: var(--danger); }
+  .ct-row .presence.off  { background: var(--fg-3); }
+  .ct-row .presence.dnd  { background: var(--fg-3); position: relative; }
+  .ct-row .presence.dnd::after {
+    content: '';
+    position: absolute;
+    left: 1px; right: 1px;
+    top: 50%;
+    height: 1.5px;
+    background: var(--bg-base);
+    border-radius: 1px;
+  }
+  .ct-row .presence.unknown {
+    background: transparent;
+    border: 1.5px solid var(--fg-3);
+  }
+
+  .ct-row .av {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--bg-elev-2);
+    color: var(--fg-2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .ct-row .who { min-width: 0; }
+  .ct-row .who .name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ct-row .who .uri {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ct-row .status-text {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    text-align: right;
+    line-height: 1.4;
+  }
+  .ct-row.focused .status-text { color: var(--fg-2); }
+
+  /* ----- Detail (right) ----- */
+  .ct-detail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .det-head {
+    padding: 26px 28px 22px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .det-head .av {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: var(--success-12);
+    color: var(--success);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 600;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .det-head .av::after {
+    content: '';
+    position: absolute;
+    bottom: -2px; right: -2px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--success);
+    border: 2px solid var(--bg-base);
+  }
+  .det-head .who { flex: 1; min-width: 0; }
+  .det-head .who h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--fg-1);
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .det-head .who .uri {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--fg-2);
+  }
+  .det-head .who .pres {
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--success);
+    background: var(--success-12);
+    padding: 4px 10px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+  }
+  .det-head .who .pres .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+  }
+  .det-head .who .pres .since { color: var(--fg-3); margin-left: 4px; }
+
+  .det-head .quick {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .det-head .quick button {
+    height: 36px;
+    padding: 0 16px;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    font: 500 13px var(--font-ui);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .det-head .quick button:hover { background: var(--bg-elev-2); }
+  .det-head .quick button.primary {
+    background: var(--success);
+    border-color: transparent;
+    color: var(--bg-deep);
+    font-weight: 600;
+  }
+  .det-head .quick button.primary:hover { filter: brightness(1.08); }
+  .det-head .quick button svg { width: 14px; height: 14px; stroke-width: 1.75; }
+
+  /* Section panels */
+  .det-section {
+    padding: 22px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .det-section .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    font-weight: 500;
+  }
+  .det-section .label .grow { flex: 1; }
+
+  /* Identity rows */
+  .id-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .id-row {
+    display: grid;
+    grid-template-columns: 110px 1fr auto;
+    gap: 14px;
+    align-items: center;
+    padding: 9px 0;
+    border-top: 1px solid rgba(42, 51, 64, 0.5);
+  }
+  .id-row:first-child { border-top: none; }
+  .id-row .k {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .id-row .v {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--fg-1);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .id-row .v .primary {
+    background: var(--beam-cyan-12);
+    color: var(--beam-cyan);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    margin-left: 8px;
+    text-transform: uppercase;
+  }
+  .id-row .v .tag {
+    color: var(--fg-3);
+    margin-left: 8px;
+    font-size: 11px;
+  }
+  .id-row .actions {
+    display: flex;
+    gap: 4px;
+  }
+  .id-row .actions button {
+    width: 28px; height: 28px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--fg-3);
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .id-row .actions button:hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .id-row .actions button svg { width: 13px; height: 13px; stroke-width: 1.75; }
+
+  /* Activity (recent calls) */
+  .activity {
+    display: flex;
+    flex-direction: column;
+  }
+  .activity .row {
+    display: grid;
+    grid-template-columns: 24px 1fr auto auto;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 0;
+    border-top: 1px solid rgba(42, 51, 64, 0.5);
+    font-family: var(--font-mono);
+  }
+  .activity .row:first-child { border-top: none; }
+  .activity .row .dir {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--success-12);
+    color: var(--success);
+  }
+  .activity .row .dir.out  { background: var(--beam-amber-12); color: var(--beam-amber); }
+  .activity .row .dir.miss { background: var(--danger-12); color: var(--danger); }
+  .activity .row .dir svg { width: 10px; height: 10px; stroke-width: 2; }
+  .activity .row .desc { font-size: 12px; color: var(--fg-2); }
+  .activity .row .desc b { color: var(--fg-1); font-weight: 500; font-family: var(--font-ui); }
+  .activity .row .dur { font-size: 11px; color: var(--fg-2); font-variant-numeric: tabular-nums; }
+  .activity .row .when { font-size: 11px; color: var(--fg-3); font-variant-numeric: tabular-nums; }
+
+  /* Tags */
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag-pill {
+    height: 22px;
+    padding: 0 10px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    color: var(--fg-2);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tag-pill.add {
+    color: var(--fg-3);
+    border-style: dashed;
+    cursor: pointer;
+  }
+  .tag-pill.add:hover { color: var(--fg-1); border-color: var(--fg-2); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 12"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+      <polyline points="22,6 12,13 2,6"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.36.16.66.43.86.76.2.33.31.71.31 1.1V12c0 .39-.11.77-.31 1.1-.2.33-.5.6-.86.76Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    </symbol>
+    <symbol id="i-team" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+      <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+      <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+    </symbol>
+    <symbol id="i-add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </symbol>
+    <symbol id="i-call" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </symbol>
+    <symbol id="i-phone-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="16 2 16 8 22 8"/><line x1="23" y1="1" x2="16" y2="8"/>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-phone-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 7 23 1 17 1"/><line x1="16" y1="8" x2="23" y2="1"/>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-phone-miss" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app" data-screen-label="13 Contacts">
+
+  <div class="titlebar">
+    <div class="tb-brand">
+      <svg viewBox="0 0 360 72" width="160" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g font-family="'Cascadia Code', ui-monospace, monospace" font-weight="600">
+          <text x="8" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-1">NOC</text>
+          <text x="100" y="50" font-size="40" fill="#7FD3FF">_</text>
+        </g>
+        <g font-family="'Inter', sans-serif" font-weight="600">
+          <text x="124" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-0.5">Beam</text>
+        </g>
+        <line x1="244" y1="32" x2="352" y2="32" stroke="#7FD3FF" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="352" cy="32" r="4" fill="#FFB86C"/>
+      </svg>
+      <span class="ver">0.1.0</span>
+    </div>
+    <div class="tb-account">
+      <span class="dot"></span>
+      <span class="name">priya.r</span>
+      <span class="at">@</span>
+      <span class="host">sbc-east.noc.internal</span>
+      <svg class="chev" viewBox="0 0 24 24" width="12" height="12"><use href="#i-chev"/></svg>
+    </div>
+    <label class="tb-uri">
+      <span class="prompt">dial</span>
+      <span class="caret">›</span>
+      <input type="text" placeholder="sip:peer@host  ·  +1 555 …  ·  *97">
+      <kbd>⌘K</kbd>
+    </label>
+    <div class="tb-winctl">
+      <button>—</button><button>▢</button><button class="close">✕</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="rail">
+      <div class="nav">
+        <button class="rail-btn"><svg><use href="#i-phone"/></svg><span class="lbl">Calls</span></button>
+        <button class="rail-btn"><svg><use href="#i-activity"/></svg><span class="lbl">Trace</span></button>
+        <button class="rail-btn"><svg><use href="#i-clock"/></svg><span class="lbl">History</span></button>
+        <button class="rail-btn active"><svg><use href="#i-users"/></svg><span class="lbl">Contacts</span></button>
+        <button class="rail-btn"><svg><use href="#i-mail"/></svg><span class="lbl">Voicemail</span><span class="badge">3</span></button>
+        <button class="rail-btn"><svg><use href="#i-settings"/></svg><span class="lbl">Settings</span></button>
+      </div>
+      <div class="spacer"></div>
+      <div class="rail-status">
+        <span class="dot"></span>
+        <span class="lbl">5 / 6</span>
+        <span class="sub">REGISTERED</span>
+      </div>
+    </nav>
+
+    <section class="content">
+
+      <div class="view-header">
+        <div class="title">Contacts</div>
+        <div class="crumbs"><span>~/contacts</span><span class="sep">/</span><span style="color:var(--fg-1);">Voice infra</span></div>
+      </div>
+
+      <div class="ct">
+
+        <!-- GROUPS -->
+        <nav class="ct-groups">
+          <div class="section">All</div>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-users"/></svg>
+            <span>Everyone</span>
+            <span class="ct-num">142</span>
+          </button>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-star"/></svg>
+            <span>Favourites</span>
+            <span class="ct-num">8</span>
+          </button>
+
+          <div class="section">Groups</div>
+          <button class="on">
+            <svg fill="none" stroke="currentColor"><use href="#i-team"/></svg>
+            <span>Voice infra</span>
+            <span class="ct-num">11</span>
+          </button>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-team"/></svg>
+            <span>SRE on-call</span>
+            <span class="ct-num">14</span>
+          </button>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-team"/></svg>
+            <span>Carriers</span>
+            <span class="ct-num">9</span>
+          </button>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-server"/></svg>
+            <span>SBCs &amp; bridges</span>
+            <span class="ct-num">6</span>
+          </button>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-server"/></svg>
+            <span>Test endpoints</span>
+            <span class="ct-num">12</span>
+          </button>
+
+          <div class="section">Source</div>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-users"/></svg>
+            <span>Active Directory</span>
+            <span class="ct-num">128</span>
+          </button>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-edit"/></svg>
+            <span>Local</span>
+            <span class="ct-num">14</span>
+          </button>
+
+          <button class="add-btn">+ New group</button>
+        </nav>
+
+        <!-- DIRECTORY -->
+        <div class="ct-dir">
+          <div class="ct-dir-head">
+            <span class="title">Voice infra</span>
+            <span class="count">· 11 people · 4 online</span>
+            <div class="grow"></div>
+            <button title="Sort">
+              <svg fill="none" stroke="currentColor"><polyline points="3 6 3 12 21 12 21 18"/></svg>
+            </button>
+            <button title="Add">
+              <svg fill="none" stroke="currentColor"><use href="#i-add"/></svg>
+            </button>
+          </div>
+
+          <label class="ct-search">
+            <svg fill="none" stroke="currentColor"><use href="#i-search"/></svg>
+            <input type="text" placeholder="filter by name, URI, status…">
+          </label>
+
+          <div class="ct-letters">
+            <div class="ct-letter">B</div>
+
+            <div class="ct-row">
+              <span class="presence away"></span>
+              <div class="av">BC</div>
+              <div class="who">
+                <div class="name">Brian Chen</div>
+                <div class="uri">sip:brian@noc.internal</div>
+              </div>
+              <div class="status-text">away<br>14 min</div>
+            </div>
+
+            <div class="ct-letter">C</div>
+
+            <div class="ct-row focused">
+              <span class="presence"></span>
+              <div class="av">NC</div>
+              <div class="who">
+                <div class="name">Nadia Cole</div>
+                <div class="uri">sip:nadia@noc.internal</div>
+              </div>
+              <div class="status-text">online<br>at desk</div>
+            </div>
+
+            <div class="ct-letter">J</div>
+
+            <div class="ct-row">
+              <span class="presence busy"></span>
+              <div class="av">JK</div>
+              <div class="who">
+                <div class="name">Jordan Kim</div>
+                <div class="uri">sip:jordan@noc.internal</div>
+              </div>
+              <div class="status-text">on call<br>04:12</div>
+            </div>
+
+            <div class="ct-letter">L</div>
+
+            <div class="ct-row">
+              <span class="presence dnd"></span>
+              <div class="av">ML</div>
+              <div class="who">
+                <div class="name">Marcus Lin</div>
+                <div class="uri">sip:marcus@lab.noc.internal</div>
+              </div>
+              <div class="status-text">DND<br>focus block</div>
+            </div>
+
+            <div class="ct-letter">P</div>
+
+            <div class="ct-row">
+              <span class="presence"></span>
+              <div class="av">PR</div>
+              <div class="who">
+                <div class="name">Priya R.</div>
+                <div class="uri">sip:priya@sbc-east.noc.internal</div>
+              </div>
+              <div class="status-text">you<br>online</div>
+            </div>
+
+            <div class="ct-row">
+              <span class="presence off"></span>
+              <div class="av">PJ</div>
+              <div class="who">
+                <div class="name">Pat Jardine</div>
+                <div class="uri">sip:pat@noc.internal</div>
+              </div>
+              <div class="status-text">offline<br>2 days</div>
+            </div>
+
+            <div class="ct-letter">R</div>
+
+            <div class="ct-row">
+              <span class="presence"></span>
+              <div class="av">RS</div>
+              <div class="who">
+                <div class="name">Rajiv Singh</div>
+                <div class="uri">sip:raj@noc.internal</div>
+              </div>
+              <div class="status-text">online<br>at desk</div>
+            </div>
+
+            <div class="ct-letter">T</div>
+
+            <div class="ct-row">
+              <span class="presence unknown"></span>
+              <div class="av">TR</div>
+              <div class="who">
+                <div class="name">Trunk relay (PSTN)</div>
+                <div class="uri">sip:relay@trunk-pstn.noc.internal</div>
+              </div>
+              <div class="status-text">no presence<br>service</div>
+            </div>
+
+            <div class="ct-row">
+              <span class="presence away"></span>
+              <div class="av">TY</div>
+              <div class="who">
+                <div class="name">Taylor Yu</div>
+                <div class="uri">sip:taylor@noc.internal</div>
+              </div>
+              <div class="status-text">away<br>1h 20m</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DETAIL -->
+        <div class="ct-detail">
+
+          <div class="det-head">
+            <div class="av">NC</div>
+            <div class="who">
+              <h1>Nadia Cole <span style="font-family: var(--font-mono); font-size: 13px; color: var(--beam-cyan); margin-left: 8px; font-weight: 500;">★</span></h1>
+              <div class="uri">sip:<b style="color: var(--fg-1); font-weight: 500;">nadia</b>@<b style="color: var(--fg-1); font-weight: 500;">noc.internal</b></div>
+              <div class="pres">
+                <span class="dot"></span>
+                <span>● ONLINE</span>
+                <span class="since">at desk · since 09:14 UTC</span>
+              </div>
+            </div>
+            <div class="quick">
+              <button class="primary">
+                <svg fill="none" stroke="currentColor"><use href="#i-call"/></svg>
+                Call
+              </button>
+              <button>
+                <svg fill="none" stroke="currentColor"><use href="#i-mail"/></svg>
+                Voicemail
+              </button>
+              <button>
+                <svg fill="none" stroke="currentColor"><use href="#i-edit"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Identity -->
+          <div class="det-section">
+            <div class="label" style="display: flex; align-items: center;">
+              <span>Identity</span>
+              <span class="grow"></span>
+              <span style="text-transform: none; color: var(--fg-3); letter-spacing: 0.02em;">source: <b style="color: var(--fg-2); font-weight: 500;">Active Directory · noc.internal</b></span>
+            </div>
+            <div class="id-rows">
+              <div class="id-row">
+                <span class="k">SIP URI</span>
+                <span class="v">sip:nadia@noc.internal<span class="primary">primary</span></span>
+                <div class="actions">
+                  <button title="Copy"><svg fill="none" stroke="currentColor"><use href="#i-copy"/></svg></button>
+                  <button title="Call"><svg fill="none" stroke="currentColor"><use href="#i-call"/></svg></button>
+                </div>
+              </div>
+              <div class="id-row">
+                <span class="k">SIP URI</span>
+                <span class="v">sip:nadia@home.noc.internal<span class="tag">remote · TLS</span></span>
+                <div class="actions">
+                  <button title="Copy"><svg fill="none" stroke="currentColor"><use href="#i-copy"/></svg></button>
+                  <button title="Call"><svg fill="none" stroke="currentColor"><use href="#i-call"/></svg></button>
+                </div>
+              </div>
+              <div class="id-row">
+                <span class="k">PSTN</span>
+                <span class="v">+1 (415) 555-0118<span class="tag">extension 4118</span></span>
+                <div class="actions">
+                  <button title="Copy"><svg fill="none" stroke="currentColor"><use href="#i-copy"/></svg></button>
+                  <button title="Call"><svg fill="none" stroke="currentColor"><use href="#i-call"/></svg></button>
+                </div>
+              </div>
+              <div class="id-row">
+                <span class="k">Role</span>
+                <span class="v">Lead — voice infra<span class="tag">Engineering · NOC</span></span>
+              </div>
+              <div class="id-row">
+                <span class="k">Manager</span>
+                <span class="v">Pat Jardine<span class="tag">sip:pat@noc.internal</span></span>
+                <div class="actions">
+                  <button title="Open contact"><svg fill="none" stroke="currentColor"><use href="#i-chev"/></svg></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tags -->
+          <div class="det-section">
+            <div class="label">Tags</div>
+            <div class="tags">
+              <span class="tag-pill"># voice-infra</span>
+              <span class="tag-pill"># sbc-east-owner</span>
+              <span class="tag-pill"># pagerduty-on-call</span>
+              <span class="tag-pill"># interview-loop</span>
+              <span class="tag-pill add">+ add tag</span>
+            </div>
+          </div>
+
+          <!-- Activity -->
+          <div class="det-section">
+            <div class="label">Recent activity</div>
+            <div class="activity">
+              <div class="row">
+                <span class="dir"><svg fill="none" stroke="currentColor"><use href="#i-phone-in"/></svg></span>
+                <span class="desc"><b>Voicemail</b> · "follow up on the Q3 retrospective" <span style="color: var(--fg-3); margin-left: 8px;">→ open in Voicemail</span></span>
+                <span class="dur">01:18</span>
+                <span class="when">11:08 today</span>
+              </div>
+              <div class="row">
+                <span class="dir out"><svg fill="none" stroke="currentColor"><use href="#i-phone-out"/></svg></span>
+                <span class="desc"><b>Outgoing call</b> · opus@48k · 0.4% loss</span>
+                <span class="dur">42:18</span>
+                <span class="when">Wed 14:00</span>
+              </div>
+              <div class="row">
+                <span class="dir"><svg fill="none" stroke="currentColor"><use href="#i-phone-in"/></svg></span>
+                <span class="desc"><b>Incoming call</b> · accepted, then transferred to Marcus</span>
+                <span class="dur">08:41</span>
+                <span class="when">Tue 17:22</span>
+              </div>
+              <div class="row">
+                <span class="dir miss"><svg fill="none" stroke="currentColor"><use href="#i-phone-miss"/></svg></span>
+                <span class="desc"><b>Missed call</b> · 22:14 (you were in DND)</span>
+                <span class="dur">—</span>
+                <span class="when">last Fri</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+</body>
+</html>

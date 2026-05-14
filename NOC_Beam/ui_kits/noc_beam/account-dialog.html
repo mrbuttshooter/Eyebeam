@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · add account v2</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { background: #06080B; }
+
+  /* Background app (dimmed) */
+  .app .titlebar,
+  .app .main {
+    filter: brightness(0.6) saturate(0.7);
+    pointer-events: none;
+  }
+
+  /* Scrim */
+  .scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 11, 14, 0.6);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  /* =============================================
+     Two-column dialog: form (left) | diagnostics (right)
+     ============================================= */
+  .dialog {
+    width: 1080px;
+    max-height: 820px;
+    height: 820px;
+    background: var(--bg-base);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-3);
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    overflow: hidden;
+  }
+
+  .dialog-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 22px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dialog-head .icon {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-2);
+    background: var(--beam-cyan-12);
+    color: var(--beam-cyan);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .dialog-head .icon svg { width: 18px; height: 18px; stroke-width: 1.75; }
+  .dialog-head .who { flex: 1; min-width: 0; }
+  .dialog-head .title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--fg-1);
+    letter-spacing: -0.01em;
+  }
+  .dialog-head .sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    margin-top: 2px;
+  }
+  .dialog-head .sub b { color: var(--fg-2); font-weight: 500; }
+  .dialog-head .close {
+    background: transparent;
+    border: none;
+    color: var(--fg-3);
+    cursor: pointer;
+    padding: 6px;
+    border-radius: var(--radius-2);
+  }
+  .dialog-head .close:hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .dialog-head .close svg { width: 16px; height: 16px; stroke-width: 1.75; }
+
+  .dialog-grid {
+    display: grid;
+    grid-template-columns: 1fr 440px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* ---- FORM column ---- */
+  .form {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 22px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tabs button {
+    background: transparent;
+    border: none;
+    padding: 12px 16px;
+    color: var(--fg-3);
+    font: 13px var(--font-ui);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tabs button:hover { color: var(--fg-1); }
+  .tabs button.on {
+    color: var(--fg-1);
+    border-bottom-color: var(--beam-cyan);
+  }
+  .tabs button .badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    background: var(--warning-12);
+    color: var(--warning);
+    border-radius: 8px;
+    padding: 1px 6px;
+    margin-left: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  .form-body {
+    padding: 22px 22px 4px;
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .form-body h2 {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--fg-3);
+    margin: 0 0 10px;
+    font-weight: 500;
+  }
+  .form-body h2:not(:first-child) {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+  }
+
+  .field {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 16px;
+    align-items: center;
+    padding: 8px 0;
+  }
+  .field.tall { align-items: start; padding: 10px 0; }
+  .field.tall .label { padding-top: 8px; }
+  .field .label {
+    font-size: 13px;
+    color: var(--fg-2);
+    display: flex;
+    flex-direction: column;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  .field .label .req { color: var(--danger); margin-left: 2px; }
+  .field .label .hint {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    margin-top: 2px;
+    letter-spacing: 0.04em;
+  }
+  .field .label .changed {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--warning);
+    margin-top: 2px;
+    letter-spacing: 0.04em;
+  }
+  .field .label .changed::before {
+    content: '● ';
+    color: var(--warning);
+  }
+
+  .field-input,
+  .field-select {
+    height: 32px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    padding: 0 12px;
+    font: 13px var(--font-ui);
+    outline: none;
+    width: 100%;
+    transition: border-color var(--dur-fast);
+  }
+  .field-input:focus { border-color: var(--beam-cyan); }
+  .field-input.mono { font-family: var(--font-mono); font-size: 12px; }
+  .field-input.short { max-width: 140px; }
+  .field-input.changed { border-color: var(--warning); background: rgba(240, 195, 109, 0.06); }
+  .field-select {
+    padding-right: 28px;
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%),
+                      linear-gradient(135deg, var(--fg-3) 50%, transparent 50%);
+    background-position: right 12px center, right 7px center;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+
+  .input-row { display: flex; gap: 8px; align-items: center; }
+  .input-row .field-input { flex: 1; }
+
+  .seg-radio {
+    display: inline-flex;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 2px;
+  }
+  .seg-radio label {
+    padding: 4px 10px;
+    border-radius: var(--radius-1);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+  .seg-radio label.on {
+    background: var(--bg-elev-3);
+    color: var(--fg-1);
+    box-shadow: var(--elev-1);
+  }
+
+  .check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--fg-1);
+  }
+  .check .box {
+    width: 14px; height: 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--bg-deep);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .check.on .box { background: var(--beam-cyan); border-color: var(--beam-cyan); }
+  .check.on .box::after {
+    content: '';
+    width: 8px; height: 4px;
+    border-left: 2px solid var(--bg-deep);
+    border-bottom: 2px solid var(--bg-deep);
+    transform: rotate(-45deg) translateY(-1px);
+  }
+
+  /* ====== DIAGNOSTICS column ====== */
+  .diag {
+    background: var(--bg-deep);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .diag-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  .diag-head .title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-2);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .diag-head .grow { flex: 1; }
+  .diag-head .auto {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .diag-head .auto::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--beam-cyan);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  .diag-head button {
+    height: 26px;
+    padding: 0 10px;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    font: 500 11px var(--font-ui);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .diag-head button:hover { background: var(--bg-elev-2); }
+  .diag-head button svg { width: 11px; height: 11px; stroke-width: 1.75; }
+
+  .diag-summary {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .diag-summary .verdict {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .diag-summary .verdict .badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--success);
+    background: var(--success-12);
+    padding: 4px 10px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .diag-summary .verdict .meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+  .diag-summary .verdict .meta b { color: var(--fg-2); font-weight: 500; }
+
+  /* Checklist */
+  .checks {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .check-item {
+    display: grid;
+    grid-template-columns: 16px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 0;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--fg-1);
+  }
+  .check-item .ic {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .check-item.ok    .ic { background: var(--success); color: var(--bg-deep); }
+  .check-item.warn  .ic { background: var(--warning); color: var(--bg-deep); }
+  .check-item.error .ic { background: var(--danger);  color: white; }
+  .check-item.pending .ic {
+    background: transparent;
+    border: 1.5px solid var(--fg-3);
+    color: transparent;
+  }
+  .check-item .ic svg { width: 9px; height: 9px; stroke-width: 3; }
+  .check-item .desc { color: var(--fg-2); }
+  .check-item .desc b { color: var(--fg-1); font-weight: 500; }
+  .check-item .ms {
+    font-size: 10.5px;
+    color: var(--fg-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .check-item.error .desc b { color: var(--danger); }
+
+  /* Trace excerpt */
+  .diag-trace {
+    flex: 1;
+    overflow: auto;
+    padding: 14px 18px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--trace-body);
+  }
+  .diag-trace .ts { color: var(--fg-3); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .diag-trace .tx { color: var(--beam-amber); }
+  .diag-trace .rx { color: var(--beam-cyan); }
+  .diag-trace .ok { color: var(--success); }
+  .diag-trace .err { color: var(--danger); background: rgba(255, 92, 122, 0.16); padding: 0 4px; border-radius: 2px; }
+  .diag-trace .comment { color: var(--fg-3); font-style: italic; }
+  .diag-trace hr {
+    border: none;
+    border-top: 1px dashed var(--border);
+    margin: 8px 0;
+  }
+  .diag-trace .msg-block {
+    margin: 4px 0 8px;
+  }
+  .diag-trace .msg-block pre {
+    margin: 4px 0 0;
+    white-space: pre;
+  }
+
+  /* ===== Footer ===== */
+  .dialog-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-deep);
+  }
+  .dialog-foot .help {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+  .dialog-foot .help b { color: var(--fg-2); font-weight: 500; }
+  .dialog-foot .grow { flex: 1; }
+  .dialog-foot .changed-note {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--warning);
+    margin-right: 6px;
+  }
+
+  .btn {
+    height: 32px;
+    padding: 0 16px;
+    border-radius: var(--radius-2);
+    border: 1px solid var(--border);
+    background: var(--bg-elev-1);
+    color: var(--fg-1);
+    font: 500 13px var(--font-ui);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:hover { background: var(--bg-elev-2); }
+  .btn.primary {
+    background: var(--beam-cyan);
+    border-color: transparent;
+    color: var(--bg-deep);
+    font-weight: 600;
+  }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--fg-2);
+  }
+  .btn.ghost:hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .btn svg { width: 14px; height: 14px; stroke-width: 1.75; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15A9 9 0 0 1 5.64 18.36L1 14"/>
+    </symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- Background app (dimmed) -->
+<div class="app" data-screen-label="15 Add account dialog · v2">
+  <div class="titlebar">
+    <div class="tb-brand">
+      <svg viewBox="0 0 360 72" width="160" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g font-family="'Cascadia Code', ui-monospace, monospace" font-weight="600">
+          <text x="8" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-1">NOC</text>
+          <text x="100" y="50" font-size="40" fill="#7FD3FF">_</text>
+        </g>
+        <g font-family="'Inter', sans-serif" font-weight="600">
+          <text x="124" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-0.5">Beam</text>
+        </g>
+        <line x1="244" y1="32" x2="352" y2="32" stroke="#7FD3FF" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="352" cy="32" r="4" fill="#FFB86C"/>
+      </svg>
+      <span class="ver">0.1.0</span>
+    </div>
+    <div class="tb-account">
+      <span class="dot"></span>
+      <span class="name">priya.r</span>
+      <span class="at">@</span>
+      <span class="host">sbc-east.noc.internal</span>
+    </div>
+    <div></div>
+    <div class="tb-winctl">
+      <button>—</button><button>▢</button><button class="close">✕</button>
+    </div>
+  </div>
+  <div class="main">
+    <nav class="rail">
+      <div class="nav">
+        <button class="rail-btn"><svg><use href="#i-phone"/></svg><span class="lbl">Calls</span></button>
+        <button class="rail-btn active"><svg><use href="#i-users"/></svg><span class="lbl">Accounts</span></button>
+      </div>
+    </nav>
+    <section class="content"></section>
+  </div>
+</div>
+
+<!-- ====================
+     DIALOG · two-column
+     ==================== -->
+<div class="scrim">
+  <div class="dialog" role="dialog" aria-labelledby="d-title">
+
+    <!-- HEAD -->
+    <div class="dialog-head">
+      <div class="icon"><svg fill="none" stroke="currentColor"><use href="#i-key"/></svg></div>
+      <div class="who">
+        <div class="title" id="d-title">Add SIP account</div>
+        <div class="sub">priya.r@sbc-east.noc.internal &nbsp;·&nbsp; <b>new endpoint</b> &nbsp;·&nbsp; tests re-run as you type</div>
+      </div>
+      <button class="close" aria-label="Close">
+        <svg fill="none" stroke="currentColor"><use href="#i-x"/></svg>
+      </button>
+    </div>
+
+    <!-- GRID -->
+    <div class="dialog-grid">
+
+      <!-- FORM (LEFT) -->
+      <div class="form">
+        <div class="tabs">
+          <button class="on">General</button>
+          <button>Network</button>
+          <button>Codecs</button>
+          <button>Advanced <span class="badge">2</span></button>
+        </div>
+
+        <div class="form-body">
+
+          <h2>Identity</h2>
+
+          <div class="field">
+            <div class="label">
+              Display name
+              <span class="hint">account.display_name</span>
+            </div>
+            <input class="field-input" value="Priya — SBC East">
+          </div>
+
+          <div class="field">
+            <div class="label">
+              SIP URI <span class="req">*</span>
+              <span class="hint">account.uri</span>
+            </div>
+            <div class="input-row">
+              <input class="field-input mono" value="sip:priya@sbc-east.noc.internal">
+              <button class="btn ghost" title="Help">
+                <svg fill="none" stroke="currentColor"><use href="#i-help"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label">
+              Auth username
+              <span class="hint">account.auth.username</span>
+            </div>
+            <input class="field-input mono" value="priya.r" placeholder="defaults to URI user part">
+          </div>
+
+          <div class="field">
+            <div class="label">
+              Password <span class="req">*</span>
+              <span class="hint">account.auth.password</span>
+              <span class="changed">just changed · re-testing…</span>
+            </div>
+            <div class="input-row">
+              <input class="field-input mono changed" type="password" value="•••••••••••••••••">
+              <button class="btn ghost" title="Show">
+                <svg fill="none" stroke="currentColor"><use href="#i-eye"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <h2>Transport</h2>
+
+          <div class="field">
+            <div class="label">
+              Protocol
+              <span class="hint">transport.proto</span>
+            </div>
+            <div class="seg-radio">
+              <label>UDP</label>
+              <label>TCP</label>
+              <label class="on">TLS</label>
+              <label>WSS</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label">
+              Port
+              <span class="hint">transport.port</span>
+            </div>
+            <input class="field-input mono short" value="5061">
+          </div>
+
+          <div class="field">
+            <div class="label">
+              SRTP
+              <span class="hint">transport.srtp</span>
+            </div>
+            <div class="seg-radio">
+              <label>Disabled</label>
+              <label>Optional</label>
+              <label class="on">Mandatory</label>
+            </div>
+          </div>
+
+          <h2>Registrar</h2>
+
+          <div class="field">
+            <div class="label">
+              Outbound proxy
+              <span class="hint">account.outbound_proxy</span>
+            </div>
+            <input class="field-input mono" value="" placeholder="sip:proxy.host:port (optional)">
+          </div>
+
+          <div class="field">
+            <div class="label">
+              Register on startup
+              <span class="hint">account.register_on_startup</span>
+            </div>
+            <label class="check on">
+              <span class="box"></span>
+              <span>Register whenever NOC_Beam starts</span>
+            </label>
+          </div>
+
+          <div class="field">
+            <div class="label">
+              Register lifetime
+              <span class="hint">account.expires_s</span>
+            </div>
+            <div class="input-row">
+              <input class="field-input mono short" value="3600">
+              <span style="font-family: var(--font-mono); font-size: 12px; color: var(--fg-3);">seconds · re-REGISTER at half-life</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- DIAGNOSTICS (RIGHT) — always visible -->
+      <aside class="diag">
+
+        <div class="diag-head">
+          <span class="title">Diagnostics</span>
+          <span class="auto">auto · 6 of 6 checks</span>
+          <div class="grow"></div>
+          <button>
+            <svg fill="none" stroke="currentColor"><use href="#i-refresh"/></svg>
+            Re-run
+          </button>
+        </div>
+
+        <!-- Summary verdict + checklist -->
+        <div class="diag-summary">
+          <div class="verdict">
+            <span class="badge">● Probe succeeded</span>
+            <span class="meta">126 ms · <b>14:18:09 UTC</b></span>
+          </div>
+          <div class="checks">
+            <div class="check-item ok">
+              <span class="ic"><svg fill="none" stroke="currentColor"><use href="#i-check"/></svg></span>
+              <span class="desc">DNS &nbsp;<b>sbc-east.noc.internal</b> → 10.4.2.71</span>
+              <span class="ms">8 ms</span>
+            </div>
+            <div class="check-item ok">
+              <span class="ic"><svg fill="none" stroke="currentColor"><use href="#i-check"/></svg></span>
+              <span class="desc">TLS handshake · <b>TLS 1.3</b> · cert trusted</span>
+              <span class="ms">38 ms</span>
+            </div>
+            <div class="check-item ok">
+              <span class="ic"><svg fill="none" stroke="currentColor"><use href="#i-check"/></svg></span>
+              <span class="desc">OPTIONS probe · <b>200 OK</b></span>
+              <span class="ms">126 ms</span>
+            </div>
+            <div class="check-item warn">
+              <span class="ic"><svg fill="none" stroke="currentColor"><use href="#i-warn"/></svg></span>
+              <span class="desc">Auth digest · server prefers <b>SHA-256</b>, client offers MD5+SHA-256</span>
+              <span class="ms"></span>
+            </div>
+            <div class="check-item ok">
+              <span class="ic"><svg fill="none" stroke="currentColor"><use href="#i-check"/></svg></span>
+              <span class="desc">SRTP · <b>AES-CM-128</b> supported</span>
+              <span class="ms"></span>
+            </div>
+            <div class="check-item ok">
+              <span class="ic"><svg fill="none" stroke="currentColor"><use href="#i-check"/></svg></span>
+              <span class="desc">Codecs · <b>opus, G.722, PCMU</b> · all enabled</span>
+              <span class="ms"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trace excerpt -->
+        <div class="diag-trace">
+          <div class="msg-block">
+            <div><span class="ts">14:18:09.018</span> <span class="tx">TX → 10.4.2.71:5061</span></div>
+<pre>OPTIONS sip:sbc-east.noc.internal SIP/2.0
+Via: SIP/2.0/TLS 10.4.1.55:5061;branch=z9hG4bK.opt
+From: &lt;sip:priya@sbc-east.noc.internal&gt;;tag=probe
+To:   &lt;sip:sbc-east.noc.internal&gt;
+CSeq: 1 OPTIONS
+Max-Forwards: 70
+Content-Length: 0</pre>
+          </div>
+          <hr>
+          <div class="msg-block">
+            <div><span class="ts">14:18:09.144</span> <span class="rx">RX ← 10.4.2.71:5061</span></div>
+<pre>SIP/2.0 <span class="ok">200 OK</span>
+Via: SIP/2.0/TLS 10.4.1.55:5061;branch=z9hG4bK.opt
+Allow: INVITE, ACK, CANCEL, BYE, REGISTER, OPTIONS, REFER, INFO
+Supported: replaces, 100rel, timer, path
+Server: NOC-SBC/3.2.1
+Authentication-Info: nextnonce="bK4d2…", qop=auth,
+  algorithm=<span class="err">SHA-256</span>          <span class="comment">// ← warn: client offers MD5 first</span>
+Content-Length: 0
+<span class="comment">// Probe complete · server reachable · auth path ok with SHA-256 first</span></pre>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- FOOT -->
+    <div class="dialog-foot">
+      <span class="help"><b>⌘↵</b> save &nbsp;·&nbsp; <b>⌘T</b> re-test &nbsp;·&nbsp; <b>Esc</b> cancel</span>
+      <div class="grow"></div>
+      <span class="changed-note">● 1 unsaved change</span>
+      <button class="btn ghost">Cancel</button>
+      <button class="btn primary">Save account</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

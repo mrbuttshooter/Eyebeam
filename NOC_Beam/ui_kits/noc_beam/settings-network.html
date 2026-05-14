@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · settings · network</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .settings { display: grid; grid-template-columns: 220px 1fr; height: 100%; gap: 0; }
+  .settings-nav {
+    border-right: 1px solid var(--border);
+    padding: 18px 10px;
+    overflow: auto;
+  }
+  .settings-nav .section {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 14px 10px 6px;
+  }
+  .settings-nav button {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: var(--fg-2);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.3;
+  }
+  .settings-nav button:hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .settings-nav button.on { background: var(--beam-cyan-12); color: var(--fg-1); }
+  .settings-nav button.on::before {
+    content: '';
+    width: 3px; height: 14px;
+    background: var(--beam-cyan);
+    border-radius: 2px;
+    margin-left: -10px;
+    margin-right: 7px;
+  }
+  .settings-nav button .meta {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+  }
+  .settings-nav button .meta.success { color: var(--success); }
+  .settings-nav button .meta.warn    { color: var(--warning); }
+
+  .settings-body { padding: 28px 36px 36px; overflow: auto; }
+  .settings-body h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--fg-1);
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+  }
+  .settings-body .lede {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-3);
+    margin-bottom: 26px;
+  }
+  .settings-body .lede a { color: var(--beam-cyan); text-decoration: none; }
+
+  /* ============ NAT/Network specific ============ */
+  /* NAT probe panel — the headline diagnostic */
+  .probe {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    margin-bottom: 26px;
+    overflow: hidden;
+  }
+  .probe-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-base);
+  }
+  .probe-head .title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .probe-head .verdict {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .probe-head .verdict.ok    { color: var(--success); background: var(--success-12); }
+  .probe-head .verdict.warn  { color: var(--warning); background: var(--warning-12); }
+  .probe-head .verdict.error { color: var(--danger); background: var(--danger-12); }
+  .probe-head .grow { flex: 1; }
+  .probe-head .ts {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+  .probe-head button {
+    height: 28px;
+    padding: 0 12px;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    font: 500 12px var(--font-ui);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .probe-head button:hover { background: var(--bg-elev-2); }
+
+  .probe-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+  .probe-cell {
+    padding: 16px 18px;
+    border-right: 1px solid var(--border);
+  }
+  .probe-cell:last-child { border-right: none; }
+  .probe-cell .k {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .probe-cell .v {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--fg-1);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+  }
+  .probe-cell .v b { color: var(--beam-cyan); font-weight: 500; }
+  .probe-cell .v .arrow { color: var(--fg-3); margin: 0 6px; }
+  .probe-cell .sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+  .probe-cell .sub b { color: var(--fg-2); font-weight: 500; }
+  .probe-cell .sub .ok { color: var(--success); }
+
+  .probe-flow {
+    grid-column: 1 / -1;
+    background: var(--bg-base);
+    border-top: 1px solid var(--border);
+    padding: 14px 18px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--trace-body);
+    white-space: pre;
+    overflow: auto;
+  }
+  .probe-flow .ok    { color: var(--success); }
+  .probe-flow .warn  { color: var(--warning); }
+  .probe-flow .rx    { color: var(--beam-cyan); }
+  .probe-flow .tx    { color: var(--beam-amber); }
+  .probe-flow .comment { color: var(--fg-3); font-style: italic; }
+  .probe-flow .hl    { background: rgba(127, 211, 255, 0.12); }
+
+  /* Field groups */
+  .group-head {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 22px 0 12px;
+    border-top: 1px solid var(--border);
+    margin-top: 22px;
+    font-weight: 500;
+  }
+  .group-head:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+
+  .field {
+    display: grid;
+    grid-template-columns: 220px 1fr 280px;
+    align-items: start;
+    gap: 24px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(42, 51, 64, 0.5);
+  }
+  .field:last-of-type { border-bottom: none; }
+  .field .k {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: 4px;
+  }
+  .field .k .name { font-size: 13px; color: var(--fg-1); font-weight: 500; }
+  .field .k .id   {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.02em;
+  }
+  .field .v { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .field .help {
+    font-size: 12px;
+    color: var(--fg-3);
+    line-height: 1.5;
+    padding-top: 4px;
+  }
+  .field .help b { color: var(--fg-2); font-weight: 500; }
+  .field .help code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--beam-cyan);
+  }
+
+  /* Form controls */
+  .input {
+    height: 32px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    padding: 0 12px;
+    font: 13px var(--font-mono);
+    outline: none;
+    width: 100%;
+  }
+  .input:focus { border-color: var(--beam-cyan); }
+  .input.short { max-width: 140px; }
+
+  .seg-radio {
+    display: inline-flex;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 2px;
+  }
+  .seg-radio label {
+    padding: 4px 12px;
+    border-radius: var(--radius-1);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+  .seg-radio label.on {
+    background: var(--bg-elev-3);
+    color: var(--fg-1);
+    box-shadow: var(--elev-1);
+  }
+
+  .input-row { display: flex; align-items: center; gap: 8px; }
+  .input-row .input { flex: 1; }
+
+  .toggle-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .toggle-inline .toggle {
+    width: 30px; height: 16px;
+    background: var(--bg-elev-2);
+    border-radius: 8px;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .toggle-inline .toggle::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 2px;
+    width: 12px; height: 12px;
+    background: var(--fg-2);
+    border-radius: 50%;
+    transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast);
+  }
+  .toggle-inline .toggle.on { background: var(--beam-cyan-dim); }
+  .toggle-inline .toggle.on::after { transform: translateX(14px); background: var(--fg-1); }
+  .toggle-inline .lbl { color: var(--fg-3); }
+  .toggle-inline.on .lbl { color: var(--success); }
+
+  /* Cert chip */
+  .cert-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 6px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-2);
+  }
+  .cert-chip .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+  }
+  .cert-chip b { color: var(--fg-1); font-weight: 500; }
+  .cert-chip .browse {
+    margin-left: 8px;
+    color: var(--beam-cyan);
+    cursor: pointer;
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 12"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.36.16.66.43.86.76.2.33.31.71.31 1.1V12c0 .39-.11.77-.31 1.1-.2.33-.5.6-.86.76Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15A9 9 0 0 1 5.64 18.36L1 14"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app" data-screen-label="11 Settings — network">
+
+  <div class="titlebar">
+    <div class="tb-brand">
+      <svg viewBox="0 0 360 72" width="160" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g font-family="'Cascadia Code', ui-monospace, monospace" font-weight="600">
+          <text x="8" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-1">NOC</text>
+          <text x="100" y="50" font-size="40" fill="#7FD3FF">_</text>
+        </g>
+        <g font-family="'Inter', sans-serif" font-weight="600">
+          <text x="124" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-0.5">Beam</text>
+        </g>
+        <line x1="244" y1="32" x2="352" y2="32" stroke="#7FD3FF" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="352" cy="32" r="4" fill="#FFB86C"/>
+      </svg>
+      <span class="ver">0.1.0</span>
+    </div>
+    <div class="tb-account">
+      <span class="dot"></span>
+      <span class="name">priya.r</span>
+      <span class="at">@</span>
+      <span class="host">sbc-east.noc.internal</span>
+      <svg class="chev" viewBox="0 0 24 24" width="12" height="12"><use href="#i-chev"/></svg>
+    </div>
+    <label class="tb-uri">
+      <span class="prompt">dial</span>
+      <span class="caret">›</span>
+      <input type="text" placeholder="sip:peer@host  ·  +1 555 …  ·  *97">
+      <kbd>⌘K</kbd>
+    </label>
+    <div class="tb-winctl">
+      <button>—</button><button>▢</button><button class="close">✕</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="rail">
+      <div class="nav">
+        <button class="rail-btn"><svg><use href="#i-phone"/></svg><span class="lbl">Calls</span></button>
+        <button class="rail-btn"><svg><use href="#i-activity"/></svg><span class="lbl">Trace</span></button>
+        <button class="rail-btn"><svg><use href="#i-clock"/></svg><span class="lbl">History</span></button>
+        <button class="rail-btn"><svg><use href="#i-users"/></svg><span class="lbl">Accounts</span></button>
+        <button class="rail-btn active"><svg><use href="#i-settings"/></svg><span class="lbl">Settings</span></button>
+      </div>
+      <div class="spacer"></div>
+      <div class="rail-status">
+        <span class="dot"></span>
+        <span class="lbl">5 / 6</span>
+        <span class="sub">REGISTERED</span>
+      </div>
+    </nav>
+
+    <section class="content">
+      <div class="view-header">
+        <div class="title">Settings</div>
+        <div class="crumbs"><span>~/settings</span><span class="sep">/</span><span style="color:var(--fg-1);">network</span></div>
+      </div>
+
+      <div class="view-body" style="padding: 0;">
+        <div class="settings">
+
+          <nav class="settings-nav">
+            <div class="section">Sip</div>
+            <button>Accounts <span class="meta">6</span></button>
+            <button>Trunks &amp; SBCs <span class="meta">3</span></button>
+            <button>Routing</button>
+            <button>Diagnostics</button>
+
+            <div class="section">Device</div>
+            <button>Audio</button>
+            <button class="on">Network <span class="meta success">TLS</span></button>
+            <button>Codecs &amp; quality</button>
+            <button>Recording &amp; trace</button>
+
+            <div class="section">App</div>
+            <button>Appearance</button>
+            <button>Keyboard</button>
+            <button>Notifications</button>
+            <button>Updates <span class="meta warn">0.1.1</span></button>
+
+            <div class="section">Advanced</div>
+            <button>PJSIP tuning</button>
+            <button>Certificates</button>
+            <button>Logging</button>
+            <button>About</button>
+          </nav>
+
+          <div class="settings-body">
+            <h1>Network</h1>
+            <div class="lede">Transports, NAT traversal, certificate trust. Most defaults work — if a call won't establish, start with the <a href="#">NAT probe</a> below.</div>
+
+            <!-- NAT probe -->
+            <div class="probe">
+              <div class="probe-head">
+                <span class="title">NAT probe</span>
+                <span class="verdict ok">● Full cone — INVITE traversable</span>
+                <div class="grow"></div>
+                <span class="ts">14:18:09 UTC · 412 ms</span>
+                <button>
+                  <svg fill="none" stroke="currentColor"><use href="#i-refresh"/></svg>
+                  Re-probe
+                </button>
+              </div>
+              <div class="probe-body">
+                <div class="probe-cell">
+                  <div class="k">Local interface</div>
+                  <div class="v"><b>10.4.1.55</b><span class="arrow">:</span>5061 <span style="color: var(--fg-3);">/ TLS</span></div>
+                  <div class="sub">via <b>Ethernet 2</b> (Realtek PCIe) · MTU <b>1500</b> · DSCP <b>EF</b> for SIP, <b>AF41</b> for RTP</div>
+                </div>
+                <div class="probe-cell">
+                  <div class="k">Public-facing</div>
+                  <div class="v"><b>198.51.100.42</b><span class="arrow">:</span>40118</div>
+                  <div class="sub">resolved via STUN <b>stun:stun.noc.internal:3478</b> · <span class="ok">port-preserving</span> · 412ms RTT</div>
+                </div>
+              </div>
+              <div class="probe-flow"><span class="tx">TX →</span> Binding Request to stun.noc.internal:3478
+<span class="rx">RX ←</span> Binding Response · <span class="ok">XOR-MAPPED-ADDRESS</span>: 198.51.100.42:40118
+<span class="tx">TX →</span> Binding Request from 10.4.1.56:5061 (alt source) to stun.noc.internal
+<span class="rx">RX ←</span> Binding Response · MAPPED-ADDRESS: <span class="hl">198.51.100.42:40118</span>   <span class="comment">// same external port → cone</span>
+<span class="tx">TX →</span> Binding Request to stun-alt.noc.internal:3478 (alt server)
+<span class="rx">RX ←</span> Binding Response · MAPPED-ADDRESS: <span class="hl">198.51.100.42:40118</span>   <span class="comment">// same external port → FULL cone</span>
+<span class="comment">// verdict: full-cone NAT — inbound INVITE will traverse without TURN relay</span></div>
+            </div>
+
+            <!-- Transport -->
+            <div class="group-head">Transport</div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">Protocol</span>
+                <span class="id">network.transport.proto</span>
+              </div>
+              <div class="v">
+                <div class="seg-radio">
+                  <label>UDP</label>
+                  <label>TCP</label>
+                  <label class="on">TLS</label>
+                  <label>WSS</label>
+                </div>
+              </div>
+              <div class="help">App-wide default. Each account can override. <b>TLS</b> is recommended for any account that crosses the public internet.</div>
+            </div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">Listen port</span>
+                <span class="id">network.transport.port</span>
+              </div>
+              <div class="v">
+                <div class="input-row">
+                  <input class="input short" value="5061">
+                  <span class="toggle-inline on"><span class="toggle on"></span><span class="lbl">auto-fallback to 5060/UDP</span></span>
+                </div>
+              </div>
+              <div class="help">Single port that handles all transports. Auto-fallback retries on <code>5060/UDP</code> if the TLS bind fails (corp firewall etc.).</div>
+            </div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">Bind interface</span>
+                <span class="id">network.transport.bind_addr</span>
+              </div>
+              <div class="v">
+                <div class="input-row">
+                  <input class="input" value="0.0.0.0 (all interfaces)">
+                </div>
+              </div>
+              <div class="help">Restrict to a single NIC if the host is multi-homed (Ethernet + Wi-Fi). <code>0.0.0.0</code> = listen everywhere.</div>
+            </div>
+
+            <!-- NAT traversal -->
+            <div class="group-head">NAT traversal</div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">STUN server</span>
+                <span class="id">network.stun.server</span>
+              </div>
+              <div class="v">
+                <div class="input-row">
+                  <input class="input" value="stun:stun.noc.internal:3478">
+                  <span class="toggle-inline on"><span class="toggle on"></span></span>
+                </div>
+              </div>
+              <div class="help">Used by the NAT probe to discover your public address. Multiple servers can be comma-separated. <b>Internal STUN</b> is preferred — public servers (e.g. stun.l.google.com) leak topology.</div>
+            </div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">TURN server (relay)</span>
+                <span class="id">network.turn.server</span>
+              </div>
+              <div class="v">
+                <div class="input-row">
+                  <input class="input" value="turn:turn.noc.internal:3478 · user=priya">
+                  <span class="toggle-inline"><span class="toggle"></span><span class="lbl">off — full cone, not needed</span></span>
+                </div>
+              </div>
+              <div class="help">Last-resort media relay when peer-to-peer can't traverse. Currently <b>off</b> because the probe detected full-cone NAT. Enable for symmetric NATs.</div>
+            </div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">ICE</span>
+                <span class="id">network.ice.enabled</span>
+              </div>
+              <div class="v">
+                <div class="seg-radio">
+                  <label class="on">Aggressive</label>
+                  <label>Standard</label>
+                  <label>Disabled</label>
+                </div>
+              </div>
+              <div class="help">Interactive Connectivity Establishment — discovers the best media path. <b>Aggressive</b> for lab; <b>Standard</b> for production trunks where SBC handles relay.</div>
+            </div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">Keep-alive</span>
+                <span class="id">network.keepalive.interval_s</span>
+              </div>
+              <div class="v">
+                <div class="input-row">
+                  <input class="input short" value="30">
+                  <span style="font-family: var(--font-mono); font-size: 12px; color: var(--fg-3);">seconds</span>
+                </div>
+              </div>
+              <div class="help">Empty <code>SIP</code> packets that keep NAT pinholes open. <b>30 s</b> is safe for almost any consumer router; bump to <b>15 s</b> for aggressive timeouts on hotel/coffee-shop Wi-Fi.</div>
+            </div>
+
+            <!-- TLS -->
+            <div class="group-head">TLS</div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">Server certificate</span>
+                <span class="id">network.tls.cert_path</span>
+              </div>
+              <div class="v">
+                <div class="cert-chip">
+                  <span class="dot"></span>
+                  <span><b>noc-internal.crt</b></span>
+                  <span style="color: var(--fg-3);">·</span>
+                  <span>CN=*.noc.internal · expires 2027-04-18</span>
+                  <a class="browse">Browse…</a>
+                </div>
+              </div>
+              <div class="help">Presented to peers when accepting inbound TLS connections. Watch the <b>expiry date</b> — the app shows a banner at 30 days remaining.</div>
+            </div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">Trust store</span>
+                <span class="id">network.tls.ca_bundle</span>
+              </div>
+              <div class="v">
+                <div class="seg-radio">
+                  <label class="on">System</label>
+                  <label>Custom bundle</label>
+                  <label>Both</label>
+                </div>
+              </div>
+              <div class="help">Windows uses the system Certificate Store. <b>Custom</b> when you have a private CA. <b>Both</b> = union (rare; useful during CA rotation).</div>
+            </div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">Verify peer</span>
+                <span class="id">network.tls.verify_peer</span>
+              </div>
+              <div class="v">
+                <div class="seg-radio">
+                  <label class="on">Strict</label>
+                  <label>Hostname only</label>
+                  <label>Off (lab)</label>
+                </div>
+              </div>
+              <div class="help"><b>Strict</b> is the only acceptable setting on a registered production endpoint. <b>Off</b> is fine for poking at a lab SBC but never reaches saved accounts.</div>
+            </div>
+
+            <div class="field">
+              <div class="k">
+                <span class="name">Min TLS version</span>
+                <span class="id">network.tls.min_version</span>
+              </div>
+              <div class="v">
+                <div class="seg-radio">
+                  <label>1.2</label>
+                  <label class="on">1.3</label>
+                </div>
+              </div>
+              <div class="help">TLS 1.0/1.1 are not offered. <b>1.3</b> recommended; downgrade to <b>1.2</b> only when peering with legacy SBCs that haven't been patched.</div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · voicemail</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* ============================================================
+     VOICEMAIL — list + reader
+     ============================================================ */
+  .vm {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* ----- List ----- */
+  .vm-list {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .vm-list-head {
+    height: 48px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .vm-list-head .summary {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-2);
+    letter-spacing: 0.04em;
+  }
+  .vm-list-head .summary b { color: var(--fg-1); font-weight: 500; }
+  .vm-list-head .summary .new {
+    color: var(--beam-cyan);
+    font-weight: 500;
+  }
+  .vm-list-head .grow { flex: 1; }
+  .vm-list-head .icon-btn {
+    width: 28px; height: 28px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--fg-2);
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .vm-list-head .icon-btn:hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .vm-list-head .icon-btn svg { width: 14px; height: 14px; stroke-width: 1.75; }
+
+  .vm-rows {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .vm-section {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 12px 16px 6px;
+    background: var(--bg-base);
+    position: sticky;
+    top: 0;
+  }
+  .vm-section b { color: var(--fg-1); font-weight: 500; }
+
+  .vm-row {
+    display: grid;
+    grid-template-columns: 8px 36px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 16px 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background var(--dur-fast);
+    position: relative;
+  }
+  .vm-row:hover { background: var(--bg-elev-1); }
+  .vm-row.focused {
+    background: var(--beam-cyan-12);
+  }
+  .vm-row.focused::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px; bottom: 8px;
+    width: 3px;
+    background: var(--beam-cyan);
+    border-radius: 0 2px 2px 0;
+  }
+  .vm-row .pill {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: transparent;
+    flex-shrink: 0;
+  }
+  .vm-row.unread .pill { background: var(--beam-cyan); }
+
+  .vm-row .avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--bg-elev-2);
+    color: var(--fg-2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .vm-row.unread .avatar {
+    background: var(--beam-cyan-12);
+    color: var(--beam-cyan);
+  }
+
+  .vm-row .body {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .vm-row .body .top {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+  .vm-row .body .name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vm-row.unread .body .name { color: var(--fg-1); font-weight: 600; }
+  .vm-row .body .when {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .vm-row .body .preview {
+    font-size: 12px;
+    color: var(--fg-3);
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .vm-row .body .preview b { color: var(--fg-2); font-weight: 500; }
+  .vm-row.unread .body .preview { color: var(--fg-2); }
+  .vm-row.unread .body .preview b { color: var(--fg-1); }
+  .vm-row .body .preview .transcribing {
+    color: var(--beam-cyan);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .vm-row .dur {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    line-height: 1.4;
+  }
+  .vm-row .dur b { color: var(--fg-1); font-weight: 500; }
+
+  /* ----- Reader ----- */
+  .vm-reader {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .reader-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 22px 28px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .reader-head .av {
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    background: var(--beam-cyan-12);
+    color: var(--beam-cyan);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .reader-head .who { flex: 1; min-width: 0; }
+  .reader-head .who h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--fg-1);
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .reader-head .who .uri {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-3);
+  }
+  .reader-head .who .meta {
+    margin-top: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+  }
+  .reader-head .who .meta b { color: var(--fg-2); font-weight: 500; }
+  .reader-head .who .meta .sep { color: var(--border-strong); margin: 0 8px; }
+  .reader-head .actions { display: flex; gap: 6px; }
+  .reader-head .actions .ibtn {
+    width: 32px; height: 32px;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-2);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .reader-head .actions .ibtn:hover { background: var(--bg-elev-2); color: var(--fg-1); }
+  .reader-head .actions .ibtn.danger:hover { background: var(--danger); color: white; border-color: transparent; }
+  .reader-head .actions .ibtn svg { width: 14px; height: 14px; stroke-width: 1.75; }
+
+  /* Player */
+  .player {
+    padding: 22px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-base);
+  }
+  .player-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 14px;
+  }
+  .player .play {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--beam-cyan);
+    color: var(--bg-deep);
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .player .play:hover { filter: brightness(1.08); }
+  .player .play svg { width: 18px; height: 18px; stroke-width: 0; fill: currentColor; margin-left: 2px; }
+
+  .player .timer {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--fg-1);
+    font-variant-numeric: tabular-nums;
+    min-width: 88px;
+  }
+  .player .timer .total { color: var(--fg-3); }
+
+  .player .speed {
+    margin-left: auto;
+    display: inline-flex;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 2px;
+  }
+  .player .speed button {
+    background: transparent;
+    border: none;
+    color: var(--fg-3);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    padding: 4px 10px;
+    border-radius: var(--radius-1);
+    cursor: pointer;
+  }
+  .player .speed button.on {
+    background: var(--bg-elev-3);
+    color: var(--fg-1);
+  }
+
+  /* Waveform */
+  .wave {
+    height: 56px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    position: relative;
+    overflow: hidden;
+  }
+  .wave .bar {
+    flex: 1;
+    background: var(--fg-3);
+    border-radius: 1px;
+    opacity: 0.5;
+  }
+  .wave .bar.played { background: var(--beam-cyan); opacity: 1; }
+  .wave .ts-axis {
+    position: absolute;
+    bottom: -16px;
+    left: 14px; right: 14px;
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--fg-3);
+  }
+  .wave .head-marker {
+    position: absolute;
+    top: 2px; bottom: 2px;
+    width: 2px;
+    background: var(--beam-cyan);
+    border-radius: 1px;
+  }
+
+  /* Transcript */
+  .transcript {
+    flex: 1;
+    overflow: auto;
+    padding: 22px 28px;
+    min-height: 0;
+  }
+  .transcript-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .transcript-head .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  .transcript-head .lang {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+  .transcript-head .lang b { color: var(--fg-2); font-weight: 500; }
+  .transcript-head .conf {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--success);
+  }
+
+  .transcript p {
+    margin: 0 0 16px;
+    font-size: 14px;
+    line-height: 1.65;
+    color: var(--fg-1);
+    text-wrap: pretty;
+  }
+  .transcript p .ts {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    background: var(--bg-elev-1);
+    border-radius: 2px;
+    padding: 1px 6px;
+    margin-right: 8px;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+    vertical-align: 1px;
+  }
+  .transcript p .ts:hover { background: var(--bg-elev-2); }
+  .transcript p .ts.now {
+    background: var(--beam-cyan-12);
+    color: var(--beam-cyan);
+  }
+  .transcript p .em { color: var(--beam-cyan); }
+  .transcript p .em b { color: var(--fg-1); font-weight: 600; }
+
+  .transcript .extracted {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+  }
+  .transcript .extracted .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .extracted-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .extracted-list .item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+  }
+  .extracted-list .item .k {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    width: 70px;
+  }
+  .extracted-list .item .v {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--fg-1);
+    font-variant-numeric: tabular-nums;
+  }
+  .extracted-list .item .v a { color: var(--beam-cyan); text-decoration: none; }
+  .extracted-list .item .copy {
+    margin-left: auto;
+    color: var(--fg-3);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+  }
+  .extracted-list .item .copy:hover { color: var(--fg-1); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 12"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.36.16.66.43.86.76.2.33.31.71.31 1.1V12c0 .39-.11.77-.31 1.1-.2.33-.5.6-.86.76Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+      <polyline points="22,6 12,13 2,6"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="i-phone-call" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+    </symbol>
+    <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="21 8 21 21 3 21 3 8"/>
+      <rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app" data-screen-label="12 Voicemail">
+
+  <div class="titlebar">
+    <div class="tb-brand">
+      <svg viewBox="0 0 360 72" width="160" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g font-family="'Cascadia Code', ui-monospace, monospace" font-weight="600">
+          <text x="8" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-1">NOC</text>
+          <text x="100" y="50" font-size="40" fill="#7FD3FF">_</text>
+        </g>
+        <g font-family="'Inter', sans-serif" font-weight="600">
+          <text x="124" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-0.5">Beam</text>
+        </g>
+        <line x1="244" y1="32" x2="352" y2="32" stroke="#7FD3FF" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="352" cy="32" r="4" fill="#FFB86C"/>
+      </svg>
+      <span class="ver">0.1.0</span>
+    </div>
+    <div class="tb-account">
+      <span class="dot"></span>
+      <span class="name">priya.r</span>
+      <span class="at">@</span>
+      <span class="host">sbc-east.noc.internal</span>
+      <svg class="chev" viewBox="0 0 24 24" width="12" height="12"><use href="#i-chev"/></svg>
+    </div>
+    <label class="tb-uri">
+      <span class="prompt">dial</span>
+      <span class="caret">›</span>
+      <input type="text" placeholder="sip:peer@host  ·  +1 555 …  ·  *97">
+      <kbd>⌘K</kbd>
+    </label>
+    <div class="tb-winctl">
+      <button>—</button><button>▢</button><button class="close">✕</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="rail">
+      <div class="nav">
+        <button class="rail-btn"><svg><use href="#i-phone"/></svg><span class="lbl">Calls</span></button>
+        <button class="rail-btn"><svg><use href="#i-activity"/></svg><span class="lbl">Trace</span></button>
+        <button class="rail-btn"><svg><use href="#i-clock"/></svg><span class="lbl">History</span></button>
+        <button class="rail-btn"><svg><use href="#i-users"/></svg><span class="lbl">Accounts</span></button>
+        <button class="rail-btn active"><svg><use href="#i-mail"/></svg><span class="lbl">Voicemail</span><span class="badge">3</span></button>
+        <button class="rail-btn"><svg><use href="#i-settings"/></svg><span class="lbl">Settings</span></button>
+      </div>
+      <div class="spacer"></div>
+      <div class="rail-status">
+        <span class="dot"></span>
+        <span class="lbl">5 / 6</span>
+        <span class="sub">REGISTERED</span>
+      </div>
+    </nav>
+
+    <section class="content">
+
+      <div class="view-header">
+        <div class="title">Voicemail</div>
+        <div class="crumbs"><span>~/voicemail</span><span class="sep">/</span><span style="color:var(--fg-1);">priya@sbc-east</span></div>
+      </div>
+
+      <div class="vm">
+
+        <!-- LIST -->
+        <div class="vm-list">
+          <div class="vm-list-head">
+            <div class="summary"><b class="new">3</b> new · <b>11</b> total</div>
+            <div class="grow"></div>
+            <button class="icon-btn" title="Search">
+              <svg fill="none" stroke="currentColor"><use href="#i-search"/></svg>
+            </button>
+            <button class="icon-btn" title="Archive read">
+              <svg fill="none" stroke="currentColor"><use href="#i-archive"/></svg>
+            </button>
+          </div>
+
+          <div class="vm-rows">
+            <div class="vm-section">Today</div>
+
+            <div class="vm-row unread">
+              <span class="pill"></span>
+              <div class="avatar">ML</div>
+              <div class="body">
+                <div class="top">
+                  <span class="name">Marcus Lin</span>
+                  <span class="when">14:22</span>
+                </div>
+                <div class="preview"><b>"Hey Priya, the SBC at lab.noc.internal is dropping our</b> calls — getting a 503 about thirty seconds in. Can you ping me when you're back?"</div>
+              </div>
+              <div class="dur">
+                <b>00:42</b>
+              </div>
+            </div>
+
+            <div class="vm-row unread focused">
+              <span class="pill"></span>
+              <div class="avatar">NC</div>
+              <div class="body">
+                <div class="top">
+                  <span class="name">Nadia Cole</span>
+                  <span class="when">11:08</span>
+                </div>
+                <div class="preview"><b>"Following up on the Q3 retrospective</b> — I'd like the trace-export wired into the on-call PagerDuty webhook so the next incident has it attached automatically. Reply by Friday?"</div>
+              </div>
+              <div class="dur">
+                <b>01:18</b>
+              </div>
+            </div>
+
+            <div class="vm-row unread">
+              <span class="pill"></span>
+              <div class="avatar">+</div>
+              <div class="body">
+                <div class="top">
+                  <span class="name">+1 (415) 555-0142</span>
+                  <span class="when">09:42</span>
+                </div>
+                <div class="preview"><span class="transcribing">● transcribing…</span></div>
+              </div>
+              <div class="dur">
+                <b>00:21</b>
+              </div>
+            </div>
+
+            <div class="vm-section">Yesterday</div>
+
+            <div class="vm-row">
+              <span class="pill"></span>
+              <div class="avatar">JK</div>
+              <div class="body">
+                <div class="top">
+                  <span class="name">Jordan Kim</span>
+                  <span class="when">17:55</span>
+                </div>
+                <div class="preview">"Hey, can you look at the certificate rotation script? It's pinging the old CA bundle and I think it's the reason cert renewal failed last night. Pinned a comment on the runbook."</div>
+              </div>
+              <div class="dur">
+                00:54
+              </div>
+            </div>
+
+            <div class="vm-row">
+              <span class="pill"></span>
+              <div class="avatar">PD</div>
+              <div class="body">
+                <div class="top">
+                  <span class="name">PagerDuty bridge</span>
+                  <span class="when">16:30</span>
+                </div>
+                <div class="preview"><span style="font-family: var(--font-mono); color: var(--fg-3);">(silent — auto-hung-up after 8s)</span></div>
+              </div>
+              <div class="dur">
+                00:08
+              </div>
+            </div>
+
+            <div class="vm-row">
+              <span class="pill"></span>
+              <div class="avatar">PR</div>
+              <div class="body">
+                <div class="top">
+                  <span class="name">Priya R. (yourself)</span>
+                  <span class="when">11:14</span>
+                </div>
+                <div class="preview">"Test recording from sbc-west, please ignore."</div>
+              </div>
+              <div class="dur">
+                00:04
+              </div>
+            </div>
+
+            <div class="vm-section">Older · 6 read</div>
+          </div>
+        </div>
+
+        <!-- READER -->
+        <div class="vm-reader">
+
+          <div class="reader-head">
+            <div class="av">NC</div>
+            <div class="who">
+              <h1>Nadia Cole</h1>
+              <div class="uri">sip:nadia@noc.internal · arrived via sbc-east</div>
+              <div class="meta">
+                <b>Today 11:08:42 UTC</b>
+                <span class="sep">·</span>
+                <span>duration <b>01:18</b></span>
+                <span class="sep">·</span>
+                <span>opus/48k</span>
+                <span class="sep">·</span>
+                <span>3.2 ms jitter</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="ibtn" title="Call back">
+                <svg fill="none" stroke="currentColor"><use href="#i-phone-call"/></svg>
+              </button>
+              <button class="ibtn" title="Download .opus">
+                <svg fill="none" stroke="currentColor"><use href="#i-download"/></svg>
+              </button>
+              <button class="ibtn" title="Share / attach to ticket">
+                <svg fill="none" stroke="currentColor"><use href="#i-share"/></svg>
+              </button>
+              <button class="ibtn danger" title="Delete">
+                <svg fill="none" stroke="currentColor"><use href="#i-trash"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Player -->
+          <div class="player">
+            <div class="player-controls">
+              <button class="play">
+                <svg viewBox="0 0 24 24"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+              </button>
+              <div class="timer">
+                <span>00:28</span>
+                <span style="color:var(--fg-3);"> / </span>
+                <span class="total">01:18</span>
+              </div>
+              <div class="speed">
+                <button>0.75×</button>
+                <button class="on">1×</button>
+                <button>1.5×</button>
+                <button>2×</button>
+              </div>
+            </div>
+
+            <div class="wave" style="position: relative;">
+              <!-- 80 bars; varied heights -->
+              <div class="bar played" style="height: 30%;"></div>
+              <div class="bar played" style="height: 45%;"></div>
+              <div class="bar played" style="height: 60%;"></div>
+              <div class="bar played" style="height: 80%;"></div>
+              <div class="bar played" style="height: 70%;"></div>
+              <div class="bar played" style="height: 55%;"></div>
+              <div class="bar played" style="height: 65%;"></div>
+              <div class="bar played" style="height: 75%;"></div>
+              <div class="bar played" style="height: 85%;"></div>
+              <div class="bar played" style="height: 90%;"></div>
+              <div class="bar played" style="height: 75%;"></div>
+              <div class="bar played" style="height: 60%;"></div>
+              <div class="bar played" style="height: 50%;"></div>
+              <div class="bar played" style="height: 70%;"></div>
+              <div class="bar played" style="height: 80%;"></div>
+              <div class="bar played" style="height: 65%;"></div>
+              <div class="bar played" style="height: 40%;"></div>
+              <div class="bar played" style="height: 30%;"></div>
+              <div class="bar played" style="height: 50%;"></div>
+              <div class="bar played" style="height: 60%;"></div>
+              <div class="bar played" style="height: 75%;"></div>
+              <div class="bar played" style="height: 85%;"></div>
+              <div class="bar played" style="height: 90%;"></div>
+              <div class="bar played" style="height: 85%;"></div>
+              <div class="bar played" style="height: 75%;"></div>
+              <div class="bar played" style="height: 55%;"></div>
+              <div class="head-marker" style="left: 33%;"></div>
+              <div class="bar" style="height: 65%;"></div>
+              <div class="bar" style="height: 80%;"></div>
+              <div class="bar" style="height: 70%;"></div>
+              <div class="bar" style="height: 55%;"></div>
+              <div class="bar" style="height: 40%;"></div>
+              <div class="bar" style="height: 30%;"></div>
+              <div class="bar" style="height: 50%;"></div>
+              <div class="bar" style="height: 65%;"></div>
+              <div class="bar" style="height: 75%;"></div>
+              <div class="bar" style="height: 85%;"></div>
+              <div class="bar" style="height: 70%;"></div>
+              <div class="bar" style="height: 55%;"></div>
+              <div class="bar" style="height: 65%;"></div>
+              <div class="bar" style="height: 80%;"></div>
+              <div class="bar" style="height: 90%;"></div>
+              <div class="bar" style="height: 75%;"></div>
+              <div class="bar" style="height: 60%;"></div>
+              <div class="bar" style="height: 45%;"></div>
+              <div class="bar" style="height: 35%;"></div>
+              <div class="bar" style="height: 50%;"></div>
+              <div class="bar" style="height: 60%;"></div>
+              <div class="bar" style="height: 70%;"></div>
+              <div class="bar" style="height: 65%;"></div>
+              <div class="bar" style="height: 55%;"></div>
+              <div class="bar" style="height: 40%;"></div>
+              <div class="bar" style="height: 30%;"></div>
+              <div class="bar" style="height: 25%;"></div>
+              <div class="bar" style="height: 35%;"></div>
+              <div class="bar" style="height: 50%;"></div>
+              <div class="bar" style="height: 65%;"></div>
+              <div class="bar" style="height: 75%;"></div>
+              <div class="bar" style="height: 70%;"></div>
+              <div class="bar" style="height: 60%;"></div>
+              <div class="bar" style="height: 50%;"></div>
+              <div class="bar" style="height: 35%;"></div>
+              <div class="bar" style="height: 25%;"></div>
+              <div class="bar" style="height: 20%;"></div>
+              <div class="bar" style="height: 15%;"></div>
+              <div class="ts-axis">
+                <span>0:00</span>
+                <span style="color: var(--beam-cyan);">0:28</span>
+                <span>1:18</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Transcript -->
+          <div class="transcript">
+            <div class="transcript-head">
+              <span class="label">Transcript</span>
+              <span class="lang"><b>en-US</b> · Whisper local</span>
+              <span class="conf">● 96% confidence</span>
+            </div>
+
+            <p>
+              <span class="ts">0:00</span>
+              Hey Priya, Nadia here. I wanted to follow up on the Q3 retrospective from this morning.
+            </p>
+            <p>
+              <span class="ts now">0:28</span>
+              <span class="em">I'd like the <b>trace export</b> wired into the on-call <b>PagerDuty webhook</b></span> so the next incident has the trace attached automatically — that way we don't have to dig for it like we did with <em>incident four-eighty-two</em>.
+            </p>
+            <p>
+              <span class="ts">0:52</span>
+              Reply by Friday if you can; if it's bigger than a day of work I'll add it to next sprint instead. Thanks.
+            </p>
+
+            <!-- Extracted entities -->
+            <div class="extracted">
+              <div class="label">Extracted</div>
+              <div class="extracted-list">
+                <div class="item">
+                  <span class="k">URI</span>
+                  <span class="v"><a>sip:nadia@noc.internal</a></span>
+                  <span class="copy">copy</span>
+                </div>
+                <div class="item">
+                  <span class="k">Reference</span>
+                  <span class="v"><a>incident #482</a></span>
+                  <span class="copy">open</span>
+                </div>
+                <div class="item">
+                  <span class="k">Action</span>
+                  <span class="v">wire trace → PagerDuty</span>
+                  <span class="copy">add task</span>
+                </div>
+                <div class="item">
+                  <span class="k">Due</span>
+                  <span class="v">Fri 21 Nov</span>
+                  <span class="copy">reminder</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+</body>
+</html>

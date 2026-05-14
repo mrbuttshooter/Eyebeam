@@ -1,0 +1,425 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="_card.css">
+<style>
+  body { width: 720px; padding: 0; }
+  .wrap { padding: 18px 22px; }
+  .head {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .head b { color: var(--fg-1); font-weight: 500; }
+  .head .small { color: var(--fg-3); font-size: 10px; letter-spacing: 0.06em; text-transform: none; margin-left: 8px; }
+
+  /* Matrix layout */
+  .matrix {
+    display: grid;
+    grid-template-columns: 100px repeat(5, 1fr);
+    gap: 0;
+    border-top: 1px solid var(--border);
+  }
+  .matrix > div { border-bottom: 1px solid var(--border); }
+  .col-head {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 8px 0 6px;
+    text-align: center;
+    background: var(--bg-deep);
+  }
+  .col-head.first { text-align: left; padding-left: 0; }
+
+  .label {
+    padding: 12px 8px 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  .label .name { font-size: 12px; color: var(--fg-1); font-weight: 500; text-transform: none; letter-spacing: 0; }
+  .label .id {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+  }
+
+  .state {
+    padding: 12px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-base);
+  }
+  .state.deep { background: var(--bg-deep); }
+
+  /* spec footnote rows */
+  .specs {
+    grid-column: 1 / -1;
+    background: var(--bg-deep);
+    padding: 6px 12px 8px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--fg-3);
+    letter-spacing: 0.02em;
+    line-height: 1.5;
+    border-bottom: 1px solid var(--border);
+  }
+  .specs b { color: var(--fg-2); font-weight: 500; }
+  .specs .k { color: var(--beam-cyan); }
+
+  /* ===== Component samples ===== */
+
+  /* Primary button */
+  .btn-primary {
+    height: 28px;
+    padding: 0 14px;
+    background: var(--beam-cyan);
+    color: var(--bg-deep);
+    font: 500 12px var(--font-ui);
+    border: none;
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    transition: filter var(--dur-fast), background var(--dur-fast);
+  }
+  .btn-primary.s-hover { filter: brightness(1.08); }
+  .btn-primary.s-focus { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3px var(--beam-cyan-strong); }
+  .btn-primary.s-press { background: var(--beam-cyan-dim); filter: none; }
+  .btn-primary.s-dis   { background: var(--bg-elev-2); color: var(--fg-disabled); cursor: not-allowed; }
+
+  /* Secondary / ghost */
+  .btn-secondary {
+    height: 28px;
+    padding: 0 14px;
+    background: var(--bg-elev-1);
+    color: var(--fg-1);
+    font: 500 12px var(--font-ui);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    transition: background var(--dur-fast), border-color var(--dur-fast);
+  }
+  .btn-secondary.s-hover { background: var(--bg-elev-2); border-color: var(--border-strong); }
+  .btn-secondary.s-focus { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3px var(--beam-cyan); }
+  .btn-secondary.s-press { background: var(--bg-elev-3); }
+  .btn-secondary.s-dis   { background: var(--bg-elev-1); color: var(--fg-disabled); border-color: var(--border); cursor: not-allowed; opacity: 0.6; }
+
+  /* Hangup (destructive) */
+  .btn-hangup {
+    height: 28px;
+    padding: 0 14px;
+    background: var(--danger);
+    color: white;
+    font: 600 12px var(--font-ui);
+    letter-spacing: 0.02em;
+    border: none;
+    border-radius: var(--radius-2);
+    cursor: pointer;
+  }
+  .btn-hangup.s-hover { filter: brightness(1.08); }
+  .btn-hangup.s-focus { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3px var(--danger); }
+  .btn-hangup.s-press { filter: brightness(0.92); }
+  .btn-hangup.s-dis   { background: var(--bg-elev-2); color: var(--fg-disabled); cursor: not-allowed; }
+
+  /* Icon button */
+  .icon-btn {
+    width: 28px; height: 28px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--fg-2);
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-btn svg { width: 14px; height: 14px; stroke-width: 1.75; }
+  .icon-btn.s-hover { background: var(--bg-elev-1); color: var(--fg-1); }
+  .icon-btn.s-focus { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3px var(--beam-cyan); }
+  .icon-btn.s-press { background: var(--bg-elev-3); color: var(--fg-1); }
+  .icon-btn.s-dis   { color: var(--fg-disabled); cursor: not-allowed; }
+
+  /* Text input */
+  .input {
+    height: 26px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    padding: 0 8px;
+    font: 12px var(--font-mono);
+    width: 90px;
+    outline: none;
+  }
+  .input.s-hover { border-color: var(--border-strong); }
+  .input.s-focus { border-color: var(--beam-cyan); box-shadow: 0 0 0 2px rgba(127,211,255,0.18); }
+  .input.s-press { border-color: var(--beam-cyan); }
+  .input.s-dis   { color: var(--fg-disabled); border-color: var(--border); background: var(--bg-elev-1); cursor: not-allowed; }
+
+  /* Toggle */
+  .toggle {
+    width: 30px; height: 16px;
+    background: var(--bg-elev-2);
+    border-radius: 8px;
+    position: relative;
+    cursor: pointer;
+    transition: background var(--dur-fast);
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 2px;
+    width: 12px; height: 12px;
+    background: var(--fg-2);
+    border-radius: 50%;
+    transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast);
+  }
+  .toggle.on { background: var(--beam-cyan-dim); }
+  .toggle.on::after { transform: translateX(14px); background: var(--fg-1); }
+  .toggle.s-hover { background: var(--bg-elev-3); }
+  .toggle.on.s-hover { background: var(--beam-cyan); }
+  .toggle.s-focus { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3px var(--beam-cyan); }
+  .toggle.s-dis   { opacity: 0.5; cursor: not-allowed; }
+
+  /* Dialer key (NOTE: only place with press-scale) */
+  .key {
+    width: 44px; height: 44px;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 500;
+    transition: background var(--dur-fast), transform var(--dur-fast);
+  }
+  .key.s-hover { background: var(--bg-elev-3); }
+  .key.s-focus { box-shadow: 0 0 0 2px var(--bg-base), 0 0 0 3px var(--beam-cyan); }
+  .key.s-press { background: var(--beam-cyan-12); transform: scale(0.94); border-color: var(--beam-cyan); }
+  .key.s-dis   { opacity: 0.4; cursor: not-allowed; }
+
+  /* List row */
+  .row-sample {
+    background: transparent;
+    padding: 6px 10px;
+    width: 100%;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--fg-1);
+    cursor: pointer;
+  }
+  .row-sample .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+  }
+  .row-sample.s-hover { background: var(--bg-elev-2); }
+  .row-sample.s-focus { background: var(--beam-cyan-12); }
+  .row-sample.s-press { background: var(--bg-elev-3); }
+  .row-sample.s-dis   { color: var(--fg-disabled); cursor: not-allowed; }
+</style>
+</head>
+<body><div class="wrap">
+
+<div class="head">
+  <b>COMPONENT STATES</b>
+  <span class="small">5 states · what Qt QSS / engineering needs · pseudoclass mappings under each row</span>
+</div>
+
+<div class="matrix">
+  <div class="col-head first">&nbsp;</div>
+  <div class="col-head">Rest</div>
+  <div class="col-head">Hover</div>
+  <div class="col-head">Focus</div>
+  <div class="col-head">Press</div>
+  <div class="col-head">Disabled</div>
+
+  <!-- Primary button -->
+  <div class="label">
+    <span class="name">Button · primary</span>
+    <span class="id">btn-primary</span>
+  </div>
+  <div class="state"><button class="btn-primary">Call</button></div>
+  <div class="state"><button class="btn-primary s-hover">Call</button></div>
+  <div class="state"><button class="btn-primary s-focus">Call</button></div>
+  <div class="state"><button class="btn-primary s-press">Call</button></div>
+  <div class="state"><button class="btn-primary s-dis" disabled>Call</button></div>
+  <div class="specs">
+    <span class="k">:hover</span> filter brightness 1.08 &nbsp;·&nbsp;
+    <span class="k">:focus-visible</span> 3px outer ring <b>--beam-cyan-strong</b> at 2px offset &nbsp;·&nbsp;
+    <span class="k">:active</span> bg <b>--beam-cyan-dim</b> (#4FAFE3) &nbsp;·&nbsp;
+    <span class="k">[disabled]</span> bg <b>--bg-elev-2</b> · fg <b>--fg-disabled</b>
+  </div>
+
+  <!-- Secondary / ghost -->
+  <div class="label">
+    <span class="name">Button · secondary</span>
+    <span class="id">btn-secondary</span>
+  </div>
+  <div class="state"><button class="btn-secondary">Re-test</button></div>
+  <div class="state"><button class="btn-secondary s-hover">Re-test</button></div>
+  <div class="state"><button class="btn-secondary s-focus">Re-test</button></div>
+  <div class="state"><button class="btn-secondary s-press">Re-test</button></div>
+  <div class="state"><button class="btn-secondary s-dis">Re-test</button></div>
+  <div class="specs">
+    <span class="k">:hover</span> bg <b>--bg-elev-2</b>, border <b>--border-strong</b> &nbsp;·&nbsp;
+    <span class="k">:focus</span> 3px ring <b>--beam-cyan</b> &nbsp;·&nbsp;
+    <span class="k">:active</span> bg <b>--bg-elev-3</b> &nbsp;·&nbsp;
+    <span class="k">[disabled]</span> opacity 0.6 · cursor not-allowed
+  </div>
+
+  <!-- Hangup -->
+  <div class="label">
+    <span class="name">Button · destructive</span>
+    <span class="id">btn-hangup</span>
+  </div>
+  <div class="state"><button class="btn-hangup">End</button></div>
+  <div class="state"><button class="btn-hangup s-hover">End</button></div>
+  <div class="state"><button class="btn-hangup s-focus">End</button></div>
+  <div class="state"><button class="btn-hangup s-press">End</button></div>
+  <div class="state"><button class="btn-hangup s-dis" disabled>End</button></div>
+  <div class="specs">
+    Same shape as primary; <b>bg <span class="k">--danger</span></b> + white fg. <span class="k">:focus</span> ring uses <b>--danger</b> not <b>--beam-cyan</b>. Confirmable destructives (Save → Delete) must add a hold-to-confirm; raw click ends call.
+  </div>
+
+  <!-- Icon button -->
+  <div class="label">
+    <span class="name">Button · icon</span>
+    <span class="id">icon-btn</span>
+  </div>
+  <div class="state">
+    <button class="icon-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </div>
+  <div class="state">
+    <button class="icon-btn s-hover">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </div>
+  <div class="state">
+    <button class="icon-btn s-focus">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </div>
+  <div class="state">
+    <button class="icon-btn s-press">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </div>
+  <div class="state">
+    <button class="icon-btn s-dis">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </div>
+  <div class="specs">
+    28×28 hit target. <span class="k">:hover</span> bg <b>--bg-elev-1</b>, fg <b>--fg-1</b> &nbsp;·&nbsp;
+    <span class="k">tooltip</span> required when no visible label · provided via <b>title</b> + <b>aria-label</b>.
+  </div>
+
+  <!-- Text input -->
+  <div class="label">
+    <span class="name">Input · text</span>
+    <span class="id">input</span>
+  </div>
+  <div class="state"><input class="input" value="priya.r"></div>
+  <div class="state"><input class="input s-hover" value="priya.r"></div>
+  <div class="state"><input class="input s-focus" value="priya.r"></div>
+  <div class="state"><input class="input s-press" value="priya.r"></div>
+  <div class="state"><input class="input s-dis" value="priya.r" disabled></div>
+  <div class="specs">
+    <span class="k">:hover</span> border <b>--border-strong</b> &nbsp;·&nbsp;
+    <span class="k">:focus</span> border <b>--beam-cyan</b> + 2px soft fill at 18% &nbsp;·&nbsp;
+    error state (not shown): border <b>--danger</b>, persistent inline message below.
+  </div>
+
+  <!-- Toggle -->
+  <div class="label">
+    <span class="name">Toggle</span>
+    <span class="id">toggle</span>
+  </div>
+  <div class="state"><div class="toggle on"></div></div>
+  <div class="state"><div class="toggle on s-hover"></div></div>
+  <div class="state"><div class="toggle on s-focus"></div></div>
+  <div class="state"><div class="toggle"></div></div>
+  <div class="state"><div class="toggle on s-dis"></div></div>
+  <div class="specs">
+    Knob translateX <b>0 → 14px</b> @ 80ms ease-out. Track bg <b>--beam-cyan-dim</b> on, <b>--bg-elev-2</b> off. The fourth cell shows <b>off-state</b> for reference (not a press state — toggles have no press visual).
+  </div>
+
+  <!-- Dialer key -->
+  <div class="label">
+    <span class="name">Dialer key</span>
+    <span class="id">key</span>
+    <span class="id" style="color:var(--warning);">only scale</span>
+  </div>
+  <div class="state"><div class="key">5</div></div>
+  <div class="state"><div class="key s-hover">5</div></div>
+  <div class="state"><div class="key s-focus">5</div></div>
+  <div class="state"><div class="key s-press">5</div></div>
+  <div class="state"><div class="key s-dis">5</div></div>
+  <div class="specs">
+    <b>Only place</b> we use <span class="k">transform: scale(0.94)</span> — keypads need mechanical feedback. Press also tints bg <b>--beam-cyan-12</b> + border <b>--beam-cyan</b>. DTMF tone fires on press, not release.
+  </div>
+
+  <!-- List row -->
+  <div class="label">
+    <span class="name">List row</span>
+    <span class="id">row</span>
+  </div>
+  <div class="state deep" style="padding: 0;"><div class="row-sample"><span class="dot"></span><span>Marcus Lin</span></div></div>
+  <div class="state deep" style="padding: 0;"><div class="row-sample s-hover"><span class="dot"></span><span>Marcus Lin</span></div></div>
+  <div class="state deep" style="padding: 0;"><div class="row-sample s-focus"><span class="dot"></span><span>Marcus Lin</span></div></div>
+  <div class="state deep" style="padding: 0;"><div class="row-sample s-press"><span class="dot"></span><span>Marcus Lin</span></div></div>
+  <div class="state deep" style="padding: 0;"><div class="row-sample s-dis"><span class="dot"></span><span>Marcus Lin</span></div></div>
+  <div class="specs">
+    Full-bleed in its container; bg only, no inset. <span class="k">:focus-visible</span> uses <b>--beam-cyan-12</b> tint (not a ring) so keyboard nav doesn't visually drift from mouse hover. Arrow keys move focus row-to-row, Enter activates.
+  </div>
+
+</div>
+
+<!-- ============================================
+     Tokens summary
+     ============================================ -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px;">
+  <div>
+    <div style="font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px;">Tokens · all states</div>
+    <div style="font-family: var(--font-mono); font-size: 10.5px; line-height: 1.75; color: var(--fg-2);">
+      <div><span style="color: var(--fg-3);">hover bg shift:</span> +1 step on neutral ramp</div>
+      <div><span style="color: var(--fg-3);">press bg shift:</span> +2 steps OR <b style="color: var(--beam-cyan);">--beam-cyan-12</b> tint</div>
+      <div><span style="color: var(--fg-3);">focus ring:</span> 2px offset + 3px <b style="color: var(--beam-cyan);">--beam-cyan</b></div>
+      <div><span style="color: var(--fg-3);">focus (destructive):</span> ring uses <b style="color: var(--danger);">--danger</b></div>
+      <div><span style="color: var(--fg-3);">transition:</span> <b>80ms cubic-bezier(0.2,0,0,1)</b></div>
+      <div><span style="color: var(--fg-3);">scale (keypad only):</span> <b>0.94</b></div>
+    </div>
+  </div>
+  <div>
+    <div style="font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 8px;">Qt QSS mapping</div>
+    <pre style="margin: 0; font-family: var(--font-mono); font-size: 10px; line-height: 1.65; color: var(--fg-2); background: var(--bg-deep); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; overflow: auto;">QPushButton           = btn-secondary
+QPushButton[primary]  = btn-primary
+QPushButton[danger]   = btn-hangup
+QToolButton           = icon-btn
+QLineEdit             = input
+QListView::item       = row
+QPushButton#dialKey   = key</pre>
+  </div>
+</div>
+
+</div></body></html>

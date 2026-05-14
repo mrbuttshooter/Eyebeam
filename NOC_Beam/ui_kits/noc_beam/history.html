@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · history</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* ============================================================
+     HISTORY
+     ============================================================ */
+  .hist {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* Filter bar */
+  .hist-filters {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) auto auto auto auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-base);
+    flex-shrink: 0;
+  }
+  .h-search {
+    display: flex;
+    align-items: center;
+    height: 32px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .h-search:focus-within { border-color: var(--beam-cyan); }
+  .h-search svg { width: 14px; height: 14px; color: var(--fg-3); stroke-width: 1.75; flex-shrink: 0; }
+  .h-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--fg-1);
+    font: 13px var(--font-ui);
+    min-width: 0;
+  }
+  .h-search input::placeholder { color: var(--fg-3); }
+  .h-search kbd {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--fg-3);
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1px 4px;
+  }
+
+  /* Segmented filter (direction) */
+  .h-seg {
+    display: inline-flex;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 2px;
+    height: 32px;
+    align-items: stretch;
+  }
+  .h-seg button {
+    background: transparent;
+    border: none;
+    color: var(--fg-3);
+    font: 12px var(--font-ui);
+    padding: 0 12px;
+    border-radius: var(--radius-1);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .h-seg button:hover { color: var(--fg-1); }
+  .h-seg button.on {
+    background: var(--bg-elev-3);
+    color: var(--fg-1);
+    box-shadow: var(--elev-1);
+  }
+  .h-seg button svg { width: 12px; height: 12px; stroke-width: 1.75; }
+  .h-seg button .ct {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    background: var(--bg-base);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+  .h-seg button.on .ct { color: var(--fg-1); }
+
+  /* Pill dropdowns */
+  .h-pill {
+    height: 32px;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    font: 13px var(--font-ui);
+    padding: 0 30px 0 12px;
+    cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%),
+                      linear-gradient(135deg, var(--fg-3) 50%, transparent 50%);
+    background-position: right 12px center, right 7px center;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+    appearance: none;
+    outline: none;
+  }
+
+  .h-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    height: 32px;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-2);
+    font: 12px var(--font-ui);
+    cursor: pointer;
+  }
+  .h-toggle.on { color: var(--fg-1); background: var(--beam-cyan-12); border-color: var(--beam-cyan); }
+  .h-toggle .check {
+    width: 14px; height: 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    background: var(--bg-deep);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .h-toggle.on .check { background: var(--beam-cyan); border-color: var(--beam-cyan); }
+  .h-toggle.on .check::after {
+    content: '';
+    width: 7px; height: 4px;
+    border-left: 2px solid var(--bg-deep);
+    border-bottom: 2px solid var(--bg-deep);
+    transform: rotate(-45deg) translateY(-1px);
+  }
+
+  /* Stats row */
+  .hist-stats {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-deep);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  .hist-stats b { color: var(--fg-1); font-weight: 500; }
+  .hist-stats .sep { color: var(--border-strong); }
+  .hist-stats .grow { flex: 1; }
+  .hist-stats .kbd-hint {
+    color: var(--fg-3);
+    font-size: 10px;
+  }
+  .hist-stats .kbd-hint kbd {
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1px 4px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--fg-2);
+    margin: 0 1px;
+  }
+
+  /* Table */
+  .hist-table {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: var(--bg-base);
+    position: relative;
+  }
+  .table-head {
+    display: grid;
+    grid-template-columns: 36px 1fr 110px 90px 180px 30px;
+    gap: 14px;
+    align-items: center;
+    padding: 8px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-base);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .table-head .sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  .table-head .sort.active { color: var(--beam-cyan); }
+  .table-head .sort svg { width: 9px; height: 9px; stroke-width: 2; }
+
+  .day-group {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 12px;
+    padding: 12px 24px 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    background: var(--bg-base);
+    position: sticky;
+    top: 36px;
+    z-index: 1;
+  }
+  .day-group b { color: var(--fg-1); font-weight: 500; }
+  .day-group .meta {
+    text-transform: none;
+    letter-spacing: 0.04em;
+    color: var(--fg-3);
+  }
+  .day-group .meta b { color: var(--fg-2); font-weight: 500; }
+
+  .h-row {
+    display: grid;
+    grid-template-columns: 36px 1fr 110px 90px 180px 30px;
+    gap: 14px;
+    align-items: center;
+    padding: 8px 24px;
+    border-bottom: 1px solid rgba(42, 51, 64, 0.6);
+    cursor: pointer;
+    position: relative;
+    transition: background var(--dur-fast);
+  }
+  .h-row:hover { background: var(--bg-elev-1); }
+  .h-row.focused {
+    background: var(--beam-cyan-12);
+  }
+  .h-row.focused::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 6px; bottom: 6px;
+    width: 3px;
+    background: var(--beam-cyan);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .h-row .dir-cell {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--success-12);
+    color: var(--success);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .h-row .dir-cell svg { width: 13px; height: 13px; stroke-width: 2; }
+  .h-row .dir-cell.out  { color: var(--beam-amber); background: var(--beam-amber-12); }
+  .h-row .dir-cell.miss { color: var(--danger);     background: var(--danger-12); }
+
+  .h-row .peer {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+  }
+  .h-row .peer .name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .h-row.miss .peer .name { color: var(--fg-1); }
+  .h-row .peer .uri {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .h-row .dur {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .h-row .dur.miss { color: var(--danger); }
+  .h-row .time {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--fg-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .h-row .acct {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .h-row .acct .dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    margin-right: 6px;
+    vertical-align: 1px;
+  }
+  .h-row .more {
+    color: var(--fg-3);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    text-align: center;
+  }
+  .h-row.focused .more { color: var(--beam-cyan); }
+
+  /* Context menu */
+  .ctx-menu {
+    position: absolute;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-3);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+    min-width: 240px;
+    padding: 6px;
+    z-index: 10;
+  }
+  .ctx-section {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 10px 4px;
+  }
+  .ctx-item {
+    display: grid;
+    grid-template-columns: 18px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 7px 10px;
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    font: 13px var(--font-ui);
+    color: var(--fg-1);
+  }
+  .ctx-item:hover { background: var(--bg-elev-3); }
+  .ctx-item svg { width: 14px; height: 14px; color: var(--fg-3); stroke-width: 1.75; }
+  .ctx-item .kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+  }
+  .ctx-item.danger { color: var(--danger); }
+  .ctx-item.danger svg { color: var(--danger); }
+  .ctx-item.has-sub::after {
+    content: '›';
+    color: var(--fg-3);
+    font-size: 14px;
+    margin-left: 6px;
+  }
+  .ctx-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 4px;
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 12"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.36.16.66.43.86.76.2.33.31.71.31 1.1V12c0 .39-.11.77-.31 1.1-.2.33-.5.6-.86.76Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </symbol>
+    <symbol id="i-phone-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="16 2 16 8 22 8"/><line x1="23" y1="1" x2="16" y2="8"/>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-phone-out" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 7 23 1 17 1"/><line x1="16" y1="8" x2="23" y2="1"/>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-phone-miss" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="23" y1="1" x2="17" y2="7"/><line x1="17" y1="1" x2="23" y2="7"/>
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </symbol>
+    <symbol id="i-user-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+      <circle cx="8.5" cy="7" r="4"/>
+      <line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+    </symbol>
+    <symbol id="i-activity-mini" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+      <polyline points="22,6 12,13 2,6"/>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    </symbol>
+    <symbol id="i-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app" data-screen-label="09 History">
+
+  <div class="titlebar">
+    <div class="tb-brand">
+      <svg viewBox="0 0 360 72" width="160" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g font-family="'Cascadia Code', ui-monospace, monospace" font-weight="600">
+          <text x="8" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-1">NOC</text>
+          <text x="100" y="50" font-size="40" fill="#7FD3FF">_</text>
+        </g>
+        <g font-family="'Inter', sans-serif" font-weight="600">
+          <text x="124" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-0.5">Beam</text>
+        </g>
+        <line x1="244" y1="32" x2="352" y2="32" stroke="#7FD3FF" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="352" cy="32" r="4" fill="#FFB86C"/>
+      </svg>
+      <span class="ver">0.1.0</span>
+    </div>
+    <div class="tb-account">
+      <span class="dot"></span>
+      <span class="name">priya.r</span>
+      <span class="at">@</span>
+      <span class="host">sbc-east.noc.internal</span>
+      <svg class="chev" viewBox="0 0 24 24" width="12" height="12"><use href="#i-chev"/></svg>
+    </div>
+    <label class="tb-uri">
+      <span class="prompt">dial</span>
+      <span class="caret">›</span>
+      <input type="text" placeholder="sip:peer@host  ·  +1 555 …  ·  *97">
+      <kbd>⌘K</kbd>
+    </label>
+    <div class="tb-winctl">
+      <button>—</button><button>▢</button><button class="close">✕</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="rail">
+      <div class="nav">
+        <button class="rail-btn"><svg><use href="#i-phone"/></svg><span class="lbl">Calls</span></button>
+        <button class="rail-btn"><svg><use href="#i-activity"/></svg><span class="lbl">Trace</span></button>
+        <button class="rail-btn active"><svg><use href="#i-clock"/></svg><span class="lbl">History</span><span class="badge">3</span></button>
+        <button class="rail-btn"><svg><use href="#i-users"/></svg><span class="lbl">Accounts</span></button>
+        <button class="rail-btn"><svg><use href="#i-settings"/></svg><span class="lbl">Settings</span></button>
+      </div>
+      <div class="spacer"></div>
+      <div class="rail-status">
+        <span class="dot"></span>
+        <span class="lbl">5 / 6</span>
+        <span class="sub">REGISTERED</span>
+      </div>
+    </nav>
+
+    <section class="content">
+
+      <div class="view-header">
+        <div class="title">History</div>
+        <div class="crumbs"><span>~/history</span><span class="sep">/</span><span style="color:var(--fg-1);">last 7 days</span></div>
+      </div>
+
+      <div class="hist">
+
+        <!-- Filter bar -->
+        <div class="hist-filters">
+          <label class="h-search">
+            <svg fill="none" stroke="currentColor"><use href="#i-search"/></svg>
+            <input type="text" placeholder="search calls — name, URI, number, account…" value="marcus">
+            <kbd>⌘F</kbd>
+          </label>
+
+          <div class="h-seg">
+            <button class="on">All <span class="ct">142</span></button>
+            <button>
+              <svg fill="none" stroke="currentColor"><use href="#i-phone-in"/></svg>
+              In
+              <span class="ct">68</span>
+            </button>
+            <button>
+              <svg fill="none" stroke="currentColor"><use href="#i-phone-out"/></svg>
+              Out
+              <span class="ct">71</span>
+            </button>
+            <button>
+              <svg fill="none" stroke="currentColor"><use href="#i-phone-miss"/></svg>
+              Missed
+              <span class="ct">3</span>
+            </button>
+          </div>
+
+          <select class="h-pill">
+            <option>All accounts</option>
+            <option>priya@sbc-east</option>
+            <option>priya@sbc-west</option>
+          </select>
+
+          <select class="h-pill">
+            <option>Last 7 days</option>
+            <option>Today</option>
+            <option>Last 24h</option>
+            <option>Last 30 days</option>
+            <option>Custom…</option>
+          </select>
+        </div>
+
+        <!-- Stats / kbd hint row -->
+        <div class="hist-stats">
+          <span><b>3</b> matches for <b>"marcus"</b></span>
+          <span class="sep">·</span>
+          <span>across <b>2</b> accounts</span>
+          <span class="sep">·</span>
+          <span>total duration <b>14m 23s</b></span>
+          <span class="grow"></span>
+          <span class="kbd-hint">
+            <kbd>↑</kbd><kbd>↓</kbd> navigate &nbsp;·&nbsp;
+            <kbd>↵</kbd> call back &nbsp;·&nbsp;
+            <kbd>⌥↵</kbd> call from… &nbsp;·&nbsp;
+            <kbd>⇧↵</kbd> open trace &nbsp;·&nbsp;
+            <kbd>⌘C</kbd> copy URI
+          </span>
+        </div>
+
+        <!-- Table -->
+        <div class="hist-table">
+          <div class="table-head">
+            <div></div>
+            <div>Peer</div>
+            <div class="sort active">Duration <svg fill="none" stroke="currentColor"><polyline points="6 9 12 15 18 9"/></svg></div>
+            <div>Time</div>
+            <div>Account</div>
+            <div></div>
+          </div>
+
+          <!-- TODAY -->
+          <div class="day-group">
+            <span><b>Today</b> · Fri 14 Nov</span>
+            <span class="meta">3 calls · <b>1 missed</b> · 11m 09s</span>
+          </div>
+
+          <div class="h-row miss">
+            <span class="dir-cell miss"><svg fill="none" stroke="currentColor"><use href="#i-phone-miss"/></svg></span>
+            <div class="peer">
+              <div class="name">Marcus Lin</div>
+              <div class="uri">sip:marcus@lab.noc.internal</div>
+            </div>
+            <span class="dur miss">missed</span>
+            <span class="time">14:22</span>
+            <span class="acct"><span class="dot"></span>priya@sbc-east</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <div class="h-row focused" id="focused-row" style="position: relative;">
+            <span class="dir-cell out"><svg fill="none" stroke="currentColor"><use href="#i-phone-out"/></svg></span>
+            <div class="peer">
+              <div class="name">Marcus Lin</div>
+              <div class="uri">sip:marcus@lab.noc.internal</div>
+            </div>
+            <span class="dur">04:38</span>
+            <span class="time">14:18</span>
+            <span class="acct"><span class="dot"></span>priya@sbc-east</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <div class="h-row">
+            <span class="dir-cell out"><svg fill="none" stroke="currentColor"><use href="#i-phone-out"/></svg></span>
+            <div class="peer">
+              <div class="name">SBC East · echo test</div>
+              <div class="uri">sip:*97@sbc-east.noc.internal</div>
+            </div>
+            <span class="dur">02:14</span>
+            <span class="time">13:08</span>
+            <span class="acct"><span class="dot"></span>priya@sbc-east</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <!-- YESTERDAY -->
+          <div class="day-group">
+            <span><b>Yesterday</b> · Thu 13 Nov</span>
+            <span class="meta">4 calls · 34m 02s</span>
+          </div>
+
+          <div class="h-row">
+            <span class="dir-cell"><svg fill="none" stroke="currentColor"><use href="#i-phone-in"/></svg></span>
+            <div class="peer">
+              <div class="name">Marcus Lin</div>
+              <div class="uri">sip:marcus@lab.noc.internal</div>
+            </div>
+            <span class="dur">08:41</span>
+            <span class="time">22:50</span>
+            <span class="acct"><span class="dot"></span>priya@sbc-east</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <div class="h-row">
+            <span class="dir-cell out"><svg fill="none" stroke="currentColor"><use href="#i-phone-out"/></svg></span>
+            <div class="peer">
+              <div class="name">PagerDuty bridge</div>
+              <div class="uri">sip:bridge-482@pd.noc.internal</div>
+            </div>
+            <span class="dur">21:09</span>
+            <span class="time">22:14</span>
+            <span class="acct"><span class="dot"></span>priya@sbc-west</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <div class="h-row">
+            <span class="dir-cell"><svg fill="none" stroke="currentColor"><use href="#i-phone-in"/></svg></span>
+            <div class="peer">
+              <div class="name">Priya R. <span style="color:var(--fg-3); font-weight:400; font-family:var(--font-mono); font-size:11px;">· conf-bridge</span></div>
+              <div class="uri">sip:priya@voice-infra.noc.internal</div>
+            </div>
+            <span class="dur">12:34</span>
+            <span class="time">17:22</span>
+            <span class="acct"><span class="dot"></span>priya@sbc-east</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <div class="h-row">
+            <span class="dir-cell out"><svg fill="none" stroke="currentColor"><use href="#i-phone-out"/></svg></span>
+            <div class="peer">
+              <div class="name">+1 (415) 555-0142</div>
+              <div class="uri">sip:14155550142@trunk-pstn.noc.internal</div>
+            </div>
+            <span class="dur">00:18</span>
+            <span class="time">16:01</span>
+            <span class="acct"><span class="dot"></span>trunk-pstn</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <!-- WED -->
+          <div class="day-group">
+            <span><b>Wed 12 Nov</b></span>
+            <span class="meta">5 calls · 1h 02m</span>
+          </div>
+
+          <div class="h-row">
+            <span class="dir-cell"><svg fill="none" stroke="currentColor"><use href="#i-phone-in"/></svg></span>
+            <div class="peer">
+              <div class="name">Nadia Cole</div>
+              <div class="uri">sip:nadia@noc.internal</div>
+            </div>
+            <span class="dur">42:18</span>
+            <span class="time">14:00</span>
+            <span class="acct"><span class="dot"></span>priya@sbc-east</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <div class="h-row">
+            <span class="dir-cell out"><svg fill="none" stroke="currentColor"><use href="#i-phone-out"/></svg></span>
+            <div class="peer">
+              <div class="name">SBC West · echo test</div>
+              <div class="uri">sip:*97@sbc-west.noc.internal</div>
+            </div>
+            <span class="dur">03:11</span>
+            <span class="time">09:45</span>
+            <span class="acct"><span class="dot"></span>priya@sbc-west</span>
+            <span class="more">⋯</span>
+          </div>
+
+          <!-- ============================================
+               Context menu (right-click on focused row)
+               ============================================ -->
+          <div class="ctx-menu" style="left: 360px; top: 252px;">
+            <div class="ctx-item">
+              <svg fill="none" stroke="currentColor"><use href="#i-phone-out"/></svg>
+              <span>Call back</span>
+              <span class="kbd">↵</span>
+            </div>
+            <div class="ctx-item">
+              <svg fill="none" stroke="currentColor"><use href="#i-phone"/></svg>
+              <span>Call from…</span>
+              <span class="kbd">⌥↵ &nbsp;›</span>
+            </div>
+            <div class="ctx-divider"></div>
+            <div class="ctx-section">URI · sip:marcus@lab.noc.internal</div>
+            <div class="ctx-item">
+              <svg fill="none" stroke="currentColor"><use href="#i-copy"/></svg>
+              <span>Copy URI</span>
+              <span class="kbd">⌘C</span>
+            </div>
+            <div class="ctx-item">
+              <svg fill="none" stroke="currentColor"><use href="#i-user-plus"/></svg>
+              <span>Add to contacts</span>
+              <span class="kbd"></span>
+            </div>
+            <div class="ctx-item">
+              <svg fill="none" stroke="currentColor"><use href="#i-mail"/></svg>
+              <span>Send to voicemail next time</span>
+              <span class="kbd"></span>
+            </div>
+            <div class="ctx-divider"></div>
+            <div class="ctx-item">
+              <svg fill="none" stroke="currentColor"><use href="#i-activity-mini"/></svg>
+              <span>Open trace for this call</span>
+              <span class="kbd">⇧↵</span>
+            </div>
+            <div class="ctx-divider"></div>
+            <div class="ctx-item danger">
+              <svg fill="none" stroke="currentColor"><use href="#i-trash"/></svg>
+              <span>Delete entry</span>
+              <span class="kbd">⌫</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+</body>
+</html>

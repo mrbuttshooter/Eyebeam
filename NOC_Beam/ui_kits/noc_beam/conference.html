@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · conference</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* ============================================================
+     CONFERENCE — 5-person bridge as the focused-call surface
+     ============================================================ */
+  .conf-page {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    height: 100%;
+  }
+
+  /* ---- Top strip: conf summary ---- */
+  .conf-strip {
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    padding: 14px 22px;
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: 18px;
+    align-items: center;
+  }
+  .conf-strip .badge {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--beam-cyan-12);
+    color: var(--beam-cyan);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .conf-strip .info { min-width: 0; }
+  .conf-strip .info .state {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--beam-cyan);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .conf-strip .info .name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--fg-1);
+    letter-spacing: -0.01em;
+  }
+  .conf-strip .info .meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    margin-top: 2px;
+  }
+  .conf-strip .info .meta b { color: var(--fg-2); font-weight: 500; }
+  .conf-strip .timer {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--fg-1);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  .conf-strip .quick {
+    display: flex;
+    gap: 6px;
+  }
+  .conf-strip .quick button {
+    width: 32px; height: 32px;
+    background: var(--bg-elev-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-2);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .conf-strip .quick button:hover { background: var(--bg-elev-3); color: var(--fg-1); }
+  .conf-strip .quick button svg { width: 14px; height: 14px; stroke-width: 1.75; }
+
+  /* ---- Main split ---- */
+  .conf-main {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 18px;
+  }
+
+  /* Participants list */
+  .participants {
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .participants .head {
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  .participants .head .label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-2);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .participants .head .count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+  .participants .head .grow { flex: 1; }
+  .participants .head .add {
+    height: 26px;
+    padding: 0 10px;
+    background: var(--beam-cyan);
+    border: none;
+    border-radius: var(--radius-2);
+    color: var(--bg-deep);
+    font: 600 11px var(--font-ui);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .participants .head .add svg { width: 11px; height: 11px; stroke-width: 2.5; }
+
+  .participants .rows {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .ppt {
+    display: grid;
+    grid-template-columns: 36px 1fr auto 50px 60px auto;
+    gap: 16px;
+    align-items: center;
+    padding: 10px 18px;
+    border-bottom: 1px solid rgba(42, 51, 64, 0.5);
+    position: relative;
+  }
+  .ppt.speaking {
+    background: var(--beam-cyan-12);
+  }
+  .ppt.speaking::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px; bottom: 8px;
+    width: 3px;
+    background: var(--beam-cyan);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .ppt .av {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--bg-elev-2);
+    color: var(--fg-2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    position: relative;
+  }
+  .ppt.speaking .av {
+    background: var(--beam-cyan-12);
+    color: var(--beam-cyan);
+    box-shadow: 0 0 0 2px var(--beam-cyan);
+  }
+  .ppt .av .talk-ring {
+    position: absolute;
+    inset: -4px;
+    border: 2px solid var(--beam-cyan);
+    border-radius: 50%;
+    opacity: 0.35;
+    animation: ring 1.6s ease-out infinite;
+  }
+  @keyframes ring {
+    0%   { transform: scale(0.92); opacity: 0.55; }
+    100% { transform: scale(1.12); opacity: 0; }
+  }
+  .ppt .av-role {
+    position: absolute;
+    bottom: -4px; right: -4px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--bg-base);
+    border: 2px solid var(--bg-elev-1);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--beam-cyan);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .ppt .who { min-width: 0; }
+  .ppt .who .name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--fg-1);
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .ppt .who .name .you {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--beam-cyan);
+    background: var(--beam-cyan-12);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+  }
+  .ppt .who .name .host {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--beam-amber);
+    background: var(--beam-amber-12);
+    padding: 1px 6px;
+    border-radius: 2px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+  }
+  .ppt .who .uri {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Mic indicator (input level meter) */
+  .ppt .mic {
+    display: flex;
+    align-items: end;
+    gap: 2px;
+    height: 16px;
+    width: 36px;
+  }
+  .ppt .mic .b {
+    width: 4px;
+    background: var(--success);
+    border-radius: 1px;
+    opacity: 0.35;
+  }
+  .ppt .mic .b.on { opacity: 1; }
+  .ppt .mic.muted .b { background: var(--fg-3); opacity: 0.35; }
+  .ppt.muted .av { opacity: 0.85; }
+
+  .ppt .mic-icon {
+    width: 14px;
+    color: var(--fg-3);
+  }
+  .ppt.muted .mic-icon { color: var(--danger); }
+  .ppt:not(.muted) .mic-icon { color: var(--success); }
+
+  /* MOS chip */
+  .mos-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .mos-chip.ok   { color: var(--success); background: var(--success-12); }
+  .mos-chip.warn { color: var(--warning); background: var(--warning-12); }
+  .mos-chip.bad  { color: var(--danger);  background: var(--danger-12); }
+  .mos-chip .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* HID badge */
+  .hid {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    color: var(--fg-2);
+    letter-spacing: 0.04em;
+  }
+  .hid svg {
+    width: 11px; height: 11px;
+    color: var(--beam-cyan);
+    stroke-width: 1.75;
+  }
+  .hid b { color: var(--fg-1); font-weight: 500; }
+
+  /* Row controls (right side) */
+  .ppt .controls { display: flex; gap: 4px; }
+  .ppt .controls button {
+    width: 26px; height: 26px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--fg-3);
+    border-radius: var(--radius-2);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ppt .controls button:hover { background: var(--bg-elev-2); color: var(--fg-1); }
+  .ppt .controls button svg { width: 13px; height: 13px; stroke-width: 1.75; }
+
+  /* ===== Right column: stack of mini panels ===== */
+  .conf-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-height: 0;
+  }
+
+  /* MOS panel — the headline call-quality surface */
+  .mos-panel {
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    padding: 16px;
+  }
+  .mos-panel .head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .mos-panel .head .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .mos-panel .head .info {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    margin-left: auto;
+  }
+  .mos-panel .big {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .mos-panel .big .v {
+    font-family: var(--font-mono);
+    font-size: 44px;
+    font-weight: 600;
+    color: var(--success);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .mos-panel .big .of {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--fg-3);
+  }
+  .mos-panel .big .verdict {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--success);
+    margin-left: auto;
+    background: var(--success-12);
+    padding: 4px 10px;
+    border-radius: 2px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* MOS scale bar */
+  .mos-scale {
+    height: 10px;
+    background: linear-gradient(to right,
+      var(--danger) 0%,
+      var(--danger) 20%,
+      var(--warning) 35%,
+      var(--warning) 55%,
+      var(--success) 70%,
+      var(--success) 100%);
+    border-radius: 2px;
+    position: relative;
+    margin: 12px 0 4px;
+  }
+  .mos-scale .marker {
+    position: absolute;
+    top: -3px; bottom: -3px;
+    width: 3px;
+    background: var(--fg-1);
+    border-radius: 1px;
+    box-shadow: 0 0 0 2px var(--bg-elev-1);
+  }
+  .mos-scale-axis {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* MOS sub-metrics */
+  .mos-subs {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+  .mos-subs .sub .k {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--fg-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .mos-subs .sub .v {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--fg-1);
+    font-variant-numeric: tabular-nums;
+  }
+  .mos-subs .sub .v.warn { color: var(--warning); }
+  .mos-subs .sub .v .u { font-size: 10px; color: var(--fg-3); margin-left: 2px; }
+
+  /* Device panel */
+  .dev-panel {
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-3);
+    padding: 14px 16px;
+  }
+  .dev-panel .head {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .dev-row {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 0;
+    border-top: 1px solid rgba(42, 51, 64, 0.5);
+  }
+  .dev-row:first-of-type { border-top: none; padding-top: 0; }
+
+  .dev-row .icon {
+    width: 22px; height: 22px;
+    border-radius: var(--radius-2);
+    background: var(--bg-elev-2);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--fg-2);
+  }
+  .dev-row .icon svg { width: 12px; height: 12px; stroke-width: 1.75; }
+  .dev-row .icon.live { background: var(--success-12); color: var(--success); }
+  .dev-row .info { min-width: 0; }
+  .dev-row .info .name { font-size: 12.5px; color: var(--fg-1); font-weight: 500; }
+  .dev-row .info .meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); margin-top: 2px; }
+  .dev-row .info .meta b { color: var(--fg-2); font-weight: 500; }
+  .dev-row .info .meta .live {
+    color: var(--success);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .dev-row .info .meta .live::before {
+    content: '';
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  .dev-row .toggle {
+    width: 28px; height: 16px;
+    background: var(--bg-elev-2);
+    border-radius: 8px;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .dev-row .toggle::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 2px;
+    width: 12px; height: 12px;
+    background: var(--fg-2);
+    border-radius: 50%;
+    transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast);
+  }
+  .dev-row .toggle.on { background: var(--beam-cyan-dim); }
+  .dev-row .toggle.on::after { transform: translateX(12px); background: var(--fg-1); }
+
+  .dev-controls {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    line-height: 1.7;
+  }
+  .dev-controls b { color: var(--fg-2); font-weight: 500; }
+  .dev-controls kbd {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1px 5px;
+    color: var(--fg-2);
+  }
+
+  /* Bottom call-actions bar */
+  .conf-actions {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr) auto;
+    gap: 10px;
+    padding: 14px 0 4px;
+  }
+  .conf-action {
+    height: 60px;
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    color: var(--fg-1);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .conf-action:hover { background: var(--bg-elev-2); }
+  .conf-action.on { background: var(--beam-cyan-12); color: var(--beam-cyan); border-color: var(--beam-cyan); }
+  .conf-action svg { width: 16px; height: 16px; stroke-width: 1.75; }
+  .conf-action .lbl {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+  }
+  .conf-action.on .lbl { color: var(--beam-cyan); }
+
+  .hangup {
+    height: 60px;
+    width: 96px;
+    background: var(--danger);
+    border: none;
+    border-radius: var(--radius-2);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .hangup:hover { filter: brightness(1.08); }
+  .hangup svg { width: 18px; height: 18px; stroke-width: 2; }
+  .hangup .lbl {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 12"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.36.16.66.43.86.76.2.33.31.71.31 1.1V12c0 .39-.11.77-.31 1.1-.2.33-.5.6-.86.76Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+      <polyline points="22,6 12,13 2,6"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="i-conf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="9" cy="7" r="3"/>
+      <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+      <circle cx="17" cy="10" r="2.5"/>
+      <path d="M22 19v-1a3 3 0 0 0-3-3h-1"/>
+    </symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+      <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+    </symbol>
+    <symbol id="i-mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="1" y1="1" x2="23" y2="23"/>
+      <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+      <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+      <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+    </symbol>
+    <symbol id="i-headset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+      <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+    </symbol>
+    <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+    </symbol>
+    <symbol id="i-record" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <circle cx="12" cy="12" r="3" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-merge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 6L12 2l4 4M12 2v10"/><path d="M4 22l8-10 8 10"/>
+    </symbol>
+    <symbol id="i-split" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/>
+      <polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
+      <line x1="4" y1="4" x2="9" y2="9"/>
+    </symbol>
+    <symbol id="i-phone-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67M3 3l18 18"/>
+      <path d="M8.05 3a18 18 0 0 1 1.06 4.06A2 2 0 0 1 8.66 9L7.39 10.27"/>
+    </symbol>
+    <symbol id="i-add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </symbol>
+    <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    </symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+    </symbol>
+    <symbol id="i-volume-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+      <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+    </symbol>
+    <symbol id="i-eject" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="12 4 4 14 20 14 12 4"/><line x1="4" y1="20" x2="20" y2="20"/>
+    </symbol>
+    <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    </symbol>
+    <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app" data-screen-label="14 Conference call">
+
+  <div class="titlebar">
+    <div class="tb-brand">
+      <svg viewBox="0 0 360 72" width="160" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g font-family="'Cascadia Code', ui-monospace, monospace" font-weight="600">
+          <text x="8" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-1">NOC</text>
+          <text x="100" y="50" font-size="40" fill="#7FD3FF">_</text>
+        </g>
+        <g font-family="'Inter', sans-serif" font-weight="600">
+          <text x="124" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-0.5">Beam</text>
+        </g>
+        <line x1="244" y1="32" x2="352" y2="32" stroke="#7FD3FF" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="352" cy="32" r="4" fill="#FFB86C"/>
+      </svg>
+      <span class="ver">0.1.0</span>
+    </div>
+    <div class="tb-account">
+      <span class="dot"></span>
+      <span class="name">priya.r</span>
+      <span class="at">@</span>
+      <span class="host">sbc-east.noc.internal</span>
+      <svg class="chev" viewBox="0 0 24 24" width="12" height="12"><use href="#i-chev"/></svg>
+    </div>
+    <label class="tb-uri">
+      <span class="prompt">dial</span>
+      <span class="caret">›</span>
+      <input type="text" placeholder="sip:peer@host  ·  +1 555 …  ·  *97">
+      <kbd>⌘K</kbd>
+    </label>
+    <div class="tb-winctl">
+      <button>—</button><button>▢</button><button class="close">✕</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="rail">
+      <div class="nav">
+        <button class="rail-btn active"><svg><use href="#i-phone"/></svg><span class="lbl">Calls</span></button>
+        <button class="rail-btn"><svg><use href="#i-activity"/></svg><span class="lbl">Trace</span></button>
+        <button class="rail-btn"><svg><use href="#i-clock"/></svg><span class="lbl">History</span></button>
+        <button class="rail-btn"><svg><use href="#i-users"/></svg><span class="lbl">Contacts</span></button>
+        <button class="rail-btn"><svg><use href="#i-mail"/></svg><span class="lbl">Voicemail</span><span class="badge">3</span></button>
+        <button class="rail-btn"><svg><use href="#i-settings"/></svg><span class="lbl">Settings</span></button>
+      </div>
+      <div class="spacer"></div>
+      <div class="rail-status">
+        <span class="dot"></span>
+        <span class="lbl">5 / 6</span>
+        <span class="sub">REGISTERED</span>
+      </div>
+    </nav>
+
+    <section class="content">
+      <div class="view-header">
+        <div class="title">On call · 5 participants</div>
+        <div class="crumbs"><span>~/calls</span><span class="sep">/</span><span style="color:var(--fg-1);">incident #482 bridge</span></div>
+      </div>
+
+      <div class="view-body">
+        <div class="conf-page">
+
+          <!-- Strip -->
+          <div class="conf-strip">
+            <div class="badge">
+              <svg fill="none" stroke="currentColor" width="20" height="20"><use href="#i-conf"/></svg>
+            </div>
+            <div class="info">
+              <div class="state">● Conference</div>
+              <div class="name">Incident #482 bridge</div>
+              <div class="meta">sip:bridge-482@pd.noc.internal · <b>locked</b> · opus/48k · all SRTP</div>
+            </div>
+            <div class="timer">00:14:22</div>
+            <div class="quick">
+              <button title="Copy bridge URI">
+                <svg fill="none" stroke="currentColor"><use href="#i-link"/></svg>
+              </button>
+              <button title="Conference settings">
+                <svg fill="none" stroke="currentColor"><use href="#i-settings"/></svg>
+              </button>
+              <button title="More">
+                <svg fill="none" stroke="currentColor"><use href="#i-more"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Main -->
+          <div class="conf-main">
+
+            <!-- LEFT: participants -->
+            <div class="participants">
+              <div class="head">
+                <span class="label">Participants</span>
+                <span class="count">5 / max 8 · 1 speaking</span>
+                <span class="grow"></span>
+                <button class="add">
+                  <svg fill="none" stroke="currentColor"><use href="#i-add"/></svg>
+                  Invite
+                </button>
+              </div>
+              <div class="rows">
+
+                <!-- You (host) -->
+                <div class="ppt">
+                  <div class="av">
+                    PR
+                    <div class="av-role" title="Host">H</div>
+                  </div>
+                  <div class="who">
+                    <div class="name">Priya R. <span class="you">YOU</span><span class="host">HOST</span></div>
+                    <div class="uri">sip:priya@sbc-east.noc.internal · TLS · SRTP</div>
+                  </div>
+                  <span class="hid">
+                    <svg fill="none" stroke="currentColor"><use href="#i-headset"/></svg>
+                    <b>Poly Voyager 5200</b>
+                    · HID
+                  </span>
+                  <span class="mos-chip ok"><span class="dot"></span>4.42</span>
+                  <span class="mic">
+                    <span class="b on" style="height:30%"></span>
+                    <span class="b on" style="height:45%"></span>
+                    <span class="b on" style="height:60%"></span>
+                    <span class="b" style="height:70%"></span>
+                    <span class="b" style="height:80%"></span>
+                  </span>
+                  <div class="controls">
+                    <button title="More"><svg fill="none" stroke="currentColor"><use href="#i-more"/></svg></button>
+                  </div>
+                </div>
+
+                <!-- Nadia (speaking) -->
+                <div class="ppt speaking">
+                  <div class="av">
+                    NC
+                    <span class="talk-ring"></span>
+                  </div>
+                  <div class="who">
+                    <div class="name">Nadia Cole</div>
+                    <div class="uri">sip:nadia@noc.internal · TLS · SRTP</div>
+                  </div>
+                  <span class="hid">
+                    <svg fill="none" stroke="currentColor"><use href="#i-headset"/></svg>
+                    Jabra Engage 75
+                  </span>
+                  <span class="mos-chip ok"><span class="dot"></span>4.31</span>
+                  <span class="mic">
+                    <span class="b on" style="height:40%"></span>
+                    <span class="b on" style="height:65%"></span>
+                    <span class="b on" style="height:80%"></span>
+                    <span class="b on" style="height:90%"></span>
+                    <span class="b on" style="height:75%"></span>
+                  </span>
+                  <div class="controls">
+                    <button title="Mute"><svg fill="none" stroke="currentColor"><use href="#i-mic-off"/></svg></button>
+                    <button title="More"><svg fill="none" stroke="currentColor"><use href="#i-more"/></svg></button>
+                  </div>
+                </div>
+
+                <!-- Marcus -->
+                <div class="ppt">
+                  <div class="av">ML</div>
+                  <div class="who">
+                    <div class="name">Marcus Lin</div>
+                    <div class="uri">sip:marcus@lab.noc.internal · TLS · SRTP</div>
+                  </div>
+                  <span class="hid">
+                    <svg fill="none" stroke="currentColor"><use href="#i-mic"/></svg>
+                    Shure MV7
+                  </span>
+                  <span class="mos-chip warn"><span class="dot"></span>3.62</span>
+                  <span class="mic">
+                    <span class="b" style="height:30%; opacity:0.5"></span>
+                    <span class="b" style="height:35%; opacity:0.5"></span>
+                    <span class="b" style="height:25%; opacity:0.5"></span>
+                    <span class="b" style="height:40%; opacity:0.5"></span>
+                    <span class="b" style="height:30%; opacity:0.5"></span>
+                  </span>
+                  <div class="controls">
+                    <button title="Mute"><svg fill="none" stroke="currentColor"><use href="#i-mic-off"/></svg></button>
+                    <button title="More"><svg fill="none" stroke="currentColor"><use href="#i-more"/></svg></button>
+                  </div>
+                </div>
+
+                <!-- Jordan (muted) -->
+                <div class="ppt muted">
+                  <div class="av">JK</div>
+                  <div class="who">
+                    <div class="name">Jordan Kim</div>
+                    <div class="uri">sip:jordan@noc.internal · TLS · SRTP</div>
+                  </div>
+                  <span class="hid">
+                    <svg fill="none" stroke="currentColor"><use href="#i-headset"/></svg>
+                    Logi Zone Vibe
+                  </span>
+                  <span class="mos-chip ok"><span class="dot"></span>4.18</span>
+                  <span class="mic muted">
+                    <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><use href="#i-mic-off"/></svg>
+                  </span>
+                  <div class="controls">
+                    <button title="Unmute"><svg fill="none" stroke="currentColor"><use href="#i-mic"/></svg></button>
+                    <button title="More"><svg fill="none" stroke="currentColor"><use href="#i-more"/></svg></button>
+                  </div>
+                </div>
+
+                <!-- PagerDuty bot (PSTN) -->
+                <div class="ppt">
+                  <div class="av" style="background: var(--beam-amber-12); color: var(--beam-amber);">PD</div>
+                  <div class="who">
+                    <div class="name">PagerDuty bridge <span style="font-family: var(--font-mono); font-size: 10px; color: var(--fg-3); margin-left: 6px; font-weight: 400;">+1 (415) 555-0142</span></div>
+                    <div class="uri">sip:14155550142@trunk-pstn.noc.internal · PSTN · G.711</div>
+                  </div>
+                  <span class="hid" title="No HID — PSTN trunk">
+                    <svg fill="none" stroke="currentColor" style="color: var(--fg-3);"><use href="#i-eject"/></svg>
+                    PSTN
+                  </span>
+                  <span class="mos-chip bad"><span class="dot"></span>2.84</span>
+                  <span class="mic">
+                    <span class="b" style="height:20%; opacity:0.4"></span>
+                    <span class="b" style="height:30%; opacity:0.4"></span>
+                    <span class="b" style="height:25%; opacity:0.4"></span>
+                    <span class="b" style="height:35%; opacity:0.4"></span>
+                    <span class="b" style="height:20%; opacity:0.4"></span>
+                  </span>
+                  <div class="controls">
+                    <button title="Mute"><svg fill="none" stroke="currentColor"><use href="#i-mic-off"/></svg></button>
+                    <button title="More"><svg fill="none" stroke="currentColor"><use href="#i-more"/></svg></button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- RIGHT: sidebar -->
+            <div class="conf-sidebar">
+
+              <!-- MOS panel -->
+              <div class="mos-panel">
+                <div class="head">
+                  <span class="label">Bridge quality</span>
+                  <span class="info">MOS · last 60s · weighted by speaker</span>
+                </div>
+                <div class="big">
+                  <span class="v">4.12</span>
+                  <span class="of">/ 5.00</span>
+                  <span class="verdict">● Good</span>
+                </div>
+                <div class="mos-scale">
+                  <!-- value 4.12 ≈ 82.4% -->
+                  <div class="marker" style="left: 82%;"></div>
+                </div>
+                <div class="mos-scale-axis">
+                  <span>bad · 1</span>
+                  <span>poor · 2</span>
+                  <span>fair · 3</span>
+                  <span>good · 4</span>
+                  <span>5</span>
+                </div>
+
+                <div class="mos-subs">
+                  <div class="sub">
+                    <div class="k">Jitter</div>
+                    <div class="v">3.2<span class="u"> ms</span></div>
+                  </div>
+                  <div class="sub">
+                    <div class="k">Pkt loss</div>
+                    <div class="v warn">0.4<span class="u"> %</span></div>
+                  </div>
+                  <div class="sub">
+                    <div class="k">One-way</div>
+                    <div class="v">42<span class="u"> ms</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Device / HID panel -->
+              <div class="dev-panel">
+                <div class="head">Your audio device</div>
+
+                <div class="dev-row">
+                  <div class="icon">
+                    <svg fill="none" stroke="currentColor"><use href="#i-headset"/></svg>
+                  </div>
+                  <div class="info">
+                    <div class="name">Poly Voyager 5200 <span style="font-family: var(--font-mono); font-size: 10px; color: var(--success); margin-left: 6px; letter-spacing: 0.06em;">HID</span></div>
+                    <div class="meta"><b>Bluetooth</b> · battery <b>74%</b> · firmware 1.4.0</div>
+                  </div>
+                  <div class="toggle on"></div>
+                </div>
+
+                <div class="dev-row">
+                  <div class="icon live">
+                    <svg fill="none" stroke="currentColor"><use href="#i-mic"/></svg>
+                  </div>
+                  <div class="info">
+                    <div class="name">Input <span style="color: var(--fg-3); font-family: var(--font-mono); font-size: 10.5px; font-weight: 400; margin-left: 6px;">opus mono · 48k</span></div>
+                    <div class="meta"><span class="live">capturing</span> · gain <b>+2 dB</b> · AEC <b>on</b> · NS <b>medium</b></div>
+                  </div>
+                </div>
+
+                <div class="dev-row">
+                  <div class="icon live">
+                    <svg fill="none" stroke="currentColor"><use href="#i-speaker"/></svg>
+                  </div>
+                  <div class="info">
+                    <div class="name">Output <span style="color: var(--fg-3); font-family: var(--font-mono); font-size: 10.5px; font-weight: 400; margin-left: 6px;">stereo · 48k</span></div>
+                    <div class="meta">volume <b>72%</b> · ringtone routed to <b>system</b></div>
+                  </div>
+                </div>
+
+                <div class="dev-controls">
+                  <b>HID controls live</b> — physical mute button on the headset mutes/unmutes in NOC_Beam · multi-function button accepts/declines incoming. PTT (push-to-talk) bound to <kbd>Space</kbd>.
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Bottom action bar -->
+          <div class="conf-actions">
+            <button class="conf-action on">
+              <svg fill="none" stroke="currentColor"><use href="#i-mic"/></svg>
+              <span class="lbl">Mic on</span>
+            </button>
+            <button class="conf-action">
+              <svg fill="none" stroke="currentColor"><use href="#i-pause"/></svg>
+              <span class="lbl">Hold</span>
+            </button>
+            <button class="conf-action">
+              <svg fill="none" stroke="currentColor"><use href="#i-volume-x"/></svg>
+              <span class="lbl">Mute all</span>
+            </button>
+            <button class="conf-action on">
+              <svg fill="none" stroke="currentColor"><use href="#i-record"/></svg>
+              <span class="lbl">Recording</span>
+            </button>
+            <button class="conf-action">
+              <svg fill="none" stroke="currentColor"><use href="#i-merge"/></svg>
+              <span class="lbl">Merge call</span>
+            </button>
+            <button class="conf-action">
+              <svg fill="none" stroke="currentColor"><use href="#i-split"/></svg>
+              <span class="lbl">Split</span>
+            </button>
+            <button class="hangup">
+              <svg fill="none" stroke="currentColor"><use href="#i-phone-off"/></svg>
+              <span class="lbl">Leave</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+</body>
+</html>

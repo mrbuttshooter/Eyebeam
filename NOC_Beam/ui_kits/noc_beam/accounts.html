@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NOC_Beam · accounts</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* ============================================================
+     ACCOUNTS — master/detail layout
+     ============================================================ */
+  .accts {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    height: 100%;
+    min-height: 0;
+  }
+
+  /* ---- Master list (left) ---- */
+  .acct-list {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .acct-list-head {
+    height: 48px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .acct-list-head .summary {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-2);
+    letter-spacing: 0.04em;
+  }
+  .acct-list-head .summary b { color: var(--fg-1); font-weight: 500; }
+  .acct-list-head .grow { flex: 1; }
+  .acct-list-head button.add {
+    height: 28px;
+    padding: 0 12px;
+    background: var(--beam-cyan);
+    border: none;
+    color: var(--bg-deep);
+    border-radius: var(--radius-2);
+    font: 600 12px var(--font-ui);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .acct-list-head button.add svg { width: 12px; height: 12px; stroke-width: 2.5; }
+
+  .acct-search {
+    height: 36px;
+    margin: 8px 12px 6px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .acct-search svg { width: 13px; height: 13px; color: var(--fg-3); stroke-width: 1.75; }
+  .acct-search input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--fg-1);
+    font: 12px var(--font-mono);
+  }
+  .acct-search input::placeholder { color: var(--fg-3); }
+
+  .acct-rows {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .acct-row {
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background var(--dur-fast);
+  }
+  .acct-row:hover { background: var(--bg-elev-1); }
+  .acct-row.focused { background: var(--beam-cyan-12); }
+  .acct-row.focused::before {
+    content: '';
+    position: absolute;
+    width: 3px;
+    height: 28px;
+    background: var(--beam-cyan);
+    border-radius: 0 2px 2px 0;
+    margin-left: -16px;
+  }
+  .acct-row .dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+  }
+  .acct-row .dot.warn  { background: var(--warning); }
+  .acct-row .dot.error { background: var(--danger); }
+  .acct-row .dot.live  {
+    background: var(--beam-cyan);
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .acct-row .who { min-width: 0; }
+  .acct-row .who .name { font-size: 13px; font-weight: 500; color: var(--fg-1); }
+  .acct-row .who .uri {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .acct-row .meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+    text-align: right;
+    line-height: 1.4;
+  }
+  .acct-row .meta b { color: var(--fg-2); font-weight: 500; }
+  .acct-row.error .meta b { color: var(--danger); }
+  .acct-row.warn .meta b { color: var(--warning); }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+
+  /* ---- Detail (right) ---- */
+  .acct-detail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: auto;
+  }
+  .acct-detail-head {
+    padding: 22px 28px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .acct-detail-head .av {
+    width: 48px; height: 48px;
+    border-radius: var(--radius-3);
+    background: var(--success-12);
+    color: var(--success);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 600;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .acct-detail-head .av::after {
+    content: '';
+    position: absolute;
+    bottom: -2px; right: -2px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--success);
+    border: 2px solid var(--bg-base);
+  }
+  .acct-detail-head .who { flex: 1; min-width: 0; }
+  .acct-detail-head .who h1 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--fg-1);
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .acct-detail-head .who .uri {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--fg-2);
+  }
+  .acct-detail-head .who .uri b { color: var(--fg-1); font-weight: 500; }
+  .acct-detail-head .who .badges {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+  }
+  .acct-detail-head .who .badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-2);
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 2px 8px;
+    letter-spacing: 0.04em;
+  }
+  .acct-detail-head .who .badge.tls { color: var(--success); border-color: var(--success); background: var(--success-12); }
+  .acct-detail-head .who .badge.srtp { color: var(--success); border-color: var(--success); background: var(--success-12); }
+  .acct-detail-head .actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .acct-detail-head .actions .btn {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--radius-2);
+    border: 1px solid var(--border);
+    background: var(--bg-elev-1);
+    color: var(--fg-1);
+    font: 500 12px var(--font-ui);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .acct-detail-head .actions .btn:hover { background: var(--bg-elev-2); }
+  .acct-detail-head .actions .btn svg { width: 13px; height: 13px; stroke-width: 1.75; }
+  .acct-detail-head .actions .btn.danger { color: var(--danger); }
+
+  .acct-section {
+    padding: 22px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .acct-section .label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+
+  /* Status block — 4 cards */
+  .status-block {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .status-card {
+    background: var(--bg-elev-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 12px 14px;
+  }
+  .status-card .k {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .status-card .v {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--fg-1);
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .status-card .v.mono { font-family: var(--font-mono); font-size: 14px; font-weight: 500; }
+  .status-card .v.success { color: var(--success); }
+  .status-card .v .unit { font-size: 12px; color: var(--fg-3); margin-left: 3px; font-weight: 400; }
+  .status-card .sub {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  /* Timeline */
+  .timeline-wrap {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2);
+    padding: 16px;
+  }
+  .timeline-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
+  .timeline-head .span {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-2);
+  }
+  .timeline-head .span b { color: var(--fg-1); font-weight: 500; }
+  .timeline-head .legend {
+    margin-left: auto;
+    display: flex;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+  }
+  .timeline-head .legend .item { display: inline-flex; align-items: center; gap: 5px; }
+  .timeline-head .legend .swatch { width: 10px; height: 6px; border-radius: 1px; }
+
+  .timeline-bar {
+    height: 18px;
+    display: flex;
+    border-radius: 2px;
+    overflow: hidden;
+    background: var(--bg-elev-1);
+    position: relative;
+  }
+  .timeline-bar .seg { height: 100%; }
+  .timeline-bar .seg.ok    { background: var(--success); }
+  .timeline-bar .seg.warn  { background: var(--warning); }
+  .timeline-bar .seg.error { background: var(--danger); }
+  .timeline-bar .seg.gap   { background: var(--bg-elev-2); }
+  .timeline-bar .now-marker {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--beam-cyan);
+  }
+  .timeline-bar .now-marker::after {
+    content: '';
+    position: absolute;
+    top: -4px; left: -3px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--beam-cyan);
+    box-shadow: 0 0 0 3px rgba(127, 211, 255, 0.18);
+  }
+
+  .timeline-axis {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--fg-3);
+    letter-spacing: 0.04em;
+  }
+
+  .timeline-events {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .ev {
+    display: grid;
+    grid-template-columns: 96px 14px 1fr;
+    gap: 12px;
+    align-items: baseline;
+    padding: 4px 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .ev .ts { color: var(--fg-3); font-variant-numeric: tabular-nums; }
+  .ev .marker {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin: 0 auto;
+  }
+  .ev.ok .marker    { background: var(--success); }
+  .ev.warn .marker  { background: var(--warning); }
+  .ev.error .marker { background: var(--danger); }
+  .ev .desc { color: var(--fg-2); }
+  .ev .desc b { color: var(--fg-1); font-weight: 500; }
+  .ev .desc .code { color: var(--fg-3); }
+
+  /* Last error block */
+  .last-error {
+    background: var(--bg-deep);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-2);
+    padding: 14px 16px;
+  }
+  .last-error .head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .last-error .head .pill {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--danger);
+    background: var(--danger-12);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+  .last-error .head .ts {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+  .last-error .head .grow { flex: 1; }
+  .last-error .head button {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--fg-3);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 2px 8px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+  }
+  .last-error .head button:hover { color: var(--fg-1); border-color: var(--border-strong); }
+  .last-error pre {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--trace-body);
+    white-space: pre;
+  }
+  .last-error pre .hl {
+    background: rgba(255, 92, 122, 0.18);
+    color: #FF8198;
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+  .last-error pre .comment { color: var(--fg-3); font-style: italic; }
+  .last-error .root-cause {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--fg-2);
+    line-height: 1.5;
+  }
+  .last-error .root-cause b { color: var(--fg-1); font-weight: 500; }
+  .last-error .root-cause .label-inline {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--danger);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-right: 8px;
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.37 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.33 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+    </symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+    </symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 12"/>
+    </symbol>
+    <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.36.16.66.43.86.76.2.33.31.71.31 1.1V12c0 .39-.11.77-.31 1.1-.2.33-.5.6-.86.76Z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </symbol>
+    <symbol id="i-test" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <polyline points="22 4 12 14.01 9 11.01"/>
+    </symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+    </symbol>
+    <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+      <line x1="12" y1="2" x2="12" y2="12"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="app" data-screen-label="08 Accounts">
+
+  <div class="titlebar">
+    <div class="tb-brand">
+      <svg viewBox="0 0 360 72" width="160" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g font-family="'Cascadia Code', ui-monospace, monospace" font-weight="600">
+          <text x="8" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-1">NOC</text>
+          <text x="100" y="50" font-size="40" fill="#7FD3FF">_</text>
+        </g>
+        <g font-family="'Inter', sans-serif" font-weight="600">
+          <text x="124" y="50" font-size="40" fill="#E6EDF3" letter-spacing="-0.5">Beam</text>
+        </g>
+        <line x1="244" y1="32" x2="352" y2="32" stroke="#7FD3FF" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="352" cy="32" r="4" fill="#FFB86C"/>
+      </svg>
+      <span class="ver">0.1.0</span>
+    </div>
+    <div class="tb-account">
+      <span class="dot"></span>
+      <span class="name">priya.r</span>
+      <span class="at">@</span>
+      <span class="host">sbc-east.noc.internal</span>
+      <svg class="chev" viewBox="0 0 24 24" width="12" height="12"><use href="#i-chev"/></svg>
+    </div>
+    <label class="tb-uri">
+      <span class="prompt">dial</span>
+      <span class="caret">›</span>
+      <input type="text" placeholder="sip:peer@host  ·  +1 555 …  ·  *97">
+      <kbd>⌘K</kbd>
+    </label>
+    <div class="tb-winctl">
+      <button>—</button><button>▢</button><button class="close">✕</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <nav class="rail">
+      <div class="nav">
+        <button class="rail-btn"><svg><use href="#i-phone"/></svg><span class="lbl">Calls</span></button>
+        <button class="rail-btn"><svg><use href="#i-activity"/></svg><span class="lbl">Trace</span></button>
+        <button class="rail-btn"><svg><use href="#i-clock"/></svg><span class="lbl">History</span></button>
+        <button class="rail-btn active"><svg><use href="#i-users"/></svg><span class="lbl">Accounts</span></button>
+        <button class="rail-btn"><svg><use href="#i-settings"/></svg><span class="lbl">Settings</span></button>
+      </div>
+      <div class="spacer"></div>
+      <div class="rail-status">
+        <span class="dot"></span>
+        <span class="lbl">5 / 6</span>
+        <span class="sub">REGISTERED</span>
+      </div>
+    </nav>
+
+    <section class="content">
+
+      <div class="view-header">
+        <div class="title">Accounts</div>
+        <div class="crumbs"><span>~/accounts</span><span class="sep">/</span><span style="color:var(--fg-1);">priya.r@sbc-east</span></div>
+      </div>
+
+      <div class="accts">
+
+        <!-- ============================================
+             MASTER LIST
+             ============================================ -->
+        <div class="acct-list">
+          <div class="acct-list-head">
+            <div class="summary"><b>5</b> of <b>6</b> registered</div>
+            <div class="grow"></div>
+            <button class="add">
+              <svg fill="none" stroke="currentColor"><use href="#i-plus"/></svg>
+              Add
+            </button>
+          </div>
+
+          <label class="acct-search">
+            <svg fill="none" stroke="currentColor"><use href="#i-search"/></svg>
+            <input type="text" placeholder="filter by name, URI, host…">
+          </label>
+
+          <div class="acct-rows">
+
+            <div class="acct-row focused" style="position: relative;">
+              <span class="dot"></span>
+              <div class="who">
+                <div class="name">Priya — SBC East</div>
+                <div class="uri">sip:priya@sbc-east.noc.internal</div>
+              </div>
+              <div class="meta">
+                <b>00:42:18</b><br>
+                opus · TLS
+              </div>
+            </div>
+
+            <div class="acct-row">
+              <span class="dot"></span>
+              <div class="who">
+                <div class="name">Priya — SBC West</div>
+                <div class="uri">sip:priya@sbc-west.noc.internal</div>
+              </div>
+              <div class="meta">
+                <b>03:18:42</b><br>
+                opus · TLS
+              </div>
+            </div>
+
+            <div class="acct-row error">
+              <span class="dot error"></span>
+              <div class="who">
+                <div class="name">Alice — Lab</div>
+                <div class="uri">sip:alice@lab.noc.internal</div>
+              </div>
+              <div class="meta">
+                <b>401 LOOP</b><br>
+                4m ago
+              </div>
+            </div>
+
+            <div class="acct-row">
+              <span class="dot"></span>
+              <div class="who">
+                <div class="name">Echo *97</div>
+                <div class="uri">sip:*97@sbc-east.noc.internal</div>
+              </div>
+              <div class="meta">
+                <b>12:11:33</b><br>
+                G.711 · UDP
+              </div>
+            </div>
+
+            <div class="acct-row">
+              <span class="dot"></span>
+              <div class="who">
+                <div class="name">PSTN trunk</div>
+                <div class="uri">sip:trunk-pstn@pstn.noc.internal</div>
+              </div>
+              <div class="meta">
+                <b>1d 14h</b><br>
+                G.711 · TLS
+              </div>
+            </div>
+
+            <div class="acct-row warn">
+              <span class="dot live"></span>
+              <div class="who">
+                <div class="name">PagerDuty bot</div>
+                <div class="uri">sip:bot@pd.noc.internal</div>
+              </div>
+              <div class="meta">
+                <b>REGISTERING</b><br>
+                attempt 2
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ============================================
+             DETAIL
+             ============================================ -->
+        <div class="acct-detail">
+
+          <div class="acct-detail-head">
+            <div class="av">PR</div>
+            <div class="who">
+              <h1>Priya — SBC East</h1>
+              <div class="uri">sip:<b>priya</b>@<b>sbc-east.noc.internal</b>:5061</div>
+              <div class="badges">
+                <span class="badge tls">TLS</span>
+                <span class="badge srtp">SRTP mandatory</span>
+                <span class="badge">Auth · Digest SHA-256</span>
+                <span class="badge">Register on startup</span>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn">
+                <svg fill="none" stroke="currentColor"><use href="#i-test"/></svg>
+                Test
+              </button>
+              <button class="btn">
+                <svg fill="none" stroke="currentColor"><use href="#i-edit"/></svg>
+                Edit
+              </button>
+              <button class="btn">
+                <svg fill="none" stroke="currentColor"><use href="#i-power"/></svg>
+                Unregister
+              </button>
+              <button class="btn danger">
+                <svg fill="none" stroke="currentColor"><use href="#i-trash"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Status block -->
+          <div class="acct-section">
+            <div class="label">Status</div>
+            <div class="status-block">
+              <div class="status-card">
+                <div class="k">Uptime</div>
+                <div class="v success">00:42:18</div>
+                <div class="sub">since 14:18:09 UTC · last re-REGISTER 28s ago</div>
+              </div>
+              <div class="status-card">
+                <div class="k">Calls · 7d</div>
+                <div class="v">128</div>
+                <div class="sub">↗ 14% vs prior week</div>
+              </div>
+              <div class="status-card">
+                <div class="k">MOS · 24h</div>
+                <div class="v mono">4.31<span class="unit"> / 5</span></div>
+                <div class="sub">opus@48k · 0.4% loss</div>
+              </div>
+              <div class="status-card">
+                <div class="k">Round-trip</div>
+                <div class="v mono">126<span class="unit"> ms</span></div>
+                <div class="sub">last OPTIONS · 14:18:09</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Timeline -->
+          <div class="acct-section">
+            <div class="label">Registration timeline · last 24 hours</div>
+
+            <div class="timeline-wrap">
+              <div class="timeline-head">
+                <span class="span">14 Nov <b>14:18:09</b> UTC — now</span>
+                <div class="legend">
+                  <span class="item"><span class="swatch" style="background: var(--success);"></span>registered</span>
+                  <span class="item"><span class="swatch" style="background: var(--warning);"></span>retrying</span>
+                  <span class="item"><span class="swatch" style="background: var(--danger);"></span>down</span>
+                  <span class="item"><span class="swatch" style="background: var(--bg-elev-2);"></span>no data</span>
+                </div>
+              </div>
+
+              <div class="timeline-bar">
+                <div class="seg gap"   style="width: 18%"></div>
+                <div class="seg ok"    style="width: 14%"></div>
+                <div class="seg error" style="width: 2%"></div>
+                <div class="seg warn"  style="width: 2%"></div>
+                <div class="seg ok"    style="width: 34%"></div>
+                <div class="seg gap"   style="width: 3%"></div>
+                <div class="seg ok"    style="width: 27%"></div>
+                <div class="now-marker"></div>
+              </div>
+
+              <div class="timeline-axis">
+                <span>14:18 yesterday</span>
+                <span>21:00</span>
+                <span>03:00</span>
+                <span>09:00</span>
+                <span>14:18 now</span>
+              </div>
+
+              <div class="timeline-events">
+                <div class="ev ok">    <span class="ts">14:18:09</span><span class="marker"></span><span class="desc"><b>REGISTERED</b> <span class="code">· 200 OK · 126 ms · re-register every 3600s</span></span></div>
+                <div class="ev ok">    <span class="ts">09:11:42</span><span class="marker"></span><span class="desc"><b>REGISTERED</b> <span class="code">· 200 OK · after maintenance window</span></span></div>
+                <div class="ev warn">  <span class="ts">08:55:00</span><span class="marker"></span><span class="desc"><b>RETRYING</b> <span class="code">· SBC briefly unreachable · 14 attempts over 16 min</span></span></div>
+                <div class="ev error"> <span class="ts">04:14:22</span><span class="marker"></span><span class="desc"><b>UNREGISTERED</b> <span class="code">· connection lost · scheduled SBC restart</span></span></div>
+                <div class="ev ok">    <span class="ts">yesterday 21:30</span><span class="marker"></span><span class="desc"><b>REGISTERED</b> <span class="code">· 200 OK · initial registration</span></span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Last incident — shown when there's a recent error worth surfacing -->
+          <div class="acct-section">
+            <div class="label">Last incident</div>
+            <div class="last-error">
+              <div class="head">
+                <span class="pill">⚠ Connection lost</span>
+                <span class="ts">04:14:22 UTC · 10h ago · auto-recovered at 09:11:42</span>
+                <div class="grow"></div>
+                <button>View full trace ↗</button>
+                <button>Copy</button>
+              </div>
+<pre>14:14:22.118 TX → OPTIONS sip:sbc-east.noc.internal SIP/2.0
+                  Via: SIP/2.0/TLS 10.4.1.55:5061;branch=z9hG4bK.keepalive
+                  CSeq: 247 OPTIONS
+
+14:14:22.118     <span class="hl">TIMEOUT</span> after 30000 ms · no response   <span class="comment">// scheduled SBC restart</span>
+14:14:22.118     <span class="comment">// endpoint backed off · retry in 30s, 60s, 120s, 240s …</span></pre>
+              <div class="root-cause">
+                <span class="label-inline">Root cause</span>
+                Scheduled SBC restart (change order <b>#CHG-2841</b>) didn't drain endpoints before bouncing. Endpoint retried with linear backoff and re-registered at <b>09:11:42</b>. <b>No calls dropped</b> (no active sessions at the time). Recurrence prevented by <b>incident #482</b>: SBC restarts now require <code style="color: var(--beam-cyan); font-family: var(--font-mono);">--graceful</code>.
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+</body>
+</html>
