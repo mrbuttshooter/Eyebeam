@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - claude/eyebeam-sip-testing-j5qRA
+      - claude/debug-error-Dlc4I
       - main
     paths:
       - 'python-app/**'
@@ -199,15 +200,17 @@ jobs:
 
           Get-ChildItem $dest
 
-      - name: Sanity check pjsua2 import
-        run: |
-          python -c "from noc_beam._native.pjsua2 import pjsua2 as pj; ep = pj.Endpoint(); ep.libCreate(); print('PJSIP version:', ep.libVersion().full); ep.libDestroy()"
-
       # ---------------- PyInstaller ----------------
+      # Install Python deps BEFORE the sanity check — the import below requires
+      # the noc_beam package to be on sys.path.
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+
+      - name: Sanity check pjsua2 import
+        run: |
+          python -c "from noc_beam._native.pjsua2 import pjsua2 as pj; ep = pj.Endpoint(); ep.libCreate(); print('PJSIP version:', ep.libVersion().full); ep.libDestroy()"
 
       - name: Build EXE with PyInstaller
         run: |
