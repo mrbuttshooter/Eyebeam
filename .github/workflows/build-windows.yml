@@ -1,0 +1,234 @@
+name: Build NOC_Beam Windows EXE
+
+on:
+  push:
+    branches:
+      - claude/eyebeam-sip-testing-j5qRA
+      - main
+    paths:
+      - 'python-app/**'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+
+env:
+  PJSIP_TAG: "2.14.1"
+  OPENSSL_TAG: "openssl-3.0.13"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ------------------------------------------------------------------
+  # Unit tests (fast — no native build needed)
+  # ------------------------------------------------------------------
+  test:
+    name: Tests (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: python-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: pytest tests/ -v
+
+  # ------------------------------------------------------------------
+  # Native build (PJSIP + OpenSSL + BCG729) + PyInstaller
+  # ------------------------------------------------------------------
+  build:
+    name: Build NOC_Beam.exe
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: python-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Enable MSVC x64 environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install build tools (NASM, SWIG, Strawberry Perl)
+        shell: pwsh
+        run: |
+          choco install -y --no-progress nasm swig strawberryperl
+          # Make sure NASM and SWIG are on PATH for subsequent steps
+          "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Append
+          "C:\ProgramData\chocolatey\lib\swig\tools\swigwin-*" | ForEach-Object {
+            $p = Resolve-Path $_ -ErrorAction SilentlyContinue
+            if ($p) { $p.Path | Out-File -FilePath $env:GITHUB_PATH -Append }
+          }
+
+      - name: Verify toolchain
+        run: |
+          Write-Host "=== cl.exe ==="
+          cl 2>&1 | Select-Object -First 1
+          Write-Host "=== python ==="
+          python --version
+          Write-Host "=== swig ==="
+          swig -version
+          Write-Host "=== nasm ==="
+          nasm -v
+          Write-Host "=== perl ==="
+          perl --version | Select-Object -First 2
+          Write-Host "=== cmake ==="
+          cmake --version | Select-Object -First 1
+
+      - name: Cache native dependencies
+        id: cache-native
+        uses: actions/cache@v4
+        with:
+          path: |
+            python-app/third_party/openssl-install
+            python-app/third_party/bcg729-install
+            python-app/src/noc_beam/_native
+          key: native-${{ runner.os }}-${{ env.PJSIP_TAG }}-${{ env.OPENSSL_TAG }}-v3-${{ hashFiles('python-app/build/build_pjsip_windows.md') }}
+
+      # ---------------- OpenSSL ----------------
+      - name: Build OpenSSL
+        if: steps.cache-native.outputs.cache-hit != 'true'
+        run: |
+          New-Item -ItemType Directory -Force -Path third_party | Out-Null
+          Push-Location third_party
+          if (-not (Test-Path openssl)) {
+            git clone --depth 1 --branch $env:OPENSSL_TAG https://github.com/openssl/openssl.git
+          }
+          Push-Location openssl
+          $prefix = (Resolve-Path ..).Path + "\openssl-install"
+          perl Configure VC-WIN64A no-shared no-tests --prefix=$prefix
+          nmake
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL nmake failed" }
+          nmake install_sw
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL install_sw failed" }
+          Pop-Location
+          Pop-Location
+
+      # ---------------- BCG729 ----------------
+      - name: Build BCG729 (G.729 codec)
+        if: steps.cache-native.outputs.cache-hit != 'true'
+        run: |
+          Push-Location third_party
+          if (-not (Test-Path bcg729)) {
+            git clone --depth 1 https://github.com/BelledonneCommunications/bcg729.git
+          }
+          Push-Location bcg729
+          New-Item -ItemType Directory -Force -Path build-win | Out-Null
+          Push-Location build-win
+          $prefix = (Resolve-Path ..\..).Path + "\bcg729-install"
+          cmake -G "Visual Studio 17 2022" -A x64 `
+                -DCMAKE_INSTALL_PREFIX="$prefix" `
+                -DENABLE_SHARED=OFF `
+                -DENABLE_STATIC=ON ..
+          if ($LASTEXITCODE -ne 0) { throw "BCG729 cmake configure failed" }
+          cmake --build . --config Release --target install
+          if ($LASTEXITCODE -ne 0) { throw "BCG729 cmake build failed" }
+          Pop-Location; Pop-Location; Pop-Location
+
+      # ---------------- PJSIP ----------------
+      - name: Build PJSIP
+        if: steps.cache-native.outputs.cache-hit != 'true'
+        run: |
+          Push-Location third_party
+          if (-not (Test-Path pjproject)) {
+            git clone --depth 1 --branch $env:PJSIP_TAG https://github.com/pjsip/pjproject.git
+          }
+          Push-Location pjproject
+
+          # config_site.h enables TLS, SRTP, BCG729, Opus, WASAPI
+          @"
+#define PJ_HAS_IPV6                 1
+#define PJ_HAS_SSL_SOCK             1
+#define PJMEDIA_HAS_SRTP            1
+#define PJMEDIA_HAS_BCG729          1
+#define PJMEDIA_HAS_OPUS_CODEC      1
+#define PJMEDIA_AUDIO_DEV_HAS_WASAPI 1
+#define PJMEDIA_AUDIO_DEV_HAS_WMME  1
+#define PJSUA_MAX_ACC               32
+#define PJSUA_MAX_CALLS             16
+#include <pj/config_site_sample.h>
+"@ | Set-Content -Encoding ASCII pjlib\include\pj\config_site.h
+
+          $env:OPENSSL_DIR = (Resolve-Path ..\openssl-install).Path
+          $env:BCG729_DIR  = (Resolve-Path ..\bcg729-install).Path
+          Write-Host "OPENSSL_DIR=$env:OPENSSL_DIR"
+          Write-Host "BCG729_DIR =$env:BCG729_DIR"
+
+          $env:INCLUDE = "$env:OPENSSL_DIR\include;$env:BCG729_DIR\include;$env:INCLUDE"
+          $env:LIB     = "$env:OPENSSL_DIR\lib;$env:BCG729_DIR\lib;$env:LIB"
+
+          msbuild pjproject-vs14.sln /p:Configuration=Release /p:Platform=x64 /m /v:m
+          if ($LASTEXITCODE -ne 0) { throw "PJSIP msbuild failed" }
+
+          Pop-Location
+          Pop-Location
+
+      # ---------------- pjsua2 Python extension ----------------
+      - name: Build pjsua2 Python extension
+        if: steps.cache-native.outputs.cache-hit != 'true'
+        run: |
+          Push-Location third_party\pjproject\pjsip-apps\src\swig
+          nmake python
+          if ($LASTEXITCODE -ne 0) { throw "swig python nmake failed" }
+          Pop-Location
+
+          $dest = "src\noc_beam\_native\pjsua2"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Force third_party\pjproject\pjsip-apps\src\swig\python\_pjsua2.pyd $dest\
+          Copy-Item -Force third_party\pjproject\pjsip-apps\src\swig\python\pjsua2.py    $dest\
+          "" | Set-Content "$dest\__init__.py"
+
+          Get-ChildItem $dest
+
+      - name: Sanity check pjsua2 import
+        run: |
+          python -c "from noc_beam._native.pjsua2 import pjsua2 as pj; ep = pj.Endpoint(); ep.libCreate(); print('PJSIP version:', ep.libVersion().full); ep.libDestroy()"
+
+      # ---------------- PyInstaller ----------------
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Build EXE with PyInstaller
+        run: |
+          pyinstaller --clean --noconfirm build\noc_beam.spec
+          if (-not (Test-Path dist\NOC_Beam.exe)) {
+            throw "PyInstaller did not produce dist\NOC_Beam.exe"
+          }
+          $size = [math]::Round((Get-Item dist\NOC_Beam.exe).Length / 1MB, 1)
+          Write-Host "Built NOC_Beam.exe ($size MB)"
+
+      # ---------------- Artifact ----------------
+      - name: Upload NOC_Beam.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOC_Beam-windows-x64
+          path: python-app/dist/NOC_Beam.exe
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            python-app/third_party/pjproject/build/output/**/*.log
+            python-app/third_party/openssl/*.log
+          if-no-files-found: ignore
