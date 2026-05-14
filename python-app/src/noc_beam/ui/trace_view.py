@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
+from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -127,6 +128,8 @@ class TraceView(QWidget):
         self.text.setTextCursor(cursor)
         self.text.ensureCursorVisible()
 
+    export_failed = Signal(str)
+
     def _on_export(self) -> None:
         """Save the currently-visible trace buffer to a .log file."""
         default = log_dir() / f"sip_trace_export_{datetime.now():%Y%m%d_%H%M%S}.log"
@@ -140,4 +143,6 @@ class TraceView(QWidget):
                 fh.write(self.text.toPlainText())
         except Exception as e:
             logging.getLogger(__name__).exception("Trace export failed")
-            self.window().statusBar().showMessage(f"Export failed: {e}", 5000)
+            # v2 has no bottom status bar; route the error to whoever's
+            # listening (MainWindow wires this to the rail status pill).
+            self.export_failed.emit(f"Export failed: {e}")
