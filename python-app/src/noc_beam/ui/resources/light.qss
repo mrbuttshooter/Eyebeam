@@ -1861,3 +1861,85 @@ QLabel#AudioMeterLabel {
     letter-spacing: 0.5px;
     min-width: 18px;
 }
+
+/* ---------- Multi-call strip (panel 1 multi-call rework) ---------- */
+QFrame#CallStrips {
+    background-color: transparent;
+}
+QFrame#CallStripRow {
+    background-color: #F4F6F9;
+    border: 1px solid #D8DEE4;
+    border-left: 3px solid transparent;
+    border-radius: 4px;
+}
+QFrame#CallStripRow[selected="true"] {
+    background-color: #DCEEFC;
+    border-left: 3px solid #1A6FA0;
+}
+QLabel#CallStripPeer {
+    color: #1F2933;
+    font-weight: 600;
+}
+QLabel#CallStripState {
+    color: #57606A;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 11px;
+}
+QPushButton#CallStripSelectBtn {
+    border: 1px solid #D8DEE4;
+    background-color: #FFFFFF;
+    color: #1F2933;
+    border-radius: 3px;
+    padding: 2px 8px;
+    min-height: 22px;
+}
+QPushButton#CallStripSelectBtn:hover {
+    background-color: #EAF0F6;
+}
+QPushButton#CallStripEndBtn {
+    background-color: #D33841;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 3px;
+    padding: 0 8px;
+    min-width: 24px;
+    min-height: 22px;
+    font-weight: 700;
+}
+QPushButton#CallStripEndBtn:hover {
+    background-color: #B22D35;
+}
+QFrame#CallStripFooter {
+    background-color: transparent;
+}
+QPushButton#CallStripEndAllBtn {
+    background-color: #D33841;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-weight: 700;
+}
+QPushButton#CallStripEndAllBtn:hover {
+    background-color: #B22D35;
+}
+
+/* ---------- Audio strip mic-mute checked + chevron ---------- */
+QToolButton#AudioBtn:checked {
+    background-color: #FDECEE;
+    border: 1px solid #E5A4A8;
+    border-radius: 3px;
+}
+QToolButton#AudioChevron {
+    background: transparent;
+    border: none;
+    color: #57606A;
+    font-size: 10px;
+    padding: 0 2px;
+    min-width: 12px;
+    max-width: 14px;
+}
+QToolButton#AudioChevron:hover {
+    color: #1F2933;
+}
+QToolButton#AudioChevron::menu-indicator { image: none; width: 0; }

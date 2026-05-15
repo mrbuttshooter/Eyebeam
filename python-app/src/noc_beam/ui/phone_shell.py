@@ -235,13 +235,34 @@ class PhoneShell(QMainWindow):
         top_l.addLayout(acct_row)
 
         self.audio = AudioStrip(top)
-        # Wire the audio-strip mute toggle so it actually mutes the
-        # active call's microphone (was previously a dangling signal).
+        # Top-strip mic icon mutes the microphone on the active call.
+        self.audio.mic_muted_changed.connect(self._on_audio_strip_mic_mute)
+        # Top-strip mic vol drives the capture-device → call-port gain.
+        self.audio.mic_volume_changed.connect(self._on_audio_strip_mic_volume)
+        # Top-strip speaker icon mutes the OUTPUT side of the active call.
         self.audio.muted_changed.connect(self._on_audio_strip_mute)
         # Volume slider drives the output-side audio level on the
         # active call's media. No-op when there's no call.
         self.audio.volume_changed.connect(self._on_audio_strip_volume)
         top_l.addWidget(self.audio)
+
+        # TX / RX live audio meter -- 200ms QTimer polls the active call's
+        # audio media and updates AudioStrip's progress bars.
+        # Constructed without a parent because tests monkey-patch QTimer
+        # with a FakeTimer that takes no constructor args.
+        self._level_timer = QTimer()
+        try:
+            self._level_timer.setInterval(200)
+        except Exception:
+            pass
+        try:
+            self._level_timer.timeout.connect(self._poll_audio_levels)
+        except Exception:
+            pass
+        try:
+            self._level_timer.start()
+        except Exception:
+            pass
 
         self.status_banner = QLabel("Starting...", top)
         self.status_banner.setObjectName("StatusBanner")
@@ -328,6 +349,21 @@ class PhoneShell(QMainWindow):
         hero_l.addStretch(2)
         self.first_run_hero.setVisible(False)
 
+        # Multi-call strip: one row per active call with its own X
+        # hangup button + an "End all" pill on the right when there
+        # are 2+ live calls. Stays hidden when there are zero calls
+        # so it doesn't intrude on the idle state.
+        self.calls_strip = QFrame(self)
+        self.calls_strip.setObjectName("CallStrips")
+        self.calls_strip_layout = QVBoxLayout(self.calls_strip)
+        self.calls_strip_layout.setContentsMargins(0, 0, 0, 0)
+        self.calls_strip_layout.setSpacing(2)
+        self.calls_strip.setVisible(False)
+        self.calls.call_added.connect(lambda _cid: self._refresh_calls_strip())
+        self.calls.call_removed.connect(lambda _cid: self._refresh_calls_strip())
+        self.calls.call_updated.connect(lambda _cid: self._refresh_calls_strip())
+
+        dpl.addWidget(self.calls_strip)
         dpl.addWidget(self.call_widget)
         dpl.addWidget(self.first_run_hero)
         dpl.addWidget(self.dialpad)
@@ -850,6 +886,166 @@ class PhoneShell(QMainWindow):
                 aud.adjustRxLevel(level)
         except Exception:
             log.exception("audio-strip volume adjust failed")
+
+    def _on_audio_strip_mic_mute(self, muted: bool) -> None:
+        """Top-strip mic icon → mute/unmute the microphone on the
+        active call. Mirrors the existing speaker-icon mute behaviour."""
+        call = self._selected_pjsua_call()
+        if call is None or self._selected_call_id is None:
+            return
+        try:
+            SipEndpoint.instance().set_call_mute(call, muted)
+            self.calls.set_mute(self._selected_call_id, muted)
+            # Mirror the in-call CallWidget Mute button.
+            self.call_widget.mute_btn.blockSignals(True)
+            self.call_widget.mute_btn.setChecked(muted)
+            self.call_widget.mute_btn.blockSignals(False)
+        except Exception:
+            log.exception("audio-strip mic mute failed")
+
+    def _on_audio_strip_mic_volume(self, value: int) -> None:
+        """Top-strip mic gain → adjustTxLevel on the active call.
+        adjustTxLevel scales capture → call: 1.0 unity, 0 mutes."""
+        call = self._selected_pjsua_call()
+        if call is None:
+            return
+        try:
+            from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE
+            if not PJSUA2_AVAILABLE:
+                return
+            info = call.getInfo()
+            for mi in info.media:
+                if mi.type != 1 or mi.status != 1:
+                    continue
+                aud = call.getAudioMedia(mi.index)
+                level = max(0.0, min(1.5, value / 66.6))
+                aud.adjustTxLevel(level)
+        except Exception:
+            log.exception("audio-strip mic volume adjust failed")
+
+    def _poll_audio_levels(self) -> None:
+        """Read getRxLevel / getTxLevel off the active call's audio
+        media and push 0–100 normalised values into the AudioStrip
+        meters. Called every 200 ms by ``self._level_timer``.
+
+        pjsua2 returns levels as ``unsigned`` 0..255 (peak amplitude
+        sample window). We normalise to 0..100 by dividing by 2.55.
+        """
+        call = self._selected_pjsua_call()
+        if call is None:
+            self.audio.set_tx_level(0)
+            self.audio.set_rx_level(0)
+            return
+        try:
+            from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE
+            if not PJSUA2_AVAILABLE:
+                return
+            info = call.getInfo()
+            tx = rx = 0
+            for mi in info.media:
+                if mi.type != 1 or mi.status != 1:
+                    continue
+                aud = call.getAudioMedia(mi.index)
+                # PJSIP gives raw 0..255 amplitude.
+                try:
+                    rx = max(rx, int(aud.getRxLevel() / 2.55))
+                except Exception:
+                    pass
+                try:
+                    tx = max(tx, int(aud.getTxLevel() / 2.55))
+                except Exception:
+                    pass
+                break
+            self.audio.set_tx_level(tx)
+            self.audio.set_rx_level(rx)
+        except Exception:
+            # Polling must never raise into the event loop.
+            pass
+
+    def _on_end_all_calls(self) -> None:
+        """Hangup EVERY live call across every account.
+
+        Multi-call regression fix: the per-call End button only ends the
+        currently selected call, leaving the rest live. The user has no
+        way to bulk-clear without clicking through each one.
+        """
+        try:
+            ep = SipEndpoint.instance()
+        except Exception:
+            return
+        # Snapshot the IDs first so we don't mutate the list as we iterate.
+        ids = [rec.call_id for rec in self.calls.active()]
+        for cid in ids:
+            try:
+                live = ep.find_call(cid)
+                if live is not None:
+                    ep.hangup_call(live)
+            except Exception:
+                log.exception("hangup failed for call %s", cid)
+
+    def _refresh_calls_strip(self) -> None:
+        """Re-render the multi-call strip from the current call list.
+
+        Each row: peer + state pill + per-call X hangup button. Click
+        the row to make it the selected call. When 2+ calls are live
+        an "End all" pill renders on the right of its own row.
+        """
+        # Tear down all existing strip widgets.
+        while self.calls_strip_layout.count():
+            item = self.calls_strip_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        active = self.calls.active()
+        if not active:
+            self.calls_strip.setVisible(False)
+            return
+        self.calls_strip.setVisible(True)
+        for rec in active:
+            row = QFrame(self.calls_strip)
+            row.setObjectName("CallStripRow")
+            row.setProperty("selected", rec.call_id == self._selected_call_id)
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(10, 4, 6, 4)
+            rl.setSpacing(8)
+            peer_lbl = QLabel(rec.remote_uri or "...", row)
+            peer_lbl.setObjectName("CallStripPeer")
+            state_lbl = QLabel(rec.state.name.title(), row)
+            state_lbl.setObjectName("CallStripState")
+            select_btn = QPushButton("Show", row)
+            select_btn.setObjectName("CallStripSelectBtn")
+            select_btn.clicked.connect(lambda _checked=False, cid=rec.call_id: self._select_call(cid))
+            end_btn = QPushButton("X", row)
+            end_btn.setObjectName("CallStripEndBtn")
+            end_btn.setToolTip("End this call")
+            end_btn.clicked.connect(lambda _checked=False, cid=rec.call_id: self._hangup_one(cid))
+            rl.addWidget(peer_lbl, 1)
+            rl.addWidget(state_lbl)
+            rl.addWidget(select_btn)
+            rl.addWidget(end_btn)
+            self.calls_strip_layout.addWidget(row)
+        if len(active) >= 2:
+            footer = QFrame(self.calls_strip)
+            footer.setObjectName("CallStripFooter")
+            fl = QHBoxLayout(footer)
+            fl.setContentsMargins(10, 4, 6, 4)
+            fl.addStretch(1)
+            end_all_btn = QPushButton(f"End all ({len(active)})", footer)
+            end_all_btn.setObjectName("CallStripEndAllBtn")
+            end_all_btn.clicked.connect(self._on_end_all_calls)
+            fl.addWidget(end_all_btn)
+            self.calls_strip_layout.addWidget(footer)
+
+    def _hangup_one(self, call_id: int) -> None:
+        """Hangup a specific call by ID. Bypasses the selected-call
+        gate so any strip row can end its own call."""
+        try:
+            live = SipEndpoint.instance().find_call(call_id)
+            if live is not None:
+                SipEndpoint.instance().hangup_call(live)
+        except Exception:
+            log.exception("hangup_one failed for call %s", call_id)
 
     def _on_digit_pressed(self, digit):
         # When in a call, digits are DTMF tones routed via the SIP endpoint.
