@@ -30,6 +30,7 @@ from noc_beam.config.contacts import (
     save_contacts,
     update_contact,
 )
+from noc_beam.ui.components import FooterActionBar
 from noc_beam.ui.rail_icons import rail_icon
 
 
@@ -84,18 +85,20 @@ class ContactDialog(QDialog):
         form.addRow("Group", self.group_edit)
         form.addRow(self.favorite_check)
 
-        self.buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save
-            | QDialogButtonBox.StandardButton.Cancel,
+        self.footer = FooterActionBar(
+            "Save contact" if is_edit else "Add contact",
+            "Cancel",
             self,
         )
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
+        self.save_btn = self.footer.primary_button
+        self.save_btn.clicked.connect(self.accept)
+        self.footer.secondary_button.clicked.connect(self.reject)
+        self.buttons = None
 
         root = QVBoxLayout(self)
         root.addLayout(form)
         root.addWidget(self.error)
-        root.addWidget(self.buttons)
+        root.addWidget(self.footer)
 
     def values(self) -> dict[str, str | bool]:
         return {

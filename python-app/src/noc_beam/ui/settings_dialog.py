@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QDialogButtonBox,
     QFormLayout,
     QHeaderView,
     QLabel,
@@ -21,6 +20,7 @@ from PySide6.QtWidgets import (
 from noc_beam.audio.devices import enumerate_devices
 from noc_beam.codecs.manager import list_codecs
 from noc_beam.config.store import GlobalSettings
+from noc_beam.ui.components import FooterActionBar
 
 
 class SettingsDialog(QDialog):
@@ -36,13 +36,13 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_appearance_tab(), "Appearance")
         tabs.addTab(self._build_advanced_tab(), "Advanced")
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
+        self.footer = FooterActionBar("Save", "Cancel", self)
+        self.footer.primary_button.clicked.connect(self.accept)
+        self.footer.secondary_button.clicked.connect(self.reject)
 
         layout = QVBoxLayout(self)
         layout.addWidget(tabs)
-        layout.addWidget(buttons)
+        layout.addWidget(self.footer)
 
     # ------------------------------------------------------------------
     def _build_audio_tab(self) -> QWidget:

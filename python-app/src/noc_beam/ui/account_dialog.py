@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -19,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from noc_beam.config.store import AccountConfig
+from noc_beam.ui.components import FooterActionBar, FormSection
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ TEST_TIMEOUT_MS = 8000
 class AccountDialog(QDialog):
     def __init__(self, account: AccountConfig | None = None, parent=None) -> None:  # noqa: ANN001
         super().__init__(parent)
-        self.setWindowTitle("SIP account")
+        self.setWindowTitle("Edit SIP account" if account is not None else "Add SIP account")
         self.setMinimumWidth(420)
 
         self._editing = account is not None
@@ -64,19 +64,36 @@ class AccountDialog(QDialog):
         self.enabled = QCheckBox("Enabled")
         self.enabled.setChecked(account.enabled)
 
-        form = QFormLayout()
-        form.addRow("Display name", self.display_name)
-        form.addRow("Username", self.username)
-        form.addRow("Auth user (if different)", self.auth_user)
-        form.addRow("Domain / registrar", self.domain)
-        form.addRow("Password", self.password)
-        form.addRow("Outbound proxy (optional)", self.proxy)
-        form.addRow("STUN server (optional)", self.stun_server)
-        form.addRow("Transport", self.transport)
-        form.addRow("SRTP", self.srtp)
-        form.addRow("DTMF method", self.dtmf_method)
-        form.addRow(self.register)
-        form.addRow(self.enabled)
+        identity = FormSection("Identity", self)
+        identity_form = QFormLayout()
+        identity_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        identity_form.addRow("Display name", self.display_name)
+        identity_form.addRow("Username *", self.username)
+        identity_form.addRow("Auth user", self.auth_user)
+        identity.body.addLayout(identity_form)
+
+        connection = FormSection("Connection", self)
+        connection_form = QFormLayout()
+        connection_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        connection_form.addRow("Domain *", self.domain)
+        connection_form.addRow("Password", self.password)
+        connection_form.addRow("Outbound proxy", self.proxy)
+        connection_form.addRow("STUN server", self.stun_server)
+        connection.body.addLayout(connection_form)
+
+        options = FormSection("Options", self)
+        options_form = QFormLayout()
+        options_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        options_form.addRow("Transport", self.transport)
+        options_form.addRow("SRTP", self.srtp)
+        options_form.addRow("DTMF method", self.dtmf_method)
+        options_form.addRow(self.register)
+        options_form.addRow(self.enabled)
+        options.body.addLayout(options_form)
+
+        self.error = QLabel("", self)
+        self.error.setObjectName("DialogError")
+        self.error.setWordWrap(True)
 
         # Test row — its label is reused for live + final status.
         self.test_btn = QPushButton("Test registration")
@@ -88,14 +105,19 @@ class AccountDialog(QDialog):
         test_row.addWidget(self.test_btn)
         test_row.addWidget(self.test_status, 1, Qt.AlignVCenter)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
+        self.footer = FooterActionBar("Save" if self._editing else "Add account", "Cancel", self)
+        self.footer.primary_button.clicked.connect(self.accept)
+        self.footer.secondary_button.clicked.connect(self.reject)
 
         root = QVBoxLayout(self)
-        root.addLayout(form)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(12)
+        root.addWidget(identity)
+        root.addWidget(connection)
+        root.addWidget(options)
+        root.addWidget(self.error)
         root.addLayout(test_row)
-        root.addWidget(buttons)
+        root.addWidget(self.footer)
 
         self._account_id = account.id
 
@@ -120,6 +142,19 @@ class AccountDialog(QDialog):
             stun_server=self.stun_server.text().strip(),
             enabled=self.enabled.isChecked(),
         )
+
+    def accept(self) -> None:
+        missing = []
+        if not self.username.text().strip():
+            missing.append("Username")
+        if not self.domain.text().strip():
+            missing.append("Domain")
+        if missing:
+            self.error.setText(", ".join(missing) + " required.")
+            first = self.username if "Username" in missing else self.domain
+            first.setFocus()
+            return
+        super().accept()
 
     # ------------------------------------------------------------------
     # Test registration

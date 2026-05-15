@@ -1224,3 +1224,13 @@ QTextEdit#TraceMsgBody {
     font-family: "Cascadia Mono", "Consolas", monospace;
     font-size: 11px;
 }
+QDialog QLineEdit, QDialog QComboBox, QDialog QSpinBox {
+    min-height: 30px;
+}
+QLabel#DialogError {
+    color: #FFB3BA;
+    font-size: 12px;
+}
+QFrame#DialogRail {
+    border-right: 1px solid #3B4654;
+}
