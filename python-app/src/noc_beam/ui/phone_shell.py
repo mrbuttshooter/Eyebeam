@@ -127,6 +127,53 @@ class PhoneShell(QMainWindow):
         headsets = detect_headsets()
         if headsets:
             log.info("Headsets: %s", ", ".join(str(h) for h in headsets))
+        # Push the enumerated audio devices into the top-strip menus so
+        # the chevron + right-click pickers actually have something to
+        # show. Without this both menus were empty and the right-click
+        # popup looked like nothing happened.
+        self._populate_audio_strip_devices()
+        # Wire device picks to the actual PJSIP capture/playback setters.
+        try:
+            self.audio.input_device_picked.connect(self._on_input_device_picked)
+            self.audio.output_device_picked.connect(self._on_output_device_picked)
+        except Exception:
+            pass
+
+    def _populate_audio_strip_devices(self) -> None:
+        try:
+            from noc_beam.audio.devices import enumerate_devices
+        except Exception:
+            return
+        try:
+            devs = enumerate_devices()
+        except Exception:
+            log.exception("enumerate_devices failed")
+            return
+        inputs = [(d.index, d.name) for d in devs if d.is_input]
+        outputs = [(d.index, d.name) for d in devs if d.is_output]
+        try:
+            self.audio.set_input_devices(inputs)
+            self.audio.set_output_devices(outputs)
+        except Exception:
+            log.exception("AudioStrip set_*_devices failed")
+
+    def _on_input_device_picked(self, dev_id) -> None:
+        try:
+            from noc_beam.audio.devices import set_active_devices
+            cur_out = getattr(self.settings.audio, "output_device", -1)
+            set_active_devices(int(dev_id), int(cur_out) if cur_out is not None else -1)
+            self.settings.audio.input_device = int(dev_id)
+        except Exception:
+            log.exception("input device pick failed")
+
+    def _on_output_device_picked(self, dev_id) -> None:
+        try:
+            from noc_beam.audio.devices import set_active_devices
+            cur_in = getattr(self.settings.audio, "input_device", -1)
+            set_active_devices(int(cur_in) if cur_in is not None else -1, int(dev_id))
+            self.settings.audio.output_device = int(dev_id)
+        except Exception:
+            log.exception("output device pick failed")
 
     def _build_menu(self):
         # NO Qt menu bar -- on Windows 11, QMenuBar paints with native
@@ -1034,13 +1081,15 @@ class PhoneShell(QMainWindow):
                 log.exception("hangup failed for call %s", cid)
 
     def _refresh_calls_strip(self) -> None:
-        """Re-render the multi-call strip from the current call list.
+        """Re-render the compact multi-call strip.
 
-        Each row: peer + state pill + per-call X hangup button. Click
-        the row to make it the selected call. When 2+ calls are live
-        an "End all" pill renders on the right of its own row.
+        One thin row per active call (clickable = select; small red X
+        = hangup just this one). Hidden when 0 or 1 call is active --
+        for the single-call case the regular Active Call card already
+        carries End / Mute / etc. The "End all" pill only appears
+        when 2+ calls are live.
         """
-        # Tear down all existing strip widgets.
+        # Tear down existing strip widgets.
         while self.calls_strip_layout.count():
             item = self.calls_strip_layout.takeAt(0)
             w = item.widget()
@@ -1048,7 +1097,10 @@ class PhoneShell(QMainWindow):
                 w.setParent(None)
                 w.deleteLater()
         active = self.calls.active()
-        if not active:
+        # No strip at all when 0 or 1 calls. Single-call state is
+        # already covered by the main Active Call card; the strip
+        # earns its space only when there's >1 call to switch between.
+        if len(active) < 2:
             self.calls_strip.setVisible(False)
             return
         self.calls_strip.setVisible(True)
@@ -1056,36 +1108,44 @@ class PhoneShell(QMainWindow):
             row = QFrame(self.calls_strip)
             row.setObjectName("CallStripRow")
             row.setProperty("selected", rec.call_id == self._selected_call_id)
+            row.setCursor(Qt.CursorShape.PointingHandCursor)
+            row.setFixedHeight(22)
+            # Whole row is the "Show" gesture -- click anywhere selects.
+            row.mousePressEvent = (  # type: ignore[method-assign]
+                lambda _ev, cid=rec.call_id: self._select_call(cid)
+            )
             rl = QHBoxLayout(row)
-            rl.setContentsMargins(10, 4, 6, 4)
-            rl.setSpacing(8)
+            rl.setContentsMargins(8, 0, 4, 0)
+            rl.setSpacing(6)
             peer_lbl = QLabel(rec.remote_uri or "...", row)
             peer_lbl.setObjectName("CallStripPeer")
             state_lbl = QLabel(rec.state.name.title(), row)
             state_lbl.setObjectName("CallStripState")
-            select_btn = QPushButton("Show", row)
-            select_btn.setObjectName("CallStripSelectBtn")
-            select_btn.clicked.connect(lambda _checked=False, cid=rec.call_id: self._select_call(cid))
-            end_btn = QPushButton("X", row)
+            end_btn = QToolButton(row)
             end_btn.setObjectName("CallStripEndBtn")
+            end_btn.setText("X")
             end_btn.setToolTip("End this call")
-            end_btn.clicked.connect(lambda _checked=False, cid=rec.call_id: self._hangup_one(cid))
+            end_btn.setFixedSize(18, 18)
+            end_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            end_btn.clicked.connect(
+                lambda _checked=False, cid=rec.call_id: self._hangup_one(cid)
+            )
             rl.addWidget(peer_lbl, 1)
             rl.addWidget(state_lbl)
-            rl.addWidget(select_btn)
             rl.addWidget(end_btn)
             self.calls_strip_layout.addWidget(row)
-        if len(active) >= 2:
-            footer = QFrame(self.calls_strip)
-            footer.setObjectName("CallStripFooter")
-            fl = QHBoxLayout(footer)
-            fl.setContentsMargins(10, 4, 6, 4)
-            fl.addStretch(1)
-            end_all_btn = QPushButton(f"End all ({len(active)})", footer)
-            end_all_btn.setObjectName("CallStripEndAllBtn")
-            end_all_btn.clicked.connect(self._on_end_all_calls)
-            fl.addWidget(end_all_btn)
-            self.calls_strip_layout.addWidget(footer)
+        # End-all pill, compact.
+        footer = QFrame(self.calls_strip)
+        footer.setObjectName("CallStripFooter")
+        footer.setFixedHeight(24)
+        fl = QHBoxLayout(footer)
+        fl.setContentsMargins(8, 2, 4, 2)
+        fl.addStretch(1)
+        end_all_btn = QPushButton(f"End all ({len(active)})", footer)
+        end_all_btn.setObjectName("CallStripEndAllBtn")
+        end_all_btn.clicked.connect(self._on_end_all_calls)
+        fl.addWidget(end_all_btn)
+        self.calls_strip_layout.addWidget(footer)
 
     def _hangup_one(self, call_id: int) -> None:
         """Hangup a specific call by ID. Bypasses the selected-call

@@ -52,6 +52,33 @@ def _icon(name: str, color: str = "#57606A", px: int = 18) -> QIcon:
     return rail_icon(name, color=color, px=px)
 
 
+class _MuteToggleButton(QToolButton):
+    """QToolButton variant whose right-click is routed to a context
+    menu instead of toggling the mute state.
+
+    The default QAbstractButton consumes right-button presses to fire
+    the same toggled() signal as a left click. Override the press
+    handler so right-button bypasses the toggle machinery and instead
+    fires customContextMenuRequested directly (Qt's release-handler
+    that would normally fire it never runs because we accept the
+    press).
+    """
+
+    def mousePressEvent(self, event):  # noqa: N802, ANN001
+        if event.button() == Qt.MouseButton.RightButton:
+            if self.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu:
+                self.customContextMenuRequested.emit(event.pos())
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):  # noqa: N802, ANN001
+        if event.button() == Qt.MouseButton.RightButton:
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class AudioStrip(QFrame):
     volume_changed = Signal(int)
     muted_changed = Signal(bool)
@@ -71,13 +98,17 @@ class AudioStrip(QFrame):
         self._mic_muted = False
 
         # --- Mic (input) MUTE toggle + adjacent chevron device picker ---
-        self.mic_btn = QToolButton(self)
+        self.mic_btn = _MuteToggleButton(self)
         self.mic_btn.setObjectName("AudioBtn")
         self.mic_btn.setIcon(_icon("mic"))
         self.mic_btn.setIconSize(QSize(18, 18))
         self.mic_btn.setCheckable(True)
-        self.mic_btn.setToolTip("Mute microphone")
+        self.mic_btn.setToolTip("Left-click: mute microphone\nRight-click: pick input device")
         self.mic_btn.toggled.connect(self._on_mic_muted_toggled)
+        # Right-click on the mic icon opens the input-device menu
+        # (same menu as the chevron, just a power-user shortcut).
+        self.mic_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.mic_btn.customContextMenuRequested.connect(self._show_input_device_menu)
 
         # Tiny chevron next to mic to open input-device picker.
         self.mic_dev_btn = QToolButton(self)
@@ -87,13 +118,15 @@ class AudioStrip(QFrame):
         self.mic_dev_btn.setToolTip("Input device")
 
         # --- Speaker (output) MUTE toggle + adjacent chevron picker ---
-        self.spk_btn = QToolButton(self)
+        self.spk_btn = _MuteToggleButton(self)
         self.spk_btn.setObjectName("AudioBtn")
         self.spk_btn.setIcon(_icon("speaker"))
         self.spk_btn.setIconSize(QSize(18, 18))
         self.spk_btn.setCheckable(True)
-        self.spk_btn.setToolTip("Mute output")
+        self.spk_btn.setToolTip("Left-click: mute output\nRight-click: pick output device")
         self.spk_btn.toggled.connect(self._on_muted_toggled)
+        self.spk_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.spk_btn.customContextMenuRequested.connect(self._show_output_device_menu)
 
         self.spk_dev_btn = QToolButton(self)
         self.spk_dev_btn.setObjectName("AudioChevron")
@@ -201,6 +234,19 @@ class AudioStrip(QFrame):
     def set_rx_level(self, value: int) -> None:
         """0–100. Driven by remote audio level sample on the active call."""
         self.rx_bar.setValue(max(0, min(100, int(value))))
+
+    # ------------------------------------------------------------------
+    def _show_input_device_menu(self, pos) -> None:
+        """Right-click on mic icon -> popup the input device menu."""
+        menu = self.mic_dev_btn.menu()
+        if menu is not None:
+            menu.popup(self.mic_btn.mapToGlobal(pos))
+
+    def _show_output_device_menu(self, pos) -> None:
+        """Right-click on speaker icon -> popup the output device menu."""
+        menu = self.spk_dev_btn.menu()
+        if menu is not None:
+            menu.popup(self.spk_btn.mapToGlobal(pos))
 
     # ------------------------------------------------------------------
     def set_input_devices(self, devices: list[tuple[object, str]]) -> None:
