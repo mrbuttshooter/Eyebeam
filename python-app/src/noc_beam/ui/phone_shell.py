@@ -30,6 +30,7 @@ MainWindow stays as the old wide-shell entry point.
 from __future__ import annotations
 
 import logging
+import time
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
@@ -840,8 +841,27 @@ class PhoneShell(QMainWindow):
         self._maybe_write_cdr(call_id); self.ringer.stop()
 
     def _maybe_write_cdr(self, call_id):
+        # Try the pre-stashed snapshot first (set during the
+        # call_updated->DISCONNECTED path); fall back to building from
+        # the current CallRecord so we don't lose CDRs when call_ended
+        # arrives BEFORE the call_updated(DISCONNECTED) signal.
         snap = self._last_snapshots.pop(call_id, None)
-        if snap is None: return
+        if snap is None:
+            rec = self.calls.get(call_id)
+            if rec is None:
+                return
+            snap = CdrEntry(
+                call_id=rec.call_id,
+                account_id=rec.account_id,
+                peer_uri=rec.remote_uri,
+                direction=rec.direction,
+                started_at=rec.started_at,
+                connected_at=rec.connected_at,
+                ended_at=rec.ended_at or rec.started_at or time.time(),
+                end_code=rec.last_code,
+                end_reason=rec.last_reason,
+                codec=rec.codec,
+            )
         try:
             append_entry(snap)
             self.history_view.reload()

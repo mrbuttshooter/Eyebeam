@@ -1193,28 +1193,70 @@ QFrame#HistoryRow {
     border-bottom: 1px solid #ECEEF1;
 }
 QFrame#HistoryRow:hover { background-color: #F5F6F8; }
-QFrame#HistoryRow[result="missed"]:hover { background-color: #FDF1F2; }
-QFrame#HistoryRow[result="failed"]:hover { background-color: #FFF7F0; }
+/* Missed-call rows: tinted background at idle (not just hover) so they
+   pop in the list without the user having to mouseover. */
+QFrame#HistoryRow[result="missed"] { background-color: #FDF6F6; }
+QFrame#HistoryRow[result="missed"]:hover { background-color: #FDEDED; }
+QFrame#HistoryRow[result="failed"] { background-color: #FFFBF5; }
+QFrame#HistoryRow[result="failed"]:hover { background-color: #FFF3E1; }
 
 QLabel#HistoryRowArrow {
-    color: #57606A;
-    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    color: #2DA44E;   /* answered = green */
     font-size: 14px;
     font-weight: 700;
 }
-QFrame#HistoryRow[result="missed"] QLabel#HistoryRowArrow { color: #D33841; }
-QFrame#HistoryRow[result="failed"] QLabel#HistoryRowArrow { color: #C97C0E; }
+QLabel#HistoryRowArrow[result="missed"] { color: #D33841; }
+QLabel#HistoryRowArrow[result="failed"] { color: #C97C0E; }
 
 QLabel#HistoryRowPeer {
     color: #1F2933;
     font-size: 13px;
     font-weight: 500;
 }
+/* Bold + red the peer text on missed rows so the row is scannable
+   without mouseover. */
+QLabel#HistoryRowPeer[result="missed"] {
+    color: #B32D2E;
+    font-weight: 700;
+}
 QLabel#HistoryRowMeta {
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 10px;
     letter-spacing: 0.04em;
+}
+
+/* Search box above the filter row. */
+QLineEdit#HistorySearch {
+    background-color: #F4F6F9;
+    border: 1px solid #D8DEE4;
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: #1F2933;
+    selection-background-color: #DCEEFC;
+}
+QLineEdit#HistorySearch:focus {
+    border-color: #1A6FA0;
+    background-color: #FFFFFF;
+}
+
+/* Info (i) button per row -- monochrome, hover only. */
+QToolButton#HistoryRowInfo {
+    background-color: transparent;
+    border: 1px solid #D8DEE4;
+    border-radius: 11px;
+    color: #57606A;
+    font-weight: 700;
+    font-size: 11px;
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+}
+QToolButton#HistoryRowInfo:hover {
+    background-color: #EAF0F6;
+    border-color: #B7C0CB;
+    color: #1F2933;
 }
 
 /* ---- CDR detail dialog headings ---------------------------------- */
