@@ -5,6 +5,7 @@ from collections import defaultdict
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QScrollArea,
     QToolButton,
@@ -85,6 +87,7 @@ class ContactDialog(QDialog):
         form.addRow("Group", self.group_edit)
         form.addRow(self.favorite_check)
 
+        is_edit = contact is not None
         self.footer = FooterActionBar(
             "Save contact" if is_edit else "Add contact",
             "Cancel",
@@ -172,6 +175,7 @@ class ContactRow(QFrame):
     call_requested = Signal(str)
     edit_requested = Signal(str)
     delete_requested = Signal(str)
+    favorite_toggled = Signal(str)
 
     def __init__(self, contact: Contact, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -202,19 +206,30 @@ class ContactRow(QFrame):
         call_btn.setToolTip("Call")
         call_btn.clicked.connect(lambda: self.call_requested.emit(self.contact.number))
 
-        edit_btn = QToolButton(self)
-        edit_btn.setObjectName("IconActionButton")
-        edit_btn.setIcon(rail_icon("settings", color="#57606A", px=16))
-        edit_btn.setIconSize(QSize(16, 16))
-        edit_btn.setToolTip("Edit")
-        edit_btn.clicked.connect(lambda: self.edit_requested.emit(self.contact.id))
-
-        delete_btn = QToolButton(self)
-        delete_btn.setObjectName("IconActionButton")
-        delete_btn.setIcon(rail_icon("close", color="#CF222E", px=16))
-        delete_btn.setIconSize(QSize(16, 16))
-        delete_btn.setToolTip("Delete")
-        delete_btn.clicked.connect(lambda: self.delete_requested.emit(self.contact.id))
+        # Single 3-dot kebab menu replaces Edit + Delete -- matches mockup panel 3.
+        more_btn = QToolButton(self)
+        more_btn.setObjectName("ContactRowMore")
+        more_btn.setText("⋯")
+        more_btn.setToolTip("More")
+        more_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        more_btn.setAutoRaise(True)
+        more_btn.setFixedSize(24, 24)
+        menu = QMenu(more_btn)
+        menu.setObjectName("ContactRowMenu")
+        edit_act = QAction("Edit", menu)
+        edit_act.triggered.connect(lambda: self.edit_requested.emit(self.contact.id))
+        fav_act = QAction(
+            "Unstar" if contact.favorite else "Star as favorite",
+            menu,
+        )
+        fav_act.triggered.connect(lambda: self.favorite_toggled.emit(self.contact.id))
+        del_act = QAction("Delete", menu)
+        del_act.triggered.connect(lambda: self.delete_requested.emit(self.contact.id))
+        menu.addAction(edit_act)
+        menu.addAction(fav_act)
+        menu.addSeparator()
+        menu.addAction(del_act)
+        more_btn.setMenu(menu)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 7, 8, 7)
@@ -222,8 +237,7 @@ class ContactRow(QFrame):
         layout.addWidget(marker)
         layout.addLayout(text_col, 1)
         layout.addWidget(call_btn)
-        layout.addWidget(edit_btn)
-        layout.addWidget(delete_btn)
+        layout.addWidget(more_btn)
 
     def mouseDoubleClickEvent(self, event):  # noqa: N802, ANN001
         if event.button() == Qt.MouseButton.LeftButton:
@@ -243,11 +257,29 @@ class ContactsView(QWidget):
         self._contacts: list[Contact] = []
         self._group_widgets: dict[str, list[QWidget]] = {}
         self._expanded_groups: set[str] = set()
+        self._filter_mode = "all"  # all | favorites
 
         self.search = QLineEdit(self)
         self.search.setObjectName("ContactsSearch")
         self.search.setPlaceholderText("Search Contacts")
         self.search.textChanged.connect(self._render)
+
+        # Filter button -- mockup panel 3 shows filter chip next to search.
+        self.filter_btn = QToolButton(self)
+        self.filter_btn.setObjectName("ContactsActionBtn")
+        self.filter_btn.setIcon(rail_icon("settings", color="#57606A", px=18))
+        self.filter_btn.setIconSize(QSize(18, 18))
+        self.filter_btn.setToolTip("Filter")
+        self.filter_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        filter_menu = QMenu(self.filter_btn)
+        filter_menu.setObjectName("ContactsFilterMenu")
+        act_all = QAction("All contacts", filter_menu)
+        act_all.triggered.connect(lambda: self._set_filter("all"))
+        act_fav = QAction("Favorites only", filter_menu)
+        act_fav.triggered.connect(lambda: self._set_filter("favorites"))
+        filter_menu.addAction(act_all)
+        filter_menu.addAction(act_fav)
+        self.filter_btn.setMenu(filter_menu)
 
         self.add_group_btn = QToolButton(self)
         self.add_group_btn.setObjectName("ContactsActionBtn")
@@ -267,6 +299,7 @@ class ContactsView(QWidget):
         bar.setContentsMargins(12, 12, 12, 8)
         bar.setSpacing(6)
         bar.addWidget(self.search, 1)
+        bar.addWidget(self.filter_btn)
         bar.addWidget(self.add_group_btn)
         bar.addWidget(self.add_contact_btn)
 
@@ -326,6 +359,7 @@ class ContactsView(QWidget):
                 contact_row.call_requested.connect(self.call_requested.emit)
                 contact_row.edit_requested.connect(self._on_edit_contact)
                 contact_row.delete_requested.connect(self._on_delete_contact)
+                contact_row.favorite_toggled.connect(self._on_toggle_favorite)
                 contact_row.setVisible(bool(needle) or group in self._expanded_groups)
                 self._rows_layout.addWidget(contact_row)
                 child_widgets.append(contact_row)
@@ -341,10 +375,33 @@ class ContactsView(QWidget):
                 widget.deleteLater()
 
     def _matches(self, contact: Contact, needle: str) -> bool:
+        if self._filter_mode == "favorites" and not contact.favorite:
+            return False
         if not needle:
             return True
         haystack = f"{contact.name} {contact.number} {contact.group}".lower()
         return needle in haystack
+
+    def _set_filter(self, mode: str) -> None:
+        self._filter_mode = mode
+        # Visual hint that a non-default filter is active.
+        self.filter_btn.setProperty("active", mode != "all")
+        self.filter_btn.style().unpolish(self.filter_btn)
+        self.filter_btn.style().polish(self.filter_btn)
+        self._render()
+
+    def _on_toggle_favorite(self, contact_id: str) -> None:
+        contacts = load_contacts()
+        target = next((c for c in contacts if c.id == contact_id), None)
+        if target is None:
+            return
+        try:
+            update_contact(contacts, contact_id, favorite=not target.favorite)
+            save_contacts(contacts)
+        except (KeyError, ValueError, OSError) as exc:
+            self._warn_save_failed("toggle favorite", exc)
+            return
+        self._after_contacts_saved()
 
     def _toggle_group(self, group: str) -> None:
         if group in self._expanded_groups:

@@ -1794,3 +1794,46 @@ QPushButton#RejectButton {
     background-color: #D33841;
     color: #FFFFFF;
 }
+
+/* ---------- Contacts row 3-dot kebab + filter button (panel 3) ---------- */
+QToolButton#ContactRowMore {
+    border: none;
+    background: transparent;
+    color: #57606A;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 0;
+    border-radius: 4px;
+}
+QToolButton#ContactRowMore:hover {
+    background-color: #EAF0F6;
+    color: #1F2933;
+}
+QToolButton#ContactRowMore::menu-indicator {
+    image: none;
+    width: 0;
+}
+QMenu#ContactRowMenu, QMenu#ContactsFilterMenu {
+    background-color: #FFFFFF;
+    border: 1px solid #D8DEE4;
+    border-radius: 6px;
+    padding: 4px;
+}
+QMenu#ContactRowMenu::item, QMenu#ContactsFilterMenu::item {
+    padding: 6px 14px 6px 14px;
+    border-radius: 4px;
+    color: #1F2933;
+}
+QMenu#ContactRowMenu::item:selected, QMenu#ContactsFilterMenu::item:selected {
+    background-color: #EAF0F6;
+}
+QMenu#ContactRowMenu::separator, QMenu#ContactsFilterMenu::separator {
+    height: 1px;
+    background: #ECEFF2;
+    margin: 4px 6px;
+}
+QToolButton#ContactsActionBtn[active="true"] {
+    background-color: #DCEEFC;
+    border: 1px solid #6FB8E8;
+    border-radius: 4px;
+}
