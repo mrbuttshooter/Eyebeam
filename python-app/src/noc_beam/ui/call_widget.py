@@ -398,6 +398,12 @@ class CallWidget(QWidget):
         self._card.setProperty("state", state)
         self._card.style().unpolish(self._card)
         self._card.style().polish(self._card)
+        # Polishing the parent does NOT cascade to children. The avatar
+        # background is selected by `QFrame#CallCard[state="X"] QLabel
+        # #CallAvatar`, so the child label needs its own re-polish for
+        # the new state's bg colour to apply.
+        self._avatar.style().unpolish(self._avatar)
+        self._avatar.style().polish(self._avatar)
 
     def _on_hold_clicked(self) -> None:
         if self._on_hold:
