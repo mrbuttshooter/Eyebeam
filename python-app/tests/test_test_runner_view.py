@@ -138,6 +138,9 @@ def test_close_event_without_active_runner_is_accepted(qt_app: QApplication) -> 
 
 
 def test_phone_shell_has_test_runner_menu_action(qt_app: QApplication, monkeypatch) -> None:
+    sip_startups = 0
+    scheduled_callbacks = []
+
     class FakeRinger:
         def start(self) -> None:
             pass
@@ -145,9 +148,20 @@ def test_phone_shell_has_test_runner_menu_action(qt_app: QApplication, monkeypat
         def stop(self) -> None:
             pass
 
+    class FakeTimer:
+        @staticmethod
+        def singleShot(_msec, callback) -> None:
+            scheduled_callbacks.append(callback)
+
+    def fake_start_sip(_self) -> None:
+        nonlocal sip_startups
+        sip_startups += 1
+
     monkeypatch.setattr(phone_shell_module, "load_settings", GlobalSettings)
     monkeypatch.setattr(phone_shell_module, "load_accounts", lambda: [])
     monkeypatch.setattr(phone_shell_module, "Ringer", FakeRinger)
+    monkeypatch.setattr(phone_shell_module, "QTimer", FakeTimer)
+    monkeypatch.setattr(PhoneShell, "_start_sip", fake_start_sip)
 
     shell = PhoneShell()
 
@@ -156,6 +170,8 @@ def test_phone_shell_has_test_runner_menu_action(qt_app: QApplication, monkeypat
         labels = [label for label, _slot in view_actions]
 
         assert "Test Runner..." in labels
+        assert len(scheduled_callbacks) == 1
+        assert sip_startups == 0
     finally:
         shell._really_quitting = True
         shell.close()
