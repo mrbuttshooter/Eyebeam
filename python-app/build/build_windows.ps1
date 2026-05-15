@@ -474,5 +474,11 @@ if (-not $SkipPackagedSmoke -and -not $SkipNativeBuild) {
     }
 }
 
+$ChecksumPath = "$ExePath.sha256"
+$ExeHash = Get-FileHash -LiteralPath $ExePath -Algorithm SHA256
+"$($ExeHash.Hash)  NOC_Beam.exe" | Set-Content -Encoding ASCII -Path $ChecksumPath
+Write-Host "SHA256: $($ExeHash.Hash)" -ForegroundColor Green
+
 Write-Header "SUCCESS"
 Write-Host "Built: $ExePath" -ForegroundColor Green
+Write-Host "Checksum: $ChecksumPath" -ForegroundColor Green

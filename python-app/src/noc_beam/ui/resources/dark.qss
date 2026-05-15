@@ -479,7 +479,10 @@ QToolButton#RailBtn:checked {
     border-left: 2px solid #7FD3FF;
     border-radius: 0 4px 4px 0;
 }
-QToolButton#RailBtn:focus { outline: none; }
+QToolButton#RailBtn:focus {
+    border: 1px solid #7FD3FF;
+    background-color: rgba(127, 211, 255, 0.10);
+}
 
 
 /* ---- Trace drawer (.drawer / .drawer-head) ---------------------- */

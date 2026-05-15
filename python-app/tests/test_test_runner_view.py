@@ -362,3 +362,64 @@ def test_phone_shell_primary_controls_have_accessible_names(
     finally:
         shell._really_quitting = True
         shell.close()
+
+
+def test_phone_shell_settings_apply_theme_live(
+    qt_app: QApplication,
+    monkeypatch,
+) -> None:
+    settings = GlobalSettings()
+    applied: list[tuple[bool, str]] = []
+
+    class FakeRinger:
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+    class FakeTimer:
+        @staticmethod
+        def singleShot(_msec, _callback) -> None:
+            pass
+
+    class FakeDialog:
+        Accepted = 1
+
+        def __init__(self, dialog_settings, parent=None) -> None:
+            self.dialog_settings = dialog_settings
+            self.parent = parent
+
+        def apply_to(self, dialog_settings) -> dict[str, int]:
+            dialog_settings.appearance.high_contrast = True
+            dialog_settings.appearance.reduced_motion = True
+            return {}
+
+    monkeypatch.setattr(phone_shell_module, "load_settings", lambda: settings)
+    monkeypatch.setattr(phone_shell_module, "load_accounts", lambda: [])
+    monkeypatch.setattr(phone_shell_module, "save_settings", lambda _settings: None)
+    monkeypatch.setattr(phone_shell_module, "Ringer", FakeRinger)
+    monkeypatch.setattr(phone_shell_module, "QTimer", FakeTimer)
+    monkeypatch.setattr(phone_shell_module, "SettingsDialog", FakeDialog)
+    monkeypatch.setattr(phone_shell_module, "_open_modal", lambda _dlg: True)
+    monkeypatch.setattr(phone_shell_module, "set_active_devices", lambda *_args: None, raising=False)
+    monkeypatch.setattr(
+        phone_shell_module,
+        "apply_theme",
+        lambda _app, high_contrast, *, theme="light": applied.append(
+            (high_contrast, theme)
+        ),
+    )
+    monkeypatch.setattr(PhoneShell, "_start_sip", lambda _self: None)
+
+    shell = PhoneShell()
+
+    try:
+        shell._on_settings()
+
+        assert applied == [(True, "light")]
+        assert shell.settings.appearance.high_contrast is True
+        assert shell.settings.appearance.reduced_motion is True
+    finally:
+        shell._really_quitting = True
+        shell.close()

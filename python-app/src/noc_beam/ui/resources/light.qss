@@ -265,7 +265,7 @@ QFrame#BottomTabs {
 QToolButton#TabBtn {
     background: transparent;
     color: #94A0AD;
-    border: none;
+    border: 1px solid transparent;
     border-top: 2px solid transparent;
     padding: 8px 6px 6px 6px;
     min-height: 36px;
@@ -277,7 +277,11 @@ QToolButton#TabBtn:checked {
     border-top: 2px solid #E85D04;
     background-color: #FFFFFF;
 }
-QToolButton#TabBtn:focus { outline: none; }
+QToolButton#TabBtn:focus {
+    border: 1px solid #E85D04;
+    border-top: 2px solid #E85D04;
+    background-color: #FFF7F0;
+}
 
 
 /* ------------------------------------------------------------------

@@ -10,6 +10,7 @@ from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs, co
 REPO_ROOT = Path(SPECPATH).parent.resolve()
 SRC = REPO_ROOT / "src"
 RESOURCES = SRC / "noc_beam" / "ui" / "resources"
+VERSION_INFO = REPO_ROOT / "build" / "version_info.txt"
 # Icon now lives next to the other UI resources (Phase B). Fall back
 # to the legacy assets/ path for older trees.
 ICON = RESOURCES / "icon.ico"
@@ -86,5 +87,5 @@ exe = EXE(
     console=False,                   # GUI app, no console window
     disable_windowed_traceback=False,
     icon=str(ICON) if ICON.exists() else None,
-    version=None,
+    version=str(VERSION_INFO) if VERSION_INFO.exists() else None,
 )

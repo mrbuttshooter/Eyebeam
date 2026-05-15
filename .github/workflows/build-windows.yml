@@ -17,7 +17,7 @@ on:
         options:
           - ui-only
           - full
-        default: ui-only
+        default: full
 
 env:
   PJSIP_TAG: "2.14.1"
@@ -170,7 +170,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NOC_Beam-windows-x64-${{ env.BUILD_MODE }}
-          path: python-app/dist/NOC_Beam.exe
+          path: |
+            python-app/dist/NOC_Beam.exe
+            python-app/dist/NOC_Beam.exe.sha256
           retention-days: 30
           if-no-files-found: error
 

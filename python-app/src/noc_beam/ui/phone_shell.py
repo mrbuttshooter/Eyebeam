@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from noc_beam import __app_name__, __version__
+from noc_beam.audio.devices import set_active_devices
 from noc_beam.audio.headset import detect_headsets
 from noc_beam.audio.ringer import Ringer
 from noc_beam.config.history import CdrEntry, append_entry
@@ -62,6 +63,7 @@ from noc_beam.ui.dialpad import DialPad
 from noc_beam.ui.favorites_view import FavoritesView
 from noc_beam.ui.history_view import HistoryView
 from noc_beam.ui.settings_dialog import SettingsDialog
+from noc_beam.ui.theme import apply_theme
 from noc_beam.ui.trace_view import TraceView
 from noc_beam.ui.tray import Presence, TrayController
 
@@ -642,9 +644,25 @@ class PhoneShell(QMainWindow):
             codec_map = dlg.apply_to(self.settings); save_settings(self.settings)
             from noc_beam.codecs.manager import set_priority
             for cid, prio in codec_map.items(): set_priority(cid, prio)
-            from noc_beam.audio.devices import set_active_devices
             set_active_devices(self.settings.audio.input_device, self.settings.audio.output_device)
+            self._apply_accessibility_settings()
             self._set_status("Settings applied", "ok")
+
+    def _apply_accessibility_settings(self):
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None:
+            theme = getattr(self.settings.appearance, "theme", "light")
+            apply_theme(
+                app,
+                self.settings.appearance.high_contrast,
+                theme=theme,
+            )
+        wide_window = getattr(self, "_wide_window", None)
+        drawer = getattr(wide_window, "drawer", None)
+        if drawer is not None:
+            drawer.set_reduced_motion(self.settings.appearance.reduced_motion)
 
     def _on_diagnostics(self):
         from noc_beam.ui.diagnostics_view import DiagnosticsView
