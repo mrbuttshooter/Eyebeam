@@ -124,7 +124,7 @@ class SettingsDialog(QDialog):
             "Pure-black background, white foreground/borders, yellow focus. "
             "Use when running on the on-call NOC desk or under bright glare."
         )
-        hc_hint.setStyleSheet("color: #7C8696;")
+        hc_hint.setObjectName("ViewHint")
         hc_hint.setWordWrap(True)
 
         self.reduced_motion_chk = QCheckBox("Reduce motion (skip drawer slide and pulse)")
@@ -133,7 +133,7 @@ class SettingsDialog(QDialog):
             "Snaps the trace drawer open/closed and stops the LIVE pulse. "
             "Honoured live; no app restart needed."
         )
-        rm_hint.setStyleSheet("color: #7C8696;")
+        rm_hint.setObjectName("ViewHint")
         rm_hint.setWordWrap(True)
 
         form.addRow(self.high_contrast_chk)

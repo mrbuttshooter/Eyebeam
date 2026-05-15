@@ -57,15 +57,15 @@ def _section_title(text: str) -> QLabel:
 
 def _hint(text: str) -> QLabel:
     lbl = QLabel(text)
-    lbl.setStyleSheet("color: #7C8696;")
+    lbl.setObjectName("DiagHint")
     lbl.setWordWrap(True)
     return lbl
 
 
 def _value_row(form: QFormLayout, label: str, value: str) -> QLabel:
     val = QLabel(value)
+    val.setObjectName("DiagValue")
     val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-    val.setStyleSheet("font-family: 'Cascadia Mono', 'Consolas', monospace;")
     form.addRow(label, val)
     return val
 
@@ -96,11 +96,8 @@ class _OptionsProbePanel(QWidget):
         layout.addLayout(row)
 
         self.results = QTextEdit()
+        self.results.setObjectName("DiagResults")
         self.results.setReadOnly(True)
-        self.results.setStyleSheet(
-            "font-family: 'Cascadia Mono', 'Consolas', monospace;"
-            "font-size: 11px;"
-        )
         layout.addWidget(self.results, 1)
 
     def _on_go(self) -> None:

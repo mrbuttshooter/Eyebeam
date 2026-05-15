@@ -1,19 +1,25 @@
-"""Accounts destination -- accounts list + add/edit/remove actions.
+"""Accounts master pane (left side of the master/detail layout).
 
-Re-parents the v1 QListWidget into a proper view with an inline action
-bar at the top. Replaces the bottom-of-window add/edit/remove toolbar.
-The list payload (UserRole = account_id) is unchanged so MainWindow
-can keep using its existing selection helpers.
+Custom AcctRow widgets instead of a flat QListWidget so we can paint a
+status dot, transport badge, and refined typography per row. The whole
+master pane sits in a scroll area; selection is communicated via the
+selected_account_changed signal.
+
+Detail pane lives in accounts_detail.AccountDetail; MainWindow wires the
+selection signal to drive the detail.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
+    QLineEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -21,7 +27,97 @@ from PySide6.QtWidgets import (
 from noc_beam.config.store import AccountConfig
 
 
+def _status_dot_pixmap(color_hex: str, px: int = 9) -> QPixmap:
+    pix = QPixmap(QSize(px, px))
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setBrush(QColor(color_hex))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawEllipse(0, 0, px, px)
+    painter.end()
+    return pix
+
+
+class AcctRow(QFrame):
+    """A single row in the accounts master pane."""
+
+    clicked = Signal(str)  # account_id
+
+    def __init__(self, account: AccountConfig, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("AcctRow")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.account_id = account.id
+
+        # State dynamic property — QSS branches on this. Phase G ships
+        # only the focused state; warn/error states wire in Tier 3.
+        self.setProperty("state", "idle")
+
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(12, 10, 12, 10)
+        outer.setSpacing(10)
+
+        self.dot = QLabel(self)
+        self.dot.setPixmap(_status_dot_pixmap("#7C8696"))
+        self.dot.setFixedSize(9, 9)
+        outer.addWidget(self.dot, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        ident = QVBoxLayout()
+        ident.setContentsMargins(0, 0, 0, 0)
+        ident.setSpacing(1)
+        display = account.display_name or account.username
+        self.name = QLabel(display)
+        self.name.setObjectName("AcctRowName")
+        uri_text = f"{account.username}@{account.domain}"
+        self.uri = QLabel(uri_text)
+        self.uri.setObjectName("AcctRowUri")
+        ident.addWidget(self.name)
+        ident.addWidget(self.uri)
+        outer.addLayout(ident, 1)
+
+        # Right meta: transport + enabled/disabled
+        meta_text = account.transport.upper()
+        if not account.enabled:
+            meta_text += "  ·  disabled"
+        self.meta = QLabel(meta_text)
+        self.meta.setObjectName("AcctRowMeta")
+        outer.addWidget(self.meta, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    # ------------------------------------------------------------------
+    def mousePressEvent(self, event):  # noqa: N802, ANN001
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.account_id)
+        super().mousePressEvent(event)
+
+    def set_focused(self, focused: bool) -> None:
+        # Toggling a dynamic property doesn't auto-restyle; unpolish + polish.
+        self.setProperty("state", "focused" if focused else "idle")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def set_status(self, code: int) -> None:
+        """0 = unknown/neutral; 2xx = ok; 4xx auth = warn; other = danger."""
+        if code == 0:
+            color = "#7C8696"
+        elif 200 <= code < 300:
+            color = "#66D19E"
+        elif code in (401, 403, 407, 423):
+            color = "#F0C36D"
+        else:
+            color = "#FF5C7A"
+        self.dot.setPixmap(_status_dot_pixmap(color))
+
+    def matches_filter(self, needle: str) -> bool:
+        if not needle:
+            return True
+        n = needle.lower()
+        return n in self.name.text().lower() or n in self.uri.text().lower()
+
+
 class AccountsView(QWidget):
+    """Master pane: count header + Add button + search box + scrollable rows."""
+
     add_clicked = Signal()
     edit_clicked = Signal()
     remove_clicked = Signal()
@@ -29,59 +125,123 @@ class AccountsView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("AcctMaster")
+        self.setFixedWidth(380)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
-        # ---- Header bar with title + count + actions
+        self._rows: list[AcctRow] = []
+        self._selected_id: str | None = None
+        self._reg_codes: dict[str, int] = {}
+
+        # ---- Header
         title = QLabel("Accounts")
         title.setObjectName("ViewTitle")
-        self.count_label = QLabel("0")
+        self.count_label = QLabel("0 of 0 registered")
         self.count_label.setObjectName("ViewCount")
-
-        self.add_btn = QPushButton("Add account")
-        self.edit_btn = QPushButton("Edit account")
-        self.remove_btn = QPushButton("Remove account")
+        self.add_btn = QPushButton("+ Add account")
+        self.add_btn.setObjectName("PrimaryAction")
         self.add_btn.clicked.connect(self.add_clicked.emit)
-        self.edit_btn.clicked.connect(self.edit_clicked.emit)
-        self.remove_btn.clicked.connect(self.remove_clicked.emit)
 
-        header = QHBoxLayout()
-        header.setContentsMargins(16, 12, 16, 8)
-        header.setSpacing(8)
-        header.addWidget(title)
-        header.addWidget(self.count_label)
-        header.addStretch(1)
-        header.addWidget(self.add_btn)
-        header.addWidget(self.edit_btn)
-        header.addWidget(self.remove_btn)
+        header_top = QHBoxLayout()
+        header_top.setContentsMargins(16, 16, 16, 4)
+        header_top.setSpacing(8)
+        header_top.addWidget(title)
+        header_top.addStretch(1)
+        header_top.addWidget(self.add_btn)
 
-        # ---- List itself (kept compatible with v1's payload contract)
-        self.list = QListWidget()
-        self.list.setObjectName("AccountList")
-        self.list.currentItemChanged.connect(self._on_current_changed)
+        count_row = QHBoxLayout()
+        count_row.setContentsMargins(16, 0, 16, 12)
+        count_row.addWidget(self.count_label)
+        count_row.addStretch(1)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addLayout(header)
-        layout.addWidget(self.list, 1)
+        # ---- Search
+        self.search = QLineEdit()
+        self.search.setObjectName("AcctSearch")
+        self.search.setPlaceholderText("Filter (name, URI)")
+        self.search.textChanged.connect(self._apply_filter)
+        search_wrap = QHBoxLayout()
+        search_wrap.setContentsMargins(16, 0, 16, 8)
+        search_wrap.addWidget(self.search)
+
+        # ---- Rows in a scroll area
+        self._rows_holder = QWidget()
+        self._rows_layout = QVBoxLayout(self._rows_holder)
+        self._rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._rows_layout.setSpacing(0)
+        self._rows_layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self._rows_holder)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addLayout(header_top)
+        outer.addLayout(count_row)
+        outer.addLayout(search_wrap)
+        outer.addWidget(scroll, 1)
 
     # ------------------------------------------------------------------
     def populate(self, accounts: list[AccountConfig]) -> None:
-        self.list.clear()
-        for acc in accounts:
-            label = acc.display_name or f"{acc.username}@{acc.domain}"
-            item = QListWidgetItem(f"{label}  [{acc.transport.upper()}]")
-            item.setData(Qt.ItemDataRole.UserRole, acc.id)
-            self.list.addItem(item)
-        self.count_label.setText(str(len(accounts)))
+        # Tear down any existing rows.
+        for row in self._rows:
+            row.deleteLater()
+        self._rows = []
+        # Insert before the trailing stretch (last item).
+        insert_at = self._rows_layout.count() - 1
+        for cfg in accounts:
+            row = AcctRow(cfg, self._rows_holder)
+            row.clicked.connect(self._on_row_clicked)
+            self._rows_layout.insertWidget(insert_at, row)
+            self._rows.append(row)
+            insert_at += 1
+            # Apply any cached registration code
+            code = self._reg_codes.get(cfg.id, 0)
+            row.set_status(code)
+        self._refresh_count()
+        # Re-apply current filter
+        self._apply_filter(self.search.text())
+        # Try to keep selection; otherwise pick first
+        if self._selected_id and any(r.account_id == self._selected_id for r in self._rows):
+            self._highlight_selected()
+        elif self._rows:
+            self._on_row_clicked(self._rows[0].account_id)
+        else:
+            self._selected_id = None
+            self.selected_account_changed.emit("")
 
     def selected_account_id(self) -> str | None:
-        item = self.list.currentItem()
-        if item is None:
-            return None
-        return item.data(Qt.ItemDataRole.UserRole)
+        return self._selected_id
 
-    def _on_current_changed(self, current, _previous) -> None:  # noqa: ANN001
-        if current is None:
-            self.selected_account_changed.emit("")
-        else:
-            self.selected_account_changed.emit(current.data(Qt.ItemDataRole.UserRole))
+    def set_registration_code(self, account_id: str, code: int) -> None:
+        self._reg_codes[account_id] = code
+        for row in self._rows:
+            if row.account_id == account_id:
+                row.set_status(code)
+                break
+        self._refresh_count()
+
+    # ------------------------------------------------------------------
+    def _on_row_clicked(self, account_id: str) -> None:
+        self._selected_id = account_id
+        self._highlight_selected()
+        self.selected_account_changed.emit(account_id)
+
+    def _highlight_selected(self) -> None:
+        for row in self._rows:
+            row.set_focused(row.account_id == self._selected_id)
+
+    def _apply_filter(self, needle: str) -> None:
+        for row in self._rows:
+            row.setVisible(row.matches_filter(needle))
+
+    def _refresh_count(self) -> None:
+        total = len(self._rows)
+        registered = sum(
+            1 for r in self._rows
+            if 200 <= self._reg_codes.get(r.account_id, 0) < 300
+        )
+        self.count_label.setText(f"{registered} of {total} registered")

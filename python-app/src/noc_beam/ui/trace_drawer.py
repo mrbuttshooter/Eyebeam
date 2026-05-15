@@ -19,6 +19,8 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
+from PySide6.QtCore import QSize as _QSize
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
@@ -29,10 +31,25 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from noc_beam.ui.rail_icons import rail_icon
+
 
 DRAWER_W = 360
 DUR_SLOW = 240  # ms — matches motion.md REVEAL bucket
 PULSE_LIVE = 1400  # ms — ● LIVE dot loop
+
+
+def _live_dot_pixmap(px: int = 10, color_hex: str = "#FF5C7A") -> QPixmap:
+    """Solid coloured circle for the LIVE indicator -- crisper than a glyph."""
+    pix = QPixmap(_QSize(px, px))
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setBrush(QColor(color_hex))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawEllipse(0, 0, px, px)
+    painter.end()
+    return pix
 
 
 def house_curve() -> QEasingCurve:
@@ -72,12 +89,26 @@ class TraceDrawer(QFrame):
         # ---- Header: title + ● LIVE pulse + close button
         self.header_title = QLabel("Live trace")
         self.header_title.setObjectName("DrawerTitle")
-        self.live_label = QLabel("●  LIVE")
+
+        # LIVE badge: pixmap dot + "LIVE" text. Pulse is on the QGraphicsOpacityEffect
+        # attached to the row so the dot + label fade together.
+        self.live_badge = QFrame()
+        self.live_badge.setObjectName("DrawerLiveBadge")
+        live_l = QHBoxLayout(self.live_badge)
+        live_l.setContentsMargins(0, 0, 0, 0)
+        live_l.setSpacing(6)
+        self.live_dot = QLabel(self.live_badge)
+        self.live_dot.setObjectName("DrawerLiveDot")
+        self.live_dot.setPixmap(_live_dot_pixmap())
+        self.live_dot.setFixedSize(10, 10)
+        self.live_label = QLabel("LIVE", self.live_badge)
         self.live_label.setObjectName("DrawerLive")
-        self.live_label.setStyleSheet("color: #FF5C7A; font-weight: 600;")
-        self._live_effect = QGraphicsOpacityEffect(self.live_label)
+        live_l.addWidget(self.live_dot)
+        live_l.addWidget(self.live_label)
+
+        self._live_effect = QGraphicsOpacityEffect(self.live_badge)
         self._live_effect.setOpacity(1.0)
-        self.live_label.setGraphicsEffect(self._live_effect)
+        self.live_badge.setGraphicsEffect(self._live_effect)
         self._live_anim = QPropertyAnimation(self._live_effect, b"opacity", self)
         self._live_anim.setDuration(PULSE_LIVE)
         self._live_anim.setStartValue(1.0)
@@ -86,17 +117,21 @@ class TraceDrawer(QFrame):
         self._live_anim.setLoopCount(-1)
         self._live_anim.setEasingCurve(QEasingCurve(QEasingCurve.Type.InOutSine))
 
-        self.close_btn = QPushButton("Close")
+        # Close button: use the rail's "close" SVG (X icon) rendered to a pixmap.
+        self.close_btn = QPushButton(self)
         self.close_btn.setObjectName("DrawerClose")
+        self.close_btn.setIcon(rail_icon("close", color="#B7C0CC", px=14))
+        self.close_btn.setIconSize(_QSize(14, 14))
         self.close_btn.setFlat(True)
+        self.close_btn.setToolTip("Close trace drawer")
         self.close_btn.clicked.connect(self.close)
 
         header = QHBoxLayout()
-        header.setContentsMargins(12, 8, 8, 8)
-        header.setSpacing(8)
+        header.setContentsMargins(14, 10, 10, 10)
+        header.setSpacing(10)
         header.addWidget(self.header_title)
         header.addStretch(1)
-        header.addWidget(self.live_label)
+        header.addWidget(self.live_badge)
         header.addWidget(self.close_btn)
 
         # ---- Body slot (a TraceView re-parented in by MainWindow)

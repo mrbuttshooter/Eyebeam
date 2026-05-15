@@ -13,6 +13,9 @@ build_output/
 build/work/
 build/noc_beam/
 
+# Throwaway smoke / debug scripts kept under build/ for convenience
+build/_smoke_*.py
+
 # IDE
 .vscode/
 .idea/

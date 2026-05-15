@@ -330,3 +330,386 @@ QToolTip {
     padding: 4px 8px;
     border-radius: 2px;
 }
+
+
+/* ==================================================================
+   Phase G — v2 shell surfaces (HC palette).
+   ================================================================== */
+
+QFrame#TitleBar {
+    background-color: #000000;
+    border: none;
+    border-bottom: 1px solid #FFFFFF;
+}
+QLabel#Wordmark { padding: 0 8px 0 12px; background: transparent; }
+
+QToolButton#AccountChip {
+    background-color: #000000;
+    color: #FFFFFF;
+    border: 1px solid #FFFFFF;
+    border-radius: 14px;
+    padding: 0 12px 0 10px;
+    min-height: 28px;
+    font-size: 12px;
+    font-weight: 600;
+}
+QToolButton#AccountChip:hover { background-color: #1A1A1A; }
+QToolButton#AccountChip::menu-indicator { image: none; width: 0; }
+
+QFrame#DialBar {
+    background-color: #000000;
+    border: 1px solid #FFFFFF;
+    border-radius: 4px;
+}
+QFrame#DialBar:focus-within { border-color: #FFFF00; }
+QLabel#DialBarPrefix {
+    color: #C8C8C8;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+}
+QLineEdit#DialBarInput {
+    background: transparent;
+    color: #FFFFFF;
+    border: none;
+    padding: 0;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    selection-background-color: #00E5FF;
+}
+QLabel#DialBarKbd {
+    color: #FFFFFF;
+    background-color: #000000;
+    border: 1px solid #FFFFFF;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+
+QFrame#Rail {
+    background-color: #000000;
+    border: none;
+    border-right: 1px solid #FFFFFF;
+}
+QFrame#RailStatusPill {
+    background-color: #000000;
+    border: none;
+    border-top: 1px solid #FFFFFF;
+}
+QLabel#RailCounter {
+    color: #FFFFFF;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    padding-top: 2px;
+}
+QLabel#RailFlash {
+    color: #C8C8C8;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+}
+QToolButton#RailBtn {
+    background: transparent;
+    color: #FFFFFF;
+    border: none;
+    border-left: 2px solid transparent;
+    border-radius: 0;
+    padding: 6px 0 6px 0;
+    margin: 1px 6px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+QToolButton#RailBtn:hover {
+    color: #00E5FF;
+    background-color: #1A1A1A;
+    border-radius: 4px;
+}
+QToolButton#RailBtn:checked {
+    color: #FFFFFF;
+    background-color: #1A1A1A;
+    border-left: 2px solid #00E5FF;
+    border-radius: 0 4px 4px 0;
+}
+QToolButton#RailBtn:focus { outline: none; }
+
+
+QFrame#TraceDrawer {
+    background-color: #000000;
+    border: none;
+    border-left: 1px solid #FFFFFF;
+}
+QLabel#DrawerTitle { color: #FFFFFF; font-size: 13px; font-weight: 600; padding: 0 4px; }
+QLabel#DrawerLive {
+    color: #FF6B6B;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    padding: 0 6px;
+}
+QPushButton#DrawerClose {
+    background: transparent;
+    color: #FFFFFF;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+    padding: 0;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 14px;
+    font-weight: 700;
+}
+QPushButton#DrawerClose:hover {
+    background-color: #1A1A1A;
+    border-color: #FFFFFF;
+}
+
+
+QLabel#ViewTitle {
+    color: #FFFFFF;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 0;
+    margin: 0;
+}
+QLabel#ViewCount {
+    color: #C8C8C8;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+QLabel#ViewHint { color: #C8C8C8; font-size: 12px; }
+
+QPushButton#PrimaryAction {
+    background-color: #00E5FF;
+    color: #000000;
+    border: 1px solid #00E5FF;
+    border-radius: 2px;
+    padding: 7px 14px;
+    min-height: 28px;
+    font-weight: 700;
+}
+QPushButton#PrimaryAction:hover { background-color: #80F2FF; border-color: #80F2FF; }
+QPushButton#PrimaryAction:disabled { background: #000000; color: #888888; border-color: #888888; }
+
+
+QFrame#CallsHero {
+    background-color: #000000;
+    border: 1px solid #FFFFFF;
+    border-radius: 6px;
+    padding: 0;
+}
+QLabel#HeroGlyph {
+    color: #00FF7F;
+    background-color: #000000;
+    border: 2px solid #00FF7F;
+    border-radius: 28px;
+    min-width: 56px;
+    min-height: 56px;
+    max-width: 56px;
+    max-height: 56px;
+    qproperty-alignment: AlignCenter;
+    font-size: 28px;
+    font-weight: 700;
+}
+QLabel#HeroState {
+    color: #00FF7F;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+}
+QLabel#HeroTitle { color: #FFFFFF; font-size: 22px; font-weight: 700; }
+QLabel#HeroMeta {
+    color: #C8C8C8;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+}
+
+
+QFrame#AcctMaster {
+    background-color: #000000;
+    border: none;
+    border-right: 1px solid #FFFFFF;
+}
+QFrame#AcctDetail { background-color: #000000; border: none; }
+QLineEdit#AcctSearch {
+    background-color: #000000;
+    color: #FFFFFF;
+    border: 1px solid #FFFFFF;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    min-height: 28px;
+}
+QLineEdit#AcctSearch:focus { border-color: #FFFF00; }
+
+QFrame#AcctRow {
+    background-color: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid #FFFFFF;
+    padding: 10px 12px;
+}
+QFrame#AcctRow:hover { background-color: #1A1A1A; }
+QFrame#AcctRow[state="focused"] {
+    background-color: #1A1A1A;
+    border-left: 3px solid #00E5FF;
+}
+QFrame#AcctRow[state="error"] {
+    background-color: #000000;
+    border-left: 3px solid #FF6B6B;
+}
+QLabel#AcctRowName  { color: #FFFFFF; font-size: 13px; font-weight: 600; }
+QLabel#AcctRowUri   {
+    color: #C8C8C8;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+}
+QLabel#AcctRowMeta  {
+    color: #C8C8C8;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+
+QLabel#AcctAvatar {
+    background-color: #000000;
+    color: #00E5FF;
+    border: 2px solid #00E5FF;
+    border-radius: 24px;
+    min-width: 48px;
+    min-height: 48px;
+    max-width: 48px;
+    max-height: 48px;
+    qproperty-alignment: AlignCenter;
+    font-size: 18px;
+    font-weight: 700;
+}
+QLabel#AcctName { color: #FFFFFF; font-size: 18px; font-weight: 700; }
+QLabel#AcctUri {
+    color: #FFFFFF;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+}
+QLabel#AcctBadge {
+    background-color: #000000;
+    color: #FFFFFF;
+    border: 1px solid #FFFFFF;
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+QLabel#AcctBadge[level="ok"]     { color: #00FF7F; border-color: #00FF7F; }
+QLabel#AcctBadge[level="warn"]   { color: #FFD700; border-color: #FFD700; }
+QLabel#AcctBadge[level="danger"] { color: #FF6B6B; border-color: #FF6B6B; }
+
+QFrame#StatCard {
+    background-color: #000000;
+    border: 1px solid #FFFFFF;
+    border-radius: 4px;
+    padding: 12px 14px;
+}
+QLabel#StatLabel {
+    color: #C8C8C8;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+QLabel#StatValue {
+    color: #FFFFFF;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 16px;
+    font-weight: 600;
+}
+QFrame#LastIncident {
+    background-color: #000000;
+    border: 1px solid #FF6B6B;
+    border-radius: 4px;
+    padding: 12px 14px;
+}
+
+
+QFrame#TraceToolbar {
+    background-color: #000000;
+    border: none;
+    border-bottom: 1px solid #FFFFFF;
+}
+QFrame#TraceChipBar {
+    background-color: #000000;
+    border: none;
+    border-bottom: 1px solid #FFFFFF;
+}
+QToolButton#TraceChip {
+    background-color: #000000;
+    color: #FFFFFF;
+    border: 1px solid #FFFFFF;
+    border-radius: 12px;
+    padding: 4px 10px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    min-height: 22px;
+}
+QToolButton#TraceChip:hover { background-color: #1A1A1A; color: #00E5FF; }
+QToolButton#TraceChip:checked { background-color: #1A1A1A; border-color: #00E5FF; color: #00E5FF; }
+
+
+QListWidget#SettingsNav {
+    background-color: #000000;
+    color: #FFFFFF;
+    border: none;
+    border-right: 1px solid #FFFFFF;
+    outline: 0;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    padding-top: 8px;
+}
+QListWidget#SettingsNav::item {
+    padding: 8px 16px;
+    border: none;
+    border-left: 3px solid transparent;
+}
+QListWidget#SettingsNav::item:hover { background-color: #1A1A1A; color: #00E5FF; }
+QListWidget#SettingsNav::item:selected {
+    background-color: #1A1A1A;
+    color: #FFFFFF;
+    border-left: 3px solid #00E5FF;
+}
+QFrame#SettingsBody { background-color: #000000; border: none; }
+QFrame#SettingsFooter {
+    background-color: #000000;
+    border: none;
+    border-top: 1px solid #FFFFFF;
+}
+
+
+QLabel#DiagHint  { color: #C8C8C8; font-size: 12px; }
+QLabel#DiagValue {
+    color: #FFFFFF;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+}
+QTextEdit#DiagResults {
+    background-color: #000000;
+    color: #FFFFFF;
+    border: 1px solid #FFFFFF;
+    border-radius: 2px;
+    padding: 8px 10px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+}

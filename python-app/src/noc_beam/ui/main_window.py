@@ -55,7 +55,12 @@ from noc_beam.sip.events import sip_events
 from noc_beam.sip.quality import CallQualitySampler
 from noc_beam.sip.registration_retry import RegistrationRetry
 from noc_beam.ui.account_dialog import AccountDialog
+from noc_beam.ui.accounts_detail import AccountDetail
 from noc_beam.ui.accounts_view import AccountsView
+from noc_beam.ui.calls_page import ACTIVE as CALLS_ACTIVE
+from noc_beam.ui.calls_page import IDLE as CALLS_IDLE
+from noc_beam.ui.calls_page import MULTI as CALLS_MULTI
+from noc_beam.ui.calls_page import CallsPage
 from noc_beam.ui.diagnostics_view import DiagnosticsView
 from noc_beam.ui.call_list_widget import CallListWidget
 from noc_beam.ui.call_widget import CallWidget
@@ -65,6 +70,7 @@ from noc_beam.ui.rail import Dest, Rail
 from noc_beam.ui.settings_view import SettingsView
 from noc_beam.ui.title_bar import TitleBar
 from noc_beam.ui.trace_drawer import TraceDrawer
+from noc_beam.ui.trace_page import TracePage
 from noc_beam.ui.trace_view import TraceView
 from noc_beam.ui.transfer_dialog import TransferDialog
 from noc_beam.ui.tray import Presence, TrayController
@@ -141,14 +147,27 @@ class MainWindow(QMainWindow):
 
         # ---- Pages
         self.calls_page = self._build_calls_page()
-        self.trace_page = TraceView()
+        self.calls_page.set_meta_provider(self._calls_hero_meta)
+        self.calls_page.set_state(CALLS_IDLE)
+        self.trace_page = TracePage()
         self.trace_page.export_failed.connect(
             lambda msg: self.status.show_message(msg, 5000)
         )
         self.accounts_view = AccountsView()
+        self.account_detail = AccountDetail()
         self.accounts_view.add_clicked.connect(self._on_add_account)
-        self.accounts_view.edit_clicked.connect(self._on_edit_account)
-        self.accounts_view.remove_clicked.connect(self._on_remove_account)
+        self.accounts_view.selected_account_changed.connect(self._on_account_selected)
+        self.account_detail.edit_requested.connect(self._on_edit_account)
+        self.account_detail.remove_requested.connect(self._on_remove_account)
+        self.account_detail.unregister_requested.connect(self._on_unregister_account)
+        self.account_detail.test_requested.connect(self._on_test_account)
+        # Compose master + detail into the destination page.
+        self.accounts_destination = QWidget(self)
+        ad_l = QHBoxLayout(self.accounts_destination)
+        ad_l.setContentsMargins(0, 0, 0, 0)
+        ad_l.setSpacing(0)
+        ad_l.addWidget(self.accounts_view)
+        ad_l.addWidget(self.account_detail, 1)
 
         self.history_view = HistoryView()
         self.history_view.redial_requested.connect(self._on_call_requested)
@@ -160,12 +179,12 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget(self)
         # Order MUST mirror Dest enum.
-        self.stack.addWidget(self.calls_page)         # 0 CALLS
-        self.stack.addWidget(self.trace_page)         # 1 TRACE
-        self.stack.addWidget(self.accounts_view)      # 2 ACCOUNTS
-        self.stack.addWidget(self.history_view)       # 3 HISTORY
-        self.stack.addWidget(self.settings_view)      # 4 SETTINGS
-        self.stack.addWidget(self.diagnostics_page)   # 5 DIAGNOSTICS
+        self.stack.addWidget(self.calls_page)            # 0 CALLS
+        self.stack.addWidget(self.trace_page)            # 1 TRACE
+        self.stack.addWidget(self.accounts_destination)  # 2 ACCOUNTS (master+detail)
+        self.stack.addWidget(self.history_view)          # 3 HISTORY
+        self.stack.addWidget(self.settings_view)         # 4 SETTINGS
+        self.stack.addWidget(self.diagnostics_page)      # 5 DIAGNOSTICS
 
         # ---- Trace drawer (right). Its own TraceView so it can stay open
         # while the user works in another destination.
@@ -194,26 +213,13 @@ class MainWindow(QMainWindow):
         # Default destination
         self.rail.select(int(Dest.CALLS))
 
-    def _build_calls_page(self) -> QWidget:
-        """Calls destination: dialpad | call list + active call widget."""
-        page = QWidget()
-        layout = QHBoxLayout(page)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(16)
-
-        # Left column: dialpad
+    def _build_calls_page(self) -> CallsPage:
+        """Calls destination built from CallsPage (idle hero / active / multi)."""
         self.dialpad = DialPad()
         self.dialpad.call_requested.connect(self._on_call_requested)
         self.dialpad.hangup_requested.connect(self._on_hangup_requested)
         self.dialpad.digit_pressed.connect(self._on_digit_pressed)
-        dialpad_holder = QWidget()
-        dl = QVBoxLayout(dialpad_holder)
-        dl.setContentsMargins(0, 0, 0, 0)
-        dl.addWidget(self.dialpad)
-        dl.addStretch(1)
-        dialpad_holder.setMaximumWidth(320)
 
-        # Right column: compact call list on top, active call widget below
         self.call_list = CallListWidget(self.calls)
         self.call_list.call_selected.connect(self._select_call)
         self.call_list.setMaximumHeight(120)
@@ -227,16 +233,35 @@ class MainWindow(QMainWindow):
         self.call_widget.mute_toggled.connect(self._on_mute_toggled)
         self.call_widget.transfer_clicked.connect(self._on_transfer)
 
-        right = QWidget()
-        rl = QVBoxLayout(right)
-        rl.setContentsMargins(0, 0, 0, 0)
-        rl.setSpacing(8)
-        rl.addWidget(self.call_list)
-        rl.addWidget(self.call_widget, 1)
+        return CallsPage(self.dialpad, self.call_list, self.call_widget, self)
 
-        layout.addWidget(dialpad_holder)
-        layout.addWidget(right, 1)
-        return page
+    def _calls_hero_meta(self) -> tuple[str | None, str | None]:
+        """Supply (active-account label, codec name) for the idle hero."""
+        acc_id = self.title_bar.active_account_id
+        acc_label = self._account_label(acc_id) if acc_id else None
+        # No live call when in IDLE -- show preferred codec from settings as
+        # the negotiated-to-be hint. Pick the highest-priority enabled codec.
+        codec: str | None = None
+        try:
+            ranked = sorted(
+                ((p, k) for k, p in self.settings.codecs.priorities.items() if p > 0),
+                reverse=True,
+            )
+            if ranked:
+                codec = ranked[0][1]
+        except Exception:
+            pass
+        return acc_label, codec
+
+    def _sync_calls_state(self) -> None:
+        """Pick CALLS_IDLE / CALLS_ACTIVE / CALLS_MULTI based on call count."""
+        count = len(self.calls.all())
+        if count == 0:
+            self.calls_page.set_state(CALLS_IDLE)
+        elif count == 1:
+            self.calls_page.set_state(CALLS_ACTIVE)
+        else:
+            self.calls_page.set_state(CALLS_MULTI)
 
     # ------------------------------------------------------------------
     def _connect_events(self) -> None:
@@ -275,6 +300,45 @@ class MainWindow(QMainWindow):
         # Diagnostics surfaces per-account STUN / TLS rows -- keep them
         # in sync so the view never lies about current config.
         self.diagnostics_page.update_accounts(self.accounts)
+        # Push the currently-selected master row into the detail pane so
+        # the right side never goes stale after add/edit/remove.
+        self._refresh_account_detail()
+
+    def _on_account_selected(self, account_id: str) -> None:
+        self._refresh_account_detail()
+
+    def _refresh_account_detail(self) -> None:
+        aid = self.accounts_view.selected_account_id()
+        if not aid:
+            self.account_detail.show_empty()
+            return
+        cfg = next((a for a in self.accounts if a.id == aid), None)
+        if cfg is None:
+            self.account_detail.show_empty()
+        else:
+            self.account_detail.show_account(cfg)
+
+    def _on_unregister_account(self) -> None:
+        """Toggle the selected account's registration off (without deleting)."""
+        acc = self._selected_account()
+        if acc is None:
+            return
+        try:
+            SipEndpoint.instance().remove_account(acc.id)
+            self.status.showMessage(f"Unregistered {acc.username}@{acc.domain}", 3000)
+        except Exception:
+            log.exception("unregister failed")
+
+    def _on_test_account(self) -> None:
+        """Tier-3 will wire SipEndpoint.options_probe; for now, surface
+        a status-pill hint so the button still feels responsive."""
+        acc = self._selected_account()
+        if acc is None:
+            return
+        self.status.showMessage(
+            f"Test for {acc.username}@{acc.domain} — pending OPTIONS probe wire-up",
+            5000,
+        )
 
     def _add_account_to_endpoint(self, cfg: AccountConfig) -> None:
         try:
@@ -373,6 +437,13 @@ class MainWindow(QMainWindow):
         total = sum(1 for a in self.accounts if a.enabled)
         registered = sum(1 for c in self._reg_state.values() if 200 <= c < 300)
         self.rail.status_pill.set_registration(registered, total)
+        # Mirror status into the master row + the title-bar chip.
+        self.accounts_view.set_registration_code(account_id, code)
+        if account_id == self.title_bar.active_account_id:
+            level = "ok" if 200 <= code < 300 else (
+                "warn" if code in (401, 403, 407, 423) else "danger"
+            )
+            self.title_bar.set_chip_status(level)
 
     def _account_label(self, account_id: str) -> str:
         acc = next((a for a in self.accounts if a.id == account_id), None)
@@ -463,6 +534,7 @@ class MainWindow(QMainWindow):
         if self._selected_call_id is None:
             self._select_call(call_id)
         self.dialpad.set_in_call(True)
+        self._sync_calls_state()
 
     def _on_call_record_updated(self, call_id: int) -> None:
         rec = self.calls.get(call_id)
@@ -500,6 +572,7 @@ class MainWindow(QMainWindow):
                 self.dialpad.set_in_call(False)
                 if self.drawer.is_open():
                     self.drawer.close()
+        self._sync_calls_state()
 
     # ------------------------------------------------------------------
     # Dialpad / call_widget actions

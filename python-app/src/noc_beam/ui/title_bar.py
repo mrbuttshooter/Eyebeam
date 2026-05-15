@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QAction, QIcon, QKeySequence
+from PySide6.QtCore import QByteArray, QSize, Qt, Signal
+from PySide6.QtGui import QAction, QColor, QIcon, QKeySequence, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QFrame,
@@ -24,19 +24,33 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QPushButton,
     QSizePolicy,
     QToolButton,
     QWidget,
 )
 
-from PySide6.QtCore import QByteArray
-from PySide6.QtGui import QPainter, QPixmap
-
 
 TITLE_BAR_H = 44
 WORDMARK_PX = 18
 RESOURCES = Path(__file__).resolve().parent / "resources"
+
+
+def _dot_pixmap(color_hex: str, px: int = 12) -> QPixmap:
+    """A filled circle with a soft halo, used as the chip's status dot."""
+    pix = QPixmap(QSize(px, px))
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    halo = QColor(color_hex)
+    halo.setAlpha(54)  # ~0.21 alpha to mimic the box-shadow halo
+    painter.setBrush(halo)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawEllipse(0, 0, px, px)
+    painter.setBrush(QColor(color_hex))
+    inset = px // 4
+    painter.drawEllipse(inset, inset, px - 2 * inset, px - 2 * inset)
+    painter.end()
+    return pix
 
 
 def _wordmark_pixmap(height_px: int = WORDMARK_PX, color: str = "#E6EDF3") -> QPixmap:
@@ -80,28 +94,48 @@ class TitleBar(QFrame):
             self.wordmark.setText("noc_beam")
         self.wordmark.setFixedHeight(TITLE_BAR_H)
 
-        # ---- Active account chip (button with dropdown menu)
+        # ---- Active account chip (button with dropdown menu).
+        # Carries a coloured status pixmap (rendered, not a glyph) so the
+        # dot reads sharp at any DPI and respects the registration state.
         self.chip = QToolButton(self)
         self.chip.setObjectName("AccountChip")
         self.chip.setText("No account")
-        self.chip.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.chip.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.chip.setIcon(QIcon(_dot_pixmap("#7C8696")))
+        self.chip.setIconSize(QSize(10, 10))
         self.chip.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         self.chip.setMenu(QMenu(self.chip))
         self.chip.clicked.connect(self.active_account_clicked.emit)
 
-        # ---- Dial bar (Ctrl+K focuses it)
-        self.dial = QLineEdit(self)
-        self.dial.setObjectName("DialBar")
-        self.dial.setPlaceholderText("Enter number or SIP URI  (Ctrl+K)")
+        # ---- Dial bar (Ctrl+K focuses it). Wrapped in a frame so the
+        # mockup's "sip:" prefix + Ctrl+K hint chip can sit inside the
+        # bordered container alongside the input.
+        dial_frame = QFrame(self)
+        dial_frame.setObjectName("DialBar")
+        dial_frame.setFixedHeight(28)
+        dial_frame.setMaximumWidth(420)
+        dial_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        df = QHBoxLayout(dial_frame)
+        df.setContentsMargins(10, 0, 8, 0)
+        df.setSpacing(8)
+        prefix = QLabel("sip:", dial_frame)
+        prefix.setObjectName("DialBarPrefix")
+        df.addWidget(prefix)
+        self.dial = QLineEdit(dial_frame)
+        self.dial.setObjectName("DialBarInput")
+        self.dial.setFrame(False)
+        self.dial.setPlaceholderText("alice@example.com  or  number")
         self.dial.setClearButtonEnabled(True)
-        self.dial.setMaximumWidth(360)
         self.dial.returnPressed.connect(self._on_return)
-        self.dial.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        df.addWidget(self.dial, 1)
+        kbd = QLabel("Ctrl+K", dial_frame)
+        kbd.setObjectName("DialBarKbd")
+        df.addWidget(kbd)
+        self._dial_frame = dial_frame
 
         focus_dial = QAction(self)
         focus_dial.setShortcut(QKeySequence("Ctrl+K"))
         focus_dial.triggered.connect(self._focus_dial)
-        # Add to self so the shortcut is window-scoped via parent's WindowShortcut
         self.addAction(focus_dial)
 
         # ---- Layout
@@ -112,7 +146,7 @@ class TitleBar(QFrame):
         layout.addSpacing(4)
         layout.addWidget(self.chip)
         layout.addStretch(1)
-        layout.addWidget(self.dial)
+        layout.addWidget(self._dial_frame)
 
     # ------------------------------------------------------------------
     def _focus_dial(self) -> None:
@@ -168,5 +202,19 @@ class TitleBar(QFrame):
 
     def _set_chip_text(self, account_id: str) -> None:
         label = next((lbl for aid, lbl in self._accounts if aid == account_id), account_id)
-        # The chip carries a ● dot prefix so it reads as a status pill, not a button.
-        self.chip.setText(f"●  {label}")
+        self.chip.setText(label)
+        # Optimistic green dot whenever a real account is selected; the
+        # actual registration code is broadcast via registration_changed
+        # and a future tick can refine this per-account.
+        self.chip.setIcon(QIcon(_dot_pixmap("#66D19E")))
+
+    # ------------------------------------------------------------------
+    def set_chip_status(self, level: str) -> None:
+        """Recolour the chip dot. level in: ok / warn / danger / muted."""
+        color = {
+            "ok": "#66D19E",
+            "warn": "#F0C36D",
+            "danger": "#FF5C7A",
+            "muted": "#7C8696",
+        }.get(level, "#7C8696")
+        self.chip.setIcon(QIcon(_dot_pixmap(color)))

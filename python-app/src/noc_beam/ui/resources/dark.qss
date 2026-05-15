@@ -357,3 +357,462 @@ QToolTip {
     padding: 4px 8px;
     border-radius: 2px;
 }
+
+
+/* ==================================================================
+   Phase G — v2 shell surfaces.
+   Mirrors NOC_Beam/ui_kits/noc_beam/styles.css.
+   Order: title bar -> rail -> drawer -> view headers -> primary action
+          -> Calls hero -> Accounts master/detail -> Trace page
+          -> Settings nav.
+   ================================================================== */
+
+
+/* ---- Title bar (44 px, NOC_Beam/ui_kits/.../styles.css .titlebar) -- */
+QFrame#TitleBar {
+    background-color: #0E1116;
+    border: none;
+    border-bottom: 1px solid #2A3340;
+}
+QLabel#Wordmark {
+    padding: 0 8px 0 12px;
+    background: transparent;
+}
+
+/* Active-account chip — mirrors .tb-account */
+QToolButton#AccountChip {
+    background-color: #1F252E;
+    color: #E6EDF3;
+    border: 1px solid #2A3340;
+    border-radius: 14px;
+    padding: 0 12px 0 10px;
+    min-height: 28px;
+    font-size: 12px;
+    font-weight: 500;
+}
+QToolButton#AccountChip:hover {
+    background-color: #2A323D;
+    border-color: #3B4654;
+}
+QToolButton#AccountChip::menu-indicator { image: none; width: 0; }
+
+/* Dial bar — mirrors .tb-uri (frame contains "sip:" prefix + input + Ctrl+K) */
+QFrame#DialBar {
+    background-color: #1F252E;
+    border: 1px solid #2A3340;
+    border-radius: 4px;
+}
+QFrame#DialBar:focus-within { border-color: #7FD3FF; }
+QLabel#DialBarPrefix {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+}
+QLineEdit#DialBarInput {
+    background: transparent;
+    color: #E6EDF3;
+    border: none;
+    padding: 0;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    selection-background-color: #7FD3FF;
+}
+QLabel#DialBarKbd {
+    color: #7C8696;
+    background-color: #161B22;
+    border: 1px solid #2A3340;
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+
+
+/* ---- Icon rail (64 px, .rail / .rail-btn) ----------------------- */
+QFrame#Rail {
+    background-color: #0E1116;
+    border: none;
+    border-right: 1px solid #2A3340;
+}
+QFrame#RailStatusPill {
+    background-color: #0E1116;
+    border: none;
+    border-top: 1px solid #2A3340;
+}
+QLabel#RailCounter {
+    color: #B7C0CC;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+    font-weight: 500;
+    padding-top: 2px;
+}
+QLabel#RailFlash {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+}
+
+QToolButton#RailBtn {
+    background: transparent;
+    color: #7C8696;
+    border: none;
+    border-left: 2px solid transparent;
+    border-radius: 0;
+    padding: 6px 0 6px 0;
+    margin: 1px 6px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+QToolButton#RailBtn:hover {
+    color: #E6EDF3;
+    background-color: #1F252E;
+    border-radius: 4px;
+}
+QToolButton#RailBtn:checked {
+    color: #E6EDF3;
+    background-color: rgba(127, 211, 255, 0.10);
+    border-left: 2px solid #7FD3FF;
+    border-radius: 0 4px 4px 0;
+}
+QToolButton#RailBtn:focus { outline: none; }
+
+
+/* ---- Trace drawer (.drawer / .drawer-head) ---------------------- */
+QFrame#TraceDrawer {
+    background-color: #161B22;
+    border: none;
+    border-left: 1px solid #2A3340;
+}
+QLabel#DrawerTitle {
+    color: #E6EDF3;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0 4px;
+}
+QLabel#DrawerLive {
+    color: #FF5C7A;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    padding: 0 6px;
+}
+QPushButton#DrawerClose {
+    background: transparent;
+    color: #B7C0CC;
+    border: none;
+    border-radius: 4px;
+    min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+    padding: 0;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 14px;
+    font-weight: 500;
+}
+QPushButton#DrawerClose:hover {
+    background-color: #1F252E;
+    color: #E6EDF3;
+}
+
+
+/* ---- View headers (shared across Accounts / Settings / Diag) ---- */
+QLabel#ViewTitle {
+    color: #E6EDF3;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    padding: 0;
+    margin: 0;
+}
+QLabel#ViewCount {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+QLabel#ViewHint {
+    color: #7C8696;
+    font-size: 12px;
+}
+
+/* Primary cyan action (Apply / Add account / Test, etc.) ---------- */
+QPushButton#PrimaryAction {
+    background-color: #7FD3FF;
+    color: #0E1116;
+    border: 1px solid #7FD3FF;
+    border-radius: 2px;
+    padding: 7px 14px;
+    min-height: 28px;
+    font-weight: 600;
+}
+QPushButton#PrimaryAction:hover {
+    background-color: #A8E3FF;
+    border-color: #A8E3FF;
+}
+QPushButton#PrimaryAction:pressed { background-color: #4FAFE3; border-color: #4FAFE3; }
+QPushButton#PrimaryAction:disabled { background: #1F252E; color: #7C8696; border-color: #2A3340; }
+
+
+/* ---- Calls page hero (.hero) ------------------------------------- */
+QFrame#CallsHero {
+    background-color: #1F252E;
+    border: 1px solid #2A3340;
+    border-radius: 6px;
+    padding: 0;
+}
+QLabel#HeroGlyph {
+    color: #66D19E;
+    background-color: rgba(102, 209, 158, 0.12);
+    border-radius: 28px;
+    min-width: 56px;
+    min-height: 56px;
+    max-width: 56px;
+    max-height: 56px;
+    qproperty-alignment: AlignCenter;
+    font-size: 28px;
+    font-weight: 700;
+}
+QLabel#HeroState {
+    color: #66D19E;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+}
+QLabel#HeroTitle {
+    color: #E6EDF3;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+QLabel#HeroMeta {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+}
+
+
+/* ---- Accounts master/detail (.acct-list / .acct-row / .acct-detail) */
+QFrame#AcctMaster {
+    background-color: #0E1116;
+    border: none;
+    border-right: 1px solid #2A3340;
+}
+QFrame#AcctDetail {
+    background-color: #161B22;
+    border: none;
+}
+QLineEdit#AcctSearch {
+    background-color: #161B22;
+    color: #E6EDF3;
+    border: 1px solid #2A3340;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    min-height: 28px;
+}
+QLineEdit#AcctSearch:focus { border-color: #7FD3FF; }
+
+QFrame#AcctRow {
+    background-color: transparent;
+    border: none;
+    border-left: 3px solid transparent;
+    border-bottom: 1px solid #1B2129;
+    padding: 10px 12px;
+}
+QFrame#AcctRow:hover { background-color: #161B22; }
+QFrame#AcctRow[state="focused"] {
+    background-color: rgba(127, 211, 255, 0.08);
+    border-left: 3px solid #7FD3FF;
+}
+QFrame#AcctRow[state="error"] { background-color: rgba(255, 92, 122, 0.06); }
+
+QLabel#AcctRowName  { color: #E6EDF3; font-size: 13px; font-weight: 500; }
+QLabel#AcctRowUri   {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+}
+QLabel#AcctRowMeta  {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+
+QLabel#AcctAvatar {
+    background-color: rgba(127, 211, 255, 0.12);
+    color: #7FD3FF;
+    border-radius: 24px;
+    min-width: 48px;
+    min-height: 48px;
+    max-width: 48px;
+    max-height: 48px;
+    qproperty-alignment: AlignCenter;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+QLabel#AcctName {
+    color: #E6EDF3;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+}
+QLabel#AcctUri {
+    color: #B7C0CC;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+}
+QLabel#AcctBadge {
+    background-color: #1F252E;
+    color: #B7C0CC;
+    border: 1px solid #2A3340;
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+}
+QLabel#AcctBadge[level="ok"] {
+    color: #66D19E;
+    background-color: rgba(102, 209, 158, 0.10);
+    border-color: rgba(102, 209, 158, 0.32);
+}
+QLabel#AcctBadge[level="warn"] {
+    color: #F0C36D;
+    background-color: rgba(240, 195, 109, 0.10);
+    border-color: rgba(240, 195, 109, 0.32);
+}
+QLabel#AcctBadge[level="danger"] {
+    color: #FF5C7A;
+    background-color: rgba(255, 92, 122, 0.10);
+    border-color: rgba(255, 92, 122, 0.32);
+}
+
+QFrame#StatCard {
+    background-color: #1F252E;
+    border: 1px solid #2A3340;
+    border-radius: 4px;
+    padding: 12px 14px;
+}
+QLabel#StatLabel {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+QLabel#StatValue {
+    color: #E6EDF3;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+QFrame#LastIncident {
+    background-color: rgba(255, 92, 122, 0.05);
+    border: 1px solid rgba(255, 92, 122, 0.30);
+    border-radius: 4px;
+    padding: 12px 14px;
+}
+
+
+/* ---- Trace destination toolbar + preset chips ------------------- */
+QFrame#TraceToolbar {
+    background-color: #0E1116;
+    border: none;
+    border-bottom: 1px solid #2A3340;
+}
+QFrame#TraceChipBar {
+    background-color: #161B22;
+    border: none;
+    border-bottom: 1px solid #2A3340;
+}
+QToolButton#TraceChip {
+    background-color: #1F252E;
+    color: #B7C0CC;
+    border: 1px solid #2A3340;
+    border-radius: 12px;
+    padding: 4px 10px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+    font-weight: 500;
+    min-height: 22px;
+}
+QToolButton#TraceChip:hover {
+    background-color: #2A323D;
+    border-color: #3B4654;
+    color: #E6EDF3;
+}
+QToolButton#TraceChip:checked {
+    background-color: rgba(127, 211, 255, 0.12);
+    border-color: #7FD3FF;
+    color: #7FD3FF;
+}
+
+
+/* ---- Settings nav sidebar -------------------------------------- */
+QListWidget#SettingsNav {
+    background-color: #0E1116;
+    color: #B7C0CC;
+    border: none;
+    border-right: 1px solid #2A3340;
+    outline: 0;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+    padding-top: 8px;
+}
+QListWidget#SettingsNav::item {
+    padding: 8px 16px;
+    border: none;
+    border-left: 3px solid transparent;
+}
+QListWidget#SettingsNav::item:hover {
+    background-color: #161B22;
+    color: #E6EDF3;
+}
+QListWidget#SettingsNav::item:selected {
+    background-color: rgba(127, 211, 255, 0.10);
+    color: #E6EDF3;
+    border-left: 3px solid #7FD3FF;
+}
+QFrame#SettingsBody { background-color: #161B22; border: none; }
+QFrame#SettingsFooter {
+    background-color: #0E1116;
+    border: none;
+    border-top: 1px solid #2A3340;
+}
+
+
+/* ---- Diagnostics panel hint labels (replaces inline styles) ----- */
+QLabel#DiagHint {
+    color: #7C8696;
+    font-size: 12px;
+    line-height: 1.4;
+}
+QLabel#DiagValue {
+    color: #E6EDF3;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 12px;
+}
+QTextEdit#DiagResults {
+    background-color: #0E1116;
+    color: #E0E0E0;
+    border: 1px solid #2A3340;
+    border-radius: 2px;
+    padding: 8px 10px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+}
