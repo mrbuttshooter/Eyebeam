@@ -104,6 +104,13 @@ def test_all_modes_return_empty_when_either_side_empty(mode: str) -> None:
     assert plan.expand(make_spec(["1001"], [], mode)) == []
 
 
+def test_unknown_mode_raises_even_when_inputs_are_empty() -> None:
+    spec = make_spec([], [], "unknown")
+
+    with pytest.raises(ValueError):
+        plan.expand(spec)
+
+
 @pytest.mark.parametrize(
     ("requested_parallel", "expected_parallel"),
     [

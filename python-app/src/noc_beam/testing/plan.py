@@ -35,6 +35,9 @@ def normalise_lines(text: str) -> list[str]:
 
 
 def expand(spec: TestSpec) -> list[TestCall]:
+    if spec.mode not in ("matrix", "paired", "fan-out", "fan-in"):
+        raise ValueError(f"Unknown test plan mode: {spec.mode}")
+
     if not spec.callers or not spec.targets:
         return []
 
@@ -45,10 +48,8 @@ def expand(spec: TestSpec) -> list[TestCall]:
         pairs = list(zip(spec.callers, spec.targets, strict=False))
     elif spec.mode == "fan-out":
         pairs = [(spec.callers[0], target) for target in spec.targets]
-    elif spec.mode == "fan-in":
-        pairs = [(caller, spec.targets[0]) for caller in spec.callers]
     else:
-        raise ValueError(f"Unknown test plan mode: {spec.mode}")
+        pairs = [(caller, spec.targets[0]) for caller in spec.callers]
 
     return [
         TestCall(index=index, caller_number=caller, target_number=target)
