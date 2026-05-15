@@ -831,18 +831,26 @@ class PhoneShell(QMainWindow):
             QMessageBox.warning(self, "Transfer failed", str(exc))
 
     def _on_mute_toggled(self, _call_id, muted):
-        call = self._selected_pjsua_call()
-        if call is None or self._selected_call_id is None: return
+        """In-call CallWidget Mute button → mute the MIC.
+
+        Routes through the device-level audio-strip mic path so:
+          - the same mute behaviour as the top-strip mic icon is used
+            (capture device adjustTxLevel; re-INVITE-proof)
+          - the MIC icon (not the speaker icon) reflects the state
+        """
+        # Track on the call record for History.
+        if self._selected_call_id is not None:
+            try:
+                self.calls.set_mute(self._selected_call_id, muted)
+            except Exception:
+                pass
+        # Drive the top-strip MIC icon, which has the device-level
+        # adjustTxLevel wiring + label/state handling.
         try:
-            SipEndpoint.instance().set_call_mute(call, muted)
-            self.calls.set_mute(self._selected_call_id, muted)
-        except Exception: log.exception("mute toggle failed")
-        # Keep the top-strip speaker icon in sync with the in-call
-        # Mute button so the user has one consistent mute state.
-        try:
-            self.audio.set_muted(muted)
+            self.audio.set_mic_muted(muted)
+            self._on_audio_strip_mic_mute(muted)
         except Exception:
-            pass
+            log.exception("mute toggle failed")
 
     def _on_audio_strip_mute(self, muted: bool) -> None:
         """Top-strip SPEAKER icon → silence the playback DEVICE.
