@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QScrollArea,
     QToolButton,
     QVBoxLayout,
@@ -146,6 +147,7 @@ class GroupRow(QFrame):
         chev.setIcon(rail_icon("chevron-down", color="#94A0AD", px=12))
         chev.setIconSize(QSize(12, 12))
         chev.setAutoRaise(True)
+        chev.clicked.connect(lambda: self.clicked.emit(self.name))
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -319,7 +321,7 @@ class ContactsView(QWidget):
                 contact_row.call_requested.connect(self.call_requested.emit)
                 contact_row.edit_requested.connect(self._on_edit_contact)
                 contact_row.delete_requested.connect(self._on_delete_contact)
-                contact_row.setVisible(group in self._expanded_groups)
+                contact_row.setVisible(bool(needle) or group in self._expanded_groups)
                 self._rows_layout.addWidget(contact_row)
                 child_widgets.append(contact_row)
             self._group_widgets[group] = child_widgets
@@ -357,30 +359,64 @@ class ContactsView(QWidget):
     def _on_add_contact(self, group: str = "Work") -> None:
         self.add_contact_requested.emit()
         dlg = ContactDialog(group=group, parent=self)
-        if not _open_modal(dlg):
-            return
-        contacts = load_contacts()
-        add_contact(contacts, **dlg.values())
-        save_contacts(contacts)
-        self.contact_saved.emit()
-        self.reload()
+        while _open_modal(dlg):
+            if self._save_new_contact(dlg):
+                return
 
     def _on_edit_contact(self, contact_id: str) -> None:
         contact = next((item for item in self._contacts if item.id == contact_id), None)
         if contact is None:
             return
         dlg = ContactDialog(contact=contact, parent=self)
-        if not _open_modal(dlg):
-            return
-        contacts = load_contacts()
-        update_contact(contacts, contact_id, **dlg.values())
-        save_contacts(contacts)
-        self.contact_saved.emit()
-        self.reload()
+        while _open_modal(dlg):
+            if self._save_existing_contact(dlg, contact_id):
+                return
 
     def _on_delete_contact(self, contact_id: str) -> None:
         contacts = load_contacts()
         if delete_contact(contacts, contact_id):
+            try:
+                save_contacts(contacts)
+            except OSError as exc:
+                self._warn_save_failed("delete contact", exc)
+                return
+            self._after_contacts_saved()
+
+    def _save_new_contact(self, dlg: ContactDialog) -> bool:
+        try:
+            contacts = load_contacts()
+            add_contact(contacts, **dlg.values())
             save_contacts(contacts)
-            self.contact_saved.emit()
-            self.reload()
+        except ValueError as exc:
+            dlg.error.setText(str(exc))
+            return False
+        except OSError as exc:
+            self._warn_save_failed("save contact", exc)
+            return False
+        self._after_contacts_saved()
+        return True
+
+    def _save_existing_contact(self, dlg: ContactDialog, contact_id: str) -> bool:
+        try:
+            contacts = load_contacts()
+            update_contact(contacts, contact_id, **dlg.values())
+            save_contacts(contacts)
+        except ValueError as exc:
+            dlg.error.setText(str(exc))
+            return False
+        except (KeyError, OSError) as exc:
+            self._warn_save_failed("save contact", exc)
+            return False
+        self._after_contacts_saved()
+        return True
+
+    def _after_contacts_saved(self) -> None:
+        self.contact_saved.emit()
+        self.reload()
+
+    def _warn_save_failed(self, action: str, exc: Exception) -> None:
+        QMessageBox.warning(
+            self,
+            "Contacts",
+            f"Could not {action}.\n\n{exc}",
+        )

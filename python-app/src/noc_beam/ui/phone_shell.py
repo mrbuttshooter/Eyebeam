@@ -257,6 +257,8 @@ class PhoneShell(QMainWindow):
         self.contacts_view = ContactsView(self)
         self.contacts_view.call_requested.connect(self._on_call_requested)
         self.favorites_view = FavoritesView(self)
+        self.contacts_view.contact_saved.connect(self.favorites_view.reload)
+        self.favorites_view.call_requested.connect(self._on_call_requested)
         self.history_view = HistoryView(self)
         self.history_view.redial_requested.connect(self._on_call_requested)
 
