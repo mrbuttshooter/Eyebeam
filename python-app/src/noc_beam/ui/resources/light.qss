@@ -1837,3 +1837,27 @@ QToolButton#ContactsActionBtn[active="true"] {
     border: 1px solid #6FB8E8;
     border-radius: 4px;
 }
+
+/* ---------- Audio TX/RX live meters in top strip (panel 1) ---------- */
+QProgressBar#AudioMeterTX, QProgressBar#AudioMeterRX {
+    background-color: #ECEFF2;
+    border: 1px solid #D8DEE4;
+    border-radius: 3px;
+    text-align: center;
+}
+QProgressBar#AudioMeterTX::chunk {
+    background-color: #2EBD5C;
+    border-radius: 2px;
+}
+QProgressBar#AudioMeterRX::chunk {
+    background-color: #1A6FA0;
+    border-radius: 2px;
+}
+QLabel#AudioMeterLabel {
+    color: #57606A;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    min-width: 18px;
+}

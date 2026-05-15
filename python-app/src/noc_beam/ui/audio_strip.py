@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
+    QProgressBar,
     QSlider,
     QToolButton,
     QVBoxLayout,
@@ -51,7 +52,7 @@ class AudioStrip(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("AudioStrip")
-        self.setFixedHeight(36)
+        self.setFixedHeight(54)
 
         self._inputs: list[tuple[object, str]] = []
         self._outputs: list[tuple[object, str]] = []
@@ -97,17 +98,62 @@ class AudioStrip(QFrame):
         self.out_menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.out_menu_btn.setToolTip("Output device")
 
-        layout = QHBoxLayout(self)
+        # --- TX / RX live audio level bars (mockup panel 1) --------
+        # Static at zero until the call manager wires real PJSIP samples
+        # in. Visible chrome confirms the indicator exists.
+        self.tx_bar = QProgressBar(self)
+        self.tx_bar.setObjectName("AudioMeterTX")
+        self.tx_bar.setRange(0, 100)
+        self.tx_bar.setValue(0)
+        self.tx_bar.setTextVisible(False)
+        self.tx_bar.setFixedHeight(6)
+        self.tx_bar.setFixedWidth(120)
+        self.rx_bar = QProgressBar(self)
+        self.rx_bar.setObjectName("AudioMeterRX")
+        self.rx_bar.setRange(0, 100)
+        self.rx_bar.setValue(0)
+        self.rx_bar.setTextVisible(False)
+        self.rx_bar.setFixedHeight(6)
+        self.rx_bar.setFixedWidth(120)
+        tx_label = QLabel("TX", self); tx_label.setObjectName("AudioMeterLabel")
+        rx_label = QLabel("RX", self); rx_label.setObjectName("AudioMeterLabel")
+
+        controls_row = QHBoxLayout()
+        controls_row.setContentsMargins(0, 0, 0, 0)
+        controls_row.setSpacing(8)
+        controls_row.addWidget(self.mic_btn)
+        controls_row.addWidget(self.spk_btn)
+        controls_row.addWidget(self.vol_btn)
+        controls_row.addStretch(1)
+        controls_row.addWidget(self.out_menu_btn)
+
+        meters_row = QHBoxLayout()
+        meters_row.setContentsMargins(0, 0, 0, 0)
+        meters_row.setSpacing(6)
+        meters_row.addWidget(tx_label)
+        meters_row.addWidget(self.tx_bar)
+        meters_row.addSpacing(8)
+        meters_row.addWidget(rx_label)
+        meters_row.addWidget(self.rx_bar)
+        meters_row.addStretch(1)
+
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 4, 12, 4)
-        layout.setSpacing(8)
-        layout.addWidget(self.mic_btn)
-        layout.addWidget(self.spk_btn)
-        layout.addWidget(self.vol_btn)
-        layout.addStretch(1)
-        layout.addWidget(self.out_menu_btn)
+        layout.setSpacing(2)
+        layout.addLayout(controls_row)
+        layout.addLayout(meters_row)
 
         # Volume popover (created lazily, hidden by default)
         self._vol_popover: QFrame | None = None
+
+    # ------------------------------------------------------------------
+    def set_tx_level(self, value: int) -> None:
+        """0–100. Driven by mic level sample on the active call."""
+        self.tx_bar.setValue(max(0, min(100, int(value))))
+
+    def set_rx_level(self, value: int) -> None:
+        """0–100. Driven by remote audio level sample on the active call."""
+        self.rx_bar.setValue(max(0, min(100, int(value))))
 
     # ------------------------------------------------------------------
     def set_input_devices(self, devices: list[tuple[object, str]]) -> None:
