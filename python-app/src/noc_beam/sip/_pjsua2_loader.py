@@ -7,6 +7,7 @@ Order of preference:
   3. A stub module — pjsua2 unavailable; UI still works, calls disabled.
 
 `PJSUA2_AVAILABLE` is True only for cases 1 and 2.
+`PJSUA2_SOURCE` is one of "native", "wheel", or "stub".
 """
 from __future__ import annotations
 
@@ -18,16 +19,21 @@ log = logging.getLogger(__name__)
 
 pj: Any
 PJSUA2_AVAILABLE: bool
+PJSUA2_SOURCE: str
+PJSUA2_LOAD_ERROR: str
 
 
-def _try_load() -> tuple[Any, bool]:
+def _try_load() -> tuple[Any, bool, str, str]:
+    errors: list[str] = []
+
     # 1) custom-built native
     try:
         from noc_beam._native.pjsua2 import pjsua2 as _pj  # type: ignore
 
         log.info("pjsua2 loaded from custom native build (noc_beam._native.pjsua2)")
-        return _pj, True
+        return _pj, True, "native", ""
     except Exception as e:
+        errors.append(f"native: {e}")
         log.debug("Custom pjsua2 not available: %s", e)
 
     # 2) public wheel
@@ -35,12 +41,13 @@ def _try_load() -> tuple[Any, bool]:
         import pjsua2 as _pj  # type: ignore
 
         log.info("pjsua2 loaded from public 'pjsua2' wheel")
-        return _pj, True
+        return _pj, True, "wheel", ""
     except Exception as e:
+        errors.append(f"wheel: {e}")
         log.warning("pjsua2 not available — running in UI-only stub mode: %s", e)
 
     # 3) stub
-    return _make_stub(), False
+    return _make_stub(), False, "stub", "; ".join(errors)
 
 
 def _make_stub() -> Any:
@@ -69,4 +76,4 @@ def _make_stub() -> Any:
     )
 
 
-pj, PJSUA2_AVAILABLE = _try_load()
+pj, PJSUA2_AVAILABLE, PJSUA2_SOURCE, PJSUA2_LOAD_ERROR = _try_load()

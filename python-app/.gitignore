@@ -18,6 +18,7 @@ build/noc_beam/
 
 # Throwaway smoke / debug scripts kept under build/ for convenience
 build/_smoke_*.py
+build/sip-smoke*.json
 
 # IDE
 .vscode/

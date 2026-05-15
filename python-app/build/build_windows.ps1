@@ -10,6 +10,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipNativeBuild,
+    [switch]$SkipPackagedSmoke,
     [switch]$PreflightOnly,
     [switch]$Clean,
     [string]$PythonExe = "python",
@@ -400,9 +401,49 @@ try {
     Pop-Location
 }
 
-if (Test-Path "$RepoRoot\dist\NOC_Beam.exe") {
-    Write-Header "SUCCESS"
-    Write-Host "Built: $RepoRoot\dist\NOC_Beam.exe" -ForegroundColor Green
-} else {
+$ExePath = Join-Path $RepoRoot "dist\NOC_Beam.exe"
+if (-not (Test-Path $ExePath)) {
     throw "PyInstaller did not produce dist\NOC_Beam.exe"
 }
+
+if (-not $SkipPackagedSmoke -and -not $SkipNativeBuild) {
+    Write-Header "Running packaged SIP smoke"
+    $SmokeOut = Join-Path $RepoRoot "build\sip-smoke.json"
+    Remove-Item -Force $SmokeOut -ErrorAction SilentlyContinue
+
+    $SmokeProc = Start-Process `
+        -FilePath $ExePath `
+        -ArgumentList @("--sip-smoke", "--sip-smoke-output", $SmokeOut) `
+        -Wait `
+        -PassThru `
+        -WindowStyle Hidden
+
+    if (Test-Path $SmokeOut) {
+        Get-Content -Raw -Path $SmokeOut | Write-Host
+    }
+
+    if ($null -eq $SmokeProc.ExitCode -or $SmokeProc.ExitCode -ne 0) {
+        throw "Packaged SIP smoke failed with exit code $($SmokeProc.ExitCode)"
+    }
+
+    if (-not (Test-Path $SmokeOut)) {
+        throw "Packaged SIP smoke did not write $SmokeOut"
+    }
+
+    $SmokeJson = Get-Content -Raw -Path $SmokeOut | ConvertFrom-Json
+    if (-not $SmokeJson.ok) {
+        throw "Packaged SIP smoke report is not ok"
+    }
+    if ($SmokeJson.source -ne "native") {
+        throw "Packaged SIP smoke loaded '$($SmokeJson.source)' instead of native"
+    }
+    if (-not $SmokeJson.endpoint_created -or -not $SmokeJson.endpoint_destroyed) {
+        throw "Packaged SIP smoke did not create and destroy a PJSIP endpoint"
+    }
+    if (-not $SmokeJson.pjsip_version) {
+        throw "Packaged SIP smoke did not report a PJSIP version"
+    }
+}
+
+Write-Header "SUCCESS"
+Write-Host "Built: $ExePath" -ForegroundColor Green
