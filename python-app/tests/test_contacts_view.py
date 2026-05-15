@@ -384,6 +384,25 @@ def test_search_shows_matches_inside_collapsed_group(qt_app: QApplication) -> No
         view.close()
 
 
+def test_search_keeps_matches_visible_when_group_toggled(qt_app: QApplication) -> None:
+    rows: list[contacts.Contact] = []
+    contacts.add_contact(rows, "Alice", "1001", group="NOC")
+    contacts.save_contacts(rows)
+    view = ContactsView()
+    view.show()
+    qt_app.processEvents()
+
+    view.search.setText("alice")
+    qt_app.processEvents()
+    view._toggle_group("NOC")
+    qt_app.processEvents()
+
+    try:
+        assert _visible_contact_names(view) == ["Alice"]
+    finally:
+        view.close()
+
+
 def test_group_chevron_click_toggles_group(qt_app: QApplication) -> None:
     rows: list[contacts.Contact] = []
     contacts.add_contact(rows, "Alice", "1001", group="NOC")

@@ -346,8 +346,9 @@ class ContactsView(QWidget):
             self._expanded_groups.remove(group)
         else:
             self._expanded_groups.add(group)
+        force_visible = bool(self.search.text().strip())
         for widget in self._group_widgets.get(group, []):
-            widget.setVisible(group in self._expanded_groups)
+            widget.setVisible(force_visible or group in self._expanded_groups)
 
     def _on_add_group(self) -> None:
         self.add_group_requested.emit()
