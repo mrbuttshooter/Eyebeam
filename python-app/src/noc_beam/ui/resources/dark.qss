@@ -1262,3 +1262,141 @@ QPushButton#RejectButton {
     background-color: #D33841;
     color: #FFFFFF;
 }
+
+/* ------------------------------------------------------------------
+   Operator console visual pass -- dark
+   ------------------------------------------------------------------ */
+QMainWindow, QDialog, QWidget {
+    background-color: #0F151D;
+    color: #EAF1F8;
+}
+QFrame#TopStrip {
+    background-color: #111923;
+    border-bottom: 1px solid #263241;
+}
+QLabel#BrandMark {
+    background-color: #F26A21;
+    color: #FFFFFF;
+    border-radius: 5px;
+    min-width: 30px;
+    min-height: 30px;
+    max-width: 30px;
+    max-height: 30px;
+    font-size: 16px;
+    font-weight: 800;
+}
+QLabel#BrandWord {
+    color: #F4F7FB;
+    font-size: 15px;
+    font-weight: 700;
+}
+QLabel#AccountKicker {
+    color: #9BA8B7;
+    font-size: 10px;
+    font-weight: 800;
+}
+QToolButton#AccountChip {
+    background-color: #172232;
+    color: #F4F7FB;
+    border: 1px solid #2C3C50;
+    border-radius: 15px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 700;
+}
+QLabel#StatusBanner {
+    background-color: #102B1A;
+    color: #8DDBA6;
+    border: 1px solid #2EBD5C;
+    border-radius: 5px;
+    padding: 5px 8px;
+    font-weight: 700;
+}
+QLineEdit#DialInput {
+    background-color: #0B1118;
+    color: #F4F7FB;
+    border: 1px solid #2C3C50;
+    border-radius: 6px;
+    padding: 0 12px;
+    min-height: 42px;
+    max-height: 42px;
+    font-size: 13px;
+}
+QLineEdit#DialInput:focus {
+    border: 1px solid #F26A21;
+    background-color: #0E1721;
+}
+QPushButton#CallButton {
+    min-height: 42px;
+    max-height: 42px;
+    min-width: 72px;
+    border-radius: 6px;
+    background-color: #2EBD5C;
+    border: 1px solid #2EBD5C;
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 800;
+}
+QPushButton#CallButton:hover {
+    background-color: #42CF70;
+}
+QWidget#DialPad QPushButton#DialPadButton {
+    min-height: 50px;
+    max-height: 56px;
+    border-radius: 6px;
+    background-color: #121C28;
+    border: 1px solid #27364A;
+    color: #F4F7FB;
+}
+QWidget#DialPad QPushButton#DialPadButton:hover {
+    background-color: #182638;
+    border-color: #3C5068;
+}
+QFrame#RecentsStrip {
+    background-color: #0F151D;
+    border-top: 1px solid #263241;
+}
+QFrame#QuickDialRow {
+    background-color: #111923;
+    border: 1px solid #263241;
+    border-radius: 6px;
+}
+QFrame#QuickDialRow:hover {
+    background-color: #162233;
+    border-color: #3C5068;
+}
+QLabel#RecentsHeader {
+    color: #B6C2D0;
+    font-size: 10px;
+    font-weight: 800;
+}
+QLabel#RecentsName {
+    color: #F4F7FB;
+    font-size: 12px;
+    font-weight: 700;
+}
+QLabel#RecentsUri {
+    color: #D8E2ED;
+    font-size: 11px;
+}
+QFrame#BottomTabs {
+    background-color: #0B1118;
+    border-top: 1px solid #263241;
+}
+QToolButton#TabBtn {
+    background-color: transparent;
+    color: #B6C2D0;
+    border: none;
+    border-top: 3px solid transparent;
+    padding: 4px 0 3px 0;
+    font-size: 10px;
+}
+QToolButton#TabBtn:hover {
+    background-color: #121C28;
+    color: #F4F7FB;
+}
+QToolButton#TabBtn:checked {
+    color: #F26A21;
+    border-top-color: #F26A21;
+    font-weight: 800;
+}

@@ -1,17 +1,58 @@
-"""Active-call display + in-call controls."""
+"""Active-call display + in-call controls.
+
+Matches mockup panel 2: a rounded card containing an avatar circle,
+the peer info (number + display name), a status pill (e.g. "200 OK"
+green) and duration counter; below the card a row of in-call action
+buttons with End Call rendered ~2× wider than the secondary controls.
+"""
 from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QGridLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
+
+
+def _split_peer(remote: str) -> tuple[str, str]:
+    """Split a SIP URI / display string into (number-or-uri, friendly-name).
+
+    Best-effort: ``"Alice East" <sip:+1...@host>`` → ("+1...", "Alice East");
+    bare ``"sip:+1...@host"`` → ("+1...@host", "+1..."); a plain number stays
+    as the headline with an empty subtitle.
+    """
+    if not remote:
+        return ("", "")
+    s = remote.strip()
+    # "Alice East" <sip:...>
+    name = ""
+    uri = s
+    if s.startswith('"') or s[0:1] == '<':
+        # Try to peel out a quoted display name.
+        if '<' in s and '>' in s:
+            name_part, _, rest = s.partition('<')
+            uri = rest.rstrip('>')
+            name = name_part.strip().strip('"').strip()
+    elif '<' in s and '>' in s:
+        name_part, _, rest = s.partition('<')
+        if name_part.strip():
+            name = name_part.strip().strip('"').strip()
+        uri = rest.rstrip('>')
+    if uri.startswith("sip:"):
+        uri = uri[4:]
+    elif uri.startswith("sips:"):
+        uri = uri[5:]
+    user, _, host = uri.partition("@")
+    headline = user or uri
+    if not name:
+        name = host or ""
+    return (headline.strip(), name.strip())
 
 
 class CallWidget(QWidget):
@@ -30,52 +71,92 @@ class CallWidget(QWidget):
 
         self.call_id = -1
         self._on_hold = False
-
-        self.peer_label = QLabel("Idle")
-        self.peer_label.setObjectName("CallPeer")
-        self.state_label = QLabel("")
-        self.state_label.setObjectName("CallState")
-        self.codec_label = QLabel("")
-        self.codec_label.setObjectName("CallCodec")
-        self.duration_label = QLabel("")
-        self.duration_label.setObjectName("CallDuration")
-        self.quality_label = QLabel("")
-        self.quality_label.setObjectName("CallQuality")
-
-        # Tick once a second while connected to update the duration counter.
         self._connected_at: float | None = None
-        self._duration_timer = QTimer(self)
-        self._duration_timer.setInterval(1000)
-        self._duration_timer.timeout.connect(self._tick_duration)
 
-        # Semantic colour hierarchy: Answer is green (CallButton style),
-        # Reject and Hang up are red (HangupButton style). Hold/Mute/
-        # Transfer are neutral. A panicked user sees the right colour
-        # immediately -- critical for the rare-but-stressful incoming
-        # call surface.
+        # ----- Card -------------------------------------------------------
+        self._card = QFrame(self)
+        self._card.setObjectName("CallCard")
+
+        # Avatar circle (green pill with a glyph; the mock uses a
+        # headphones/handset icon -- a unicode ☎ reads similarly without
+        # adding image assets).
+        self._avatar = QLabel("☎", self._card)
+        self._avatar.setObjectName("CallAvatar")
+        self._avatar.setFixedSize(48, 48)
+        self._avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Peer block: headline (number / SIP user) on top, secondary
+        # display name below in muted small text.
+        self.peer_label = QLabel("", self._card)
+        self.peer_label.setObjectName("CallPeer")
+        self.peer_sub_label = QLabel("", self._card)
+        self.peer_sub_label.setObjectName("CallPeerSub")
+        peer_col = QVBoxLayout()
+        peer_col.setContentsMargins(0, 0, 0, 0)
+        peer_col.setSpacing(2)
+        peer_col.addWidget(self.peer_label)
+        peer_col.addWidget(self.peer_sub_label)
+
+        # Right column: status pill on top, duration timer below.
+        self.state_label = QLabel("", self._card)
+        self.state_label.setObjectName("CallStatePill")
+        self.state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.duration_label = QLabel("", self._card)
+        self.duration_label.setObjectName("CallDuration")
+        self.duration_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        right_col = QVBoxLayout()
+        right_col.setContentsMargins(0, 0, 0, 0)
+        right_col.setSpacing(4)
+        right_col.addWidget(self.state_label, 0, Qt.AlignmentFlag.AlignRight)
+        right_col.addWidget(self.duration_label)
+
+        card_row = QHBoxLayout(self._card)
+        card_row.setContentsMargins(12, 10, 12, 10)
+        card_row.setSpacing(12)
+        card_row.addWidget(self._avatar, 0, Qt.AlignmentFlag.AlignVCenter)
+        card_row.addLayout(peer_col, 1)
+        card_row.addLayout(right_col, 0)
+
+        # Codec + quality live below the card as a single muted line so
+        # the card stays clean and the technical bits are still visible.
+        self.codec_label = QLabel("", self)
+        self.codec_label.setObjectName("CallCodec")
+        self.quality_label = QLabel("", self)
+        self.quality_label.setObjectName("CallQuality")
+        meta_row = QHBoxLayout()
+        meta_row.setContentsMargins(4, 0, 4, 0)
+        meta_row.setSpacing(8)
+        meta_row.addWidget(self.codec_label)
+        meta_row.addStretch(1)
+        meta_row.addWidget(self.quality_label)
+
+        # ----- Buttons --------------------------------------------------
         self.answer_btn = QPushButton("Answer")
         self.answer_btn.setObjectName("CallButton")
+        self.answer_btn.setAccessibleName("Answer incoming call")
         self.reject_btn = QPushButton("Reject")
         self.reject_btn.setObjectName("RejectButton")
         self.reject_btn.setAccessibleName("Reject incoming call")
-        self.hangup_btn = QPushButton("Hang up")
-        self.hangup_btn.setObjectName("HangupButton")
+        self.hangup_btn = QPushButton("End Call")
+        self.hangup_btn.setObjectName("EndCallButton")
+        self.hangup_btn.setAccessibleName("End active call")
         self.hold_btn = QPushButton("Hold")
         self.hold_btn.setObjectName("CallControlButton")
         self.mute_btn = QPushButton("Mute")
         self.mute_btn.setObjectName("CallControlButton")
         self.mute_btn.setCheckable(True)
+        self.speaker_btn = QPushButton("Speaker")
+        self.speaker_btn.setObjectName("CallControlButton")
+        self.speaker_btn.setCheckable(True)
         self.transfer_btn = QPushButton("Transfer")
         self.transfer_btn.setObjectName("CallControlButton")
-        self.hangup_btn.setAccessibleName("Hang up active call")
-        self.hold_btn.setAccessibleName("Hold active call")
-        self.mute_btn.setAccessibleName("Mute microphone")
-        self.transfer_btn.setAccessibleName("Transfer active call")
         for _b in (self.answer_btn, self.reject_btn, self.hangup_btn,
-                   self.hold_btn, self.mute_btn, self.transfer_btn):
-            _b.setMinimumWidth(72)
+                   self.speaker_btn, self.hold_btn, self.mute_btn, self.transfer_btn):
             _b.setMinimumHeight(36)
 
+        # Wire to outbound signals (unchanged contract).
         self.answer_btn.clicked.connect(lambda: self.answer_clicked.emit(self.call_id))
         self.reject_btn.clicked.connect(lambda: self.reject_clicked.emit(self.call_id))
         self.hangup_btn.clicked.connect(lambda: self.hangup_clicked.emit(self.call_id))
@@ -83,105 +164,143 @@ class CallWidget(QWidget):
         self.mute_btn.toggled.connect(lambda b: self.mute_toggled.emit(self.call_id, b))
         self.transfer_btn.clicked.connect(lambda: self.transfer_clicked.emit(self.call_id))
 
-        # 3x2 grid: top row is call lifecycle (Answer / Reject / Hang up),
-        # bottom row is in-call (Hold / Mute / Transfer). Fits the narrow
-        # phone shell without clipping the labels.
-        btns = QGridLayout()
-        btns.setHorizontalSpacing(4)
-        btns.setVerticalSpacing(4)
-        btns.addWidget(self.answer_btn,   0, 0)
-        btns.addWidget(self.reject_btn,   0, 1)
-        btns.addWidget(self.hangup_btn,   0, 2)
-        btns.addWidget(self.hold_btn,     1, 0)
-        btns.addWidget(self.mute_btn,     1, 1)
-        btns.addWidget(self.transfer_btn, 1, 2)
+        # Active-call row: Mute / Speaker / Hold / Transfer / END CALL (2x).
+        # Stretch factors: each secondary = 1, End Call = 2.
+        self._active_row = QHBoxLayout()
+        self._active_row.setContentsMargins(0, 0, 0, 0)
+        self._active_row.setSpacing(6)
+        self._active_row.addWidget(self.mute_btn, 1)
+        self._active_row.addWidget(self.speaker_btn, 1)
+        self._active_row.addWidget(self.hold_btn, 1)
+        self._active_row.addWidget(self.transfer_btn, 1)
+        self._active_row.addWidget(self.hangup_btn, 2)
 
-        meta = QHBoxLayout()
-        meta.addWidget(self.codec_label)
-        meta.addWidget(self.duration_label)
-        meta.addWidget(self.quality_label)
-        meta.addStretch(1)
+        # Incoming-call row: big Reject + big Answer (Reject is red, Answer
+        # is green, equal weight). Hidden until needed.
+        self._incoming_row = QHBoxLayout()
+        self._incoming_row.setContentsMargins(0, 0, 0, 0)
+        self._incoming_row.setSpacing(8)
+        self._incoming_row.addWidget(self.reject_btn, 1)
+        self._incoming_row.addWidget(self.answer_btn, 1)
+
+        # We stack the two row layouts so we can swap by visibility.
+        self._active_row_widget = QWidget(self)
+        self._active_row_widget.setLayout(self._active_row)
+        self._incoming_row_widget = QWidget(self)
+        self._incoming_row_widget.setLayout(self._incoming_row)
+        self._incoming_row_widget.setVisible(False)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self.peer_label)
-        layout.addWidget(self.state_label)
-        layout.addLayout(meta)
-        layout.addLayout(btns)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+        layout.addWidget(self._card)
+        layout.addLayout(meta_row)
+        layout.addWidget(self._active_row_widget)
+        layout.addWidget(self._incoming_row_widget)
         layout.addStretch(0)
+
+        # Tick once a second while connected to update duration.
+        self._duration_timer = QTimer(self)
+        self._duration_timer.setInterval(1000)
+        self._duration_timer.timeout.connect(self._tick_duration)
 
         self.show_idle()
 
+    # ------------------------------------------------------------------
+    # State transitions
+    # ------------------------------------------------------------------
     def show_idle(self) -> None:
         self.call_id = -1
-        self.peer_label.setText("Idle")
+        self._set_peer("", "")
         self.state_label.setText("")
         self.codec_label.setText("")
         self.duration_label.setText("")
         self.quality_label.setText("")
         self._connected_at = None
         self._duration_timer.stop()
-        for b in (self.answer_btn, self.reject_btn, self.hangup_btn,
-                  self.hold_btn, self.mute_btn, self.transfer_btn):
-            b.setEnabled(False)
         self._set_state("idle")
-
-    def _set_state(self, state: str) -> None:
-        """Toggle the dynamic `state` property and re-polish so QSS
-        attribute selectors update without restart."""
-        self.setProperty("state", state)
-        self.style().unpolish(self)
-        self.style().polish(self)
+        self._set_active_row(True)   # default to active layout when not idle
+        for b in (self.answer_btn, self.reject_btn, self.hangup_btn,
+                  self.hold_btn, self.mute_btn, self.transfer_btn,
+                  self.speaker_btn):
+            b.setEnabled(False)
 
     def show_outgoing(self, call_id: int, target: str) -> None:
         self.call_id = call_id
-        self.peer_label.setText(f"→ {target}")
+        headline, sub = _split_peer(target)
+        self._set_peer(headline or target, sub or "Outgoing call")
         self.state_label.setText("Calling…")
+        self.state_label.setProperty("level", "progress")
         self.codec_label.setText("")
-        self.answer_btn.setEnabled(False)
-        self.reject_btn.setEnabled(False)
+        self.duration_label.setText("00:00")
+        self._set_active_row(True)
         self.hangup_btn.setEnabled(True)
-        self.hold_btn.setEnabled(False)
         self.mute_btn.setEnabled(False)
+        self.speaker_btn.setEnabled(False)
+        self.hold_btn.setEnabled(False)
+        self.transfer_btn.setEnabled(False)
         self._set_state("outgoing")
 
     def show_incoming(self, call_id: int, remote: str) -> None:
         self.call_id = call_id
-        self.peer_label.setText(f"← {remote}")
-        self.state_label.setText("INCOMING CALL")
+        headline, sub = _split_peer(remote)
+        self._set_peer(headline or remote, sub or "Incoming call")
+        self.state_label.setText("RINGING")
+        self.state_label.setProperty("level", "progress")
         self.codec_label.setText("")
+        self.duration_label.setText("")
+        self._set_active_row(False)   # show Reject + Answer
         self.answer_btn.setEnabled(True)
         self.reject_btn.setEnabled(True)
-        self.hangup_btn.setEnabled(True)
+        self.hangup_btn.setEnabled(False)
         self.hold_btn.setEnabled(False)
         self.mute_btn.setEnabled(False)
-        # Visual urgency: tag the widget so QSS can paint a coloured
-        # border / background and bump the peer label size for incoming.
+        self.speaker_btn.setEnabled(False)
         self._set_state("incoming")
 
     def update_state(self, state_name: str, code: int, reason: str) -> None:
-        suffix = f" ({code} {reason})" if code else ""
-        self.state_label.setText(f"{state_name}{suffix}")
+        # Right-side pill: code + short text, e.g. "200 OK".
+        if code:
+            pill = f"{code} {reason}".strip()
+        else:
+            pill = state_name.title()
+        self.state_label.setText(pill)
         self._on_hold = state_name == "HELD"
         self.hold_btn.setText("Resume" if self._on_hold else "Hold")
-        # Drive the urgency banner state so QSS can stop the incoming
-        # treatment as soon as we move past INCOMING.
+
+        # Update level for state pill colouring.
+        if 200 <= code < 300:
+            self.state_label.setProperty("level", "ok")
+        elif 100 <= code < 200:
+            self.state_label.setProperty("level", "progress")
+        elif code in (401, 407):
+            self.state_label.setProperty("level", "auth")
+        elif 400 <= code < 600:
+            self.state_label.setProperty("level", "error")
+        else:
+            self.state_label.setProperty("level", "muted")
+        self.state_label.style().unpolish(self.state_label)
+        self.state_label.style().polish(self.state_label)
+
         if state_name == "INCOMING":
             self._set_state("incoming")
+            self._set_active_row(False)
         elif state_name in ("CONFIRMED", "HELD"):
             self._set_state("active")
+            self._set_active_row(True)
         elif state_name == "DISCONNECTED":
             self._set_state("idle")
         else:
             self._set_state("outgoing")
+            self._set_active_row(True)
+
         in_call = state_name in ("CONFIRMED", "HELD")
-        # Hold/resume only valid in CONFIRMED or HELD.
         self.hold_btn.setEnabled(in_call)
         self.mute_btn.setEnabled(in_call)
-        # Transfer is only legal once the dialog is established.
+        self.speaker_btn.setEnabled(in_call)
         self.transfer_btn.setEnabled(in_call)
         self.hangup_btn.setEnabled(state_name != "DISCONNECTED")
 
-        # Drive the duration timer off the call state.
         if state_name == "CONFIRMED":
             if self._connected_at is None:
                 self._connected_at = time.time()
@@ -189,29 +308,47 @@ class CallWidget(QWidget):
                 self._duration_timer.start()
             self._tick_duration()
         elif state_name == "HELD":
-            # Keep the counter running but don't restart it.
             self._tick_duration()
         elif state_name == "DISCONNECTED":
             self._duration_timer.stop()
 
     def update_quality(self, mos: float, packet_loss_pct: float) -> None:
-        """Set the in-call quality indicator. mos in [1.0, 4.5]."""
         bars = self._mos_to_bars(mos)
         glyph = "▮" * bars + "▯" * (4 - bars)
         loss = f"  ⌀ {packet_loss_pct:.1f}%" if packet_loss_pct > 0 else ""
         self.quality_label.setText(f"{glyph}  MOS {mos:.1f}{loss}")
 
-    @staticmethod
-    def _mos_to_bars(mos: float) -> int:
-        # E-model R-factor → MOS rough buckets: <2.5 dire, <3.1 poor,
-        # <3.6 fair, <4.0 good, ≥4.0 excellent.
-        if mos < 2.5:
-            return 1
-        if mos < 3.1:
-            return 2
-        if mos < 3.6:
-            return 3
-        return 4
+    def update_media(self, codec: str, clock: int, channels: int) -> None:
+        if codec:
+            chan = f", {channels}ch" if channels and channels > 1 else ""
+            self.codec_label.setText(f"Codec: {codec} @ {clock} Hz{chan}")
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+    def _set_peer(self, headline: str, subtitle: str) -> None:
+        self.peer_label.setText(headline)
+        self.peer_sub_label.setText(subtitle)
+        self.peer_sub_label.setVisible(bool(subtitle))
+
+    def _set_active_row(self, active: bool) -> None:
+        self._active_row_widget.setVisible(active)
+        self._incoming_row_widget.setVisible(not active)
+
+    def _set_state(self, state: str) -> None:
+        self.setProperty("state", state)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        # Card mirrors the same state so QSS can colour the avatar / border.
+        self._card.setProperty("state", state)
+        self._card.style().unpolish(self._card)
+        self._card.style().polish(self._card)
+
+    def _on_hold_clicked(self) -> None:
+        if self._on_hold:
+            self.resume_clicked.emit(self.call_id)
+        else:
+            self.hold_clicked.emit(self.call_id)
 
     def _tick_duration(self) -> None:
         if self._connected_at is None:
@@ -220,16 +357,15 @@ class CallWidget(QWidget):
         elapsed = int(time.time() - self._connected_at)
         h, rem = divmod(elapsed, 3600)
         m, s = divmod(rem, 60)
-        fmt = f"{h:d}:{m:02d}:{s:02d}" if h else f"{m:d}:{s:02d}"
+        fmt = f"{h:02d}:{m:02d}:{s:02d}" if h else f"00:{m:02d}:{s:02d}"
         self.duration_label.setText(fmt)
 
-    def _on_hold_clicked(self) -> None:
-        if self._on_hold:
-            self.resume_clicked.emit(self.call_id)
-        else:
-            self.hold_clicked.emit(self.call_id)
-
-    def update_media(self, codec: str, clock: int, channels: int) -> None:
-        if codec:
-            chan = f", {channels}ch" if channels and channels > 1 else ""
-            self.codec_label.setText(f"Codec: {codec} @ {clock} Hz{chan}")
+    @staticmethod
+    def _mos_to_bars(mos: float) -> int:
+        if mos < 2.5:
+            return 1
+        if mos < 3.1:
+            return 2
+        if mos < 3.6:
+            return 3
+        return 4

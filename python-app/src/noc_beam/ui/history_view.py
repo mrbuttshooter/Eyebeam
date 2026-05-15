@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import time
 
+from datetime import datetime, timedelta
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -25,6 +28,31 @@ from PySide6.QtWidgets import (
 from noc_beam.config.history import CdrEntry, clear_history, load_history
 from noc_beam.ui.cdr_detail_dialog import CdrDetailDialog
 from noc_beam.ui.components import SipCodeBadge
+
+
+def _bucket_label(ts: float) -> str:
+    """Human bucket name for a timestamp -- "Today", "Yesterday", or
+    a "Mon, May 12" style heading for older entries."""
+    if ts <= 0:
+        return "Earlier"
+    when = datetime.fromtimestamp(ts).date()
+    today = datetime.now().date()
+    if when == today:
+        return "Today"
+    if when == today - timedelta(days=1):
+        return "Yesterday"
+    if today - when < timedelta(days=7):
+        return when.strftime("%A")
+    return when.strftime("%b %d, %Y")
+
+
+class _DateDivider(QLabel):
+    """Section header label between groups of CDR rows on different dates."""
+
+    def __init__(self, text: str, parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self.setObjectName("HistoryDivider")
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
 
 def _fmt_when(ts: float) -> str:
@@ -152,16 +180,42 @@ class HistoryView(QWidget):
         self._rows: list[HistoryRow] = []
         self._last_seen_ended_at: float = 0.0   # newest CDR the user has seen
 
-        self._reload_btn = QPushButton("Reload")
+        # Direction filter (mockup panel 5: "All Calls" dropdown).
+        self._dir_filter = QComboBox()
+        self._dir_filter.setObjectName("HistoryFilter")
+        self._dir_filter.addItem("All Calls", "all")
+        self._dir_filter.addItem("Incoming", "in")
+        self._dir_filter.addItem("Outgoing", "out")
+        self._dir_filter.addItem("Missed", "missed")
+        self._dir_filter.currentIndexChanged.connect(self._refresh_rows)
+
+        # Date range filter (mockup panel 5: "Today" dropdown).
+        self._range_filter = QComboBox()
+        self._range_filter.setObjectName("HistoryFilter")
+        self._range_filter.addItem("All time", "all")
+        self._range_filter.addItem("Today", "today")
+        self._range_filter.addItem("Yesterday", "yesterday")
+        self._range_filter.addItem("Last 7 days", "week")
+        self._range_filter.addItem("Last 30 days", "month")
+        self._range_filter.currentIndexChanged.connect(self._refresh_rows)
+
+        self._reload_btn = QToolButton()
+        self._reload_btn.setObjectName("HistoryIconBtn")
+        self._reload_btn.setText("⟳")
+        self._reload_btn.setToolTip("Reload from disk")
         self._reload_btn.clicked.connect(self.reload)
-        self._clear_btn = QPushButton("Clear history")
+        self._clear_btn = QPushButton("Clear")
+        self._clear_btn.setObjectName("HistoryClearBtn")
         self._clear_btn.clicked.connect(self._on_clear)
 
         controls = QHBoxLayout()
-        controls.setContentsMargins(8, 4, 8, 4)
+        controls.setContentsMargins(8, 6, 8, 4)
+        controls.setSpacing(6)
+        controls.addWidget(self._dir_filter)
+        controls.addWidget(self._range_filter)
+        controls.addStretch(1)
         controls.addWidget(self._reload_btn)
         controls.addWidget(self._clear_btn)
-        controls.addStretch(1)
 
         # Empty-state placeholder
         self._empty_label = QLabel(
@@ -216,23 +270,67 @@ class HistoryView(QWidget):
     def reload(self) -> None:
         # Newest-first
         self._entries = sorted(load_history(), key=lambda e: e.ended_at, reverse=True)
+        self._refresh_rows()
+        self.missed_count_changed.emit(self.unread_missed_count())
 
-        # Clear previous rows
-        for row in self._rows:
-            self._rows_layout.removeWidget(row)
-            row.deleteLater()
+    def _refresh_rows(self) -> None:
+        """Rebuild the row list applying the current direction + date filters,
+        inserting "Today" / "Yesterday" / etc dividers between buckets."""
+        # Tear down everything (rows AND date dividers)
+        while self._rows_layout.count() > 1:    # keep the trailing stretch
+            item = self._rows_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
         self._rows.clear()
 
-        # Build rows ahead of the trailing stretch
-        for i, entry in enumerate(self._entries):
+        visible = [e for e in self._entries if self._matches_filters(e)]
+        if not visible:
+            self._stack.setCurrentIndex(0)
+            return
+
+        self._stack.setCurrentIndex(1)
+        last_bucket: str | None = None
+        insert_at = 0
+        for i, entry in enumerate(visible):
+            bucket = _bucket_label(entry.ended_at or entry.started_at)
+            if bucket != last_bucket:
+                divider = _DateDivider(bucket, self._rows_holder)
+                self._rows_layout.insertWidget(insert_at, divider)
+                insert_at += 1
+                last_bucket = bucket
             row = HistoryRow(entry, i, self._rows_holder)
             row.activated.connect(self._open_detail)
             row.redial.connect(self.redial_requested.emit)
-            self._rows_layout.insertWidget(i, row)
+            self._rows_layout.insertWidget(insert_at, row)
+            insert_at += 1
             self._rows.append(row)
 
-        self._stack.setCurrentIndex(1 if self._entries else 0)
-        self.missed_count_changed.emit(self.unread_missed_count())
+    def _matches_filters(self, entry: CdrEntry) -> bool:
+        # Direction filter
+        dir_key = self._dir_filter.currentData()
+        if dir_key == "in" and entry.direction != "in":
+            return False
+        if dir_key == "out" and entry.direction != "out":
+            return False
+        if dir_key == "missed" and not (
+            entry.direction == "in" and not entry.was_answered
+        ):
+            return False
+        # Range filter
+        rng = self._range_filter.currentData()
+        if rng != "all" and entry.ended_at:
+            now = datetime.now().date()
+            when = datetime.fromtimestamp(entry.ended_at).date()
+            if rng == "today" and when != now:
+                return False
+            if rng == "yesterday" and when != now - timedelta(days=1):
+                return False
+            if rng == "week" and now - when > timedelta(days=7):
+                return False
+            if rng == "month" and now - when > timedelta(days=30):
+                return False
+        return True
 
     def _open_detail(self, index: int) -> None:
         if not (0 <= index < len(self._entries)):

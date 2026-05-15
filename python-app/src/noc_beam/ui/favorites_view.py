@@ -102,16 +102,27 @@ class FavoritesView(QWidget):
         scroll.setWidget(self._rows_holder)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
+        # Footer count label -- "N favorites" right-aligned, matches the
+        # mockup panel 4 "5 favorites" footer treatment.
+        self._count_lbl = QLabel("0 favorites", self)
+        self._count_lbl.setObjectName("FavoritesCount")
+        self._count_lbl.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
         outer.addLayout(bar)
         outer.addWidget(scroll, 1)
+        outer.addWidget(self._count_lbl)
 
         self.reload()
 
     def reload(self) -> None:
         self._contacts = [contact for contact in load_contacts() if contact.favorite]
+        n = len(self._contacts)
+        self._count_lbl.setText(f"{n} favorite{'' if n == 1 else 's'}")
         self._render()
 
     def _render(self) -> None:

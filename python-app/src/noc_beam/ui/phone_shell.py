@@ -91,7 +91,7 @@ def _ask_yes_no(parent, title, body):
 class PhoneShell(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(__app_name__)
+        self.setWindowTitle(f"{__app_name__} UI-REWRITE")
         self.resize(420, 740)
         self.setMinimumWidth(380)
 
