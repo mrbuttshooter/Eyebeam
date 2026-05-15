@@ -8,6 +8,7 @@ from typing import Any
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QHeaderView,
@@ -58,8 +59,10 @@ class TestRunnerView(QMainWindow):
         self.resize(900, 620)
 
         self.callers_edit = QTextEdit()
+        self.callers_edit.setObjectName("TestRunnerPasteBox")
         self.callers_edit.setAcceptRichText(False)
         self.targets_edit = QTextEdit()
+        self.targets_edit.setObjectName("TestRunnerPasteBox")
         self.targets_edit.setAcceptRichText(False)
 
         self.mode_combo = QComboBox()
@@ -93,7 +96,9 @@ class TestRunnerView(QMainWindow):
         self.timeout_spin.setSuffix(" s")
 
         self.run_btn = QPushButton("Run 0 calls")
+        self.run_btn.setObjectName("RunTestButton")
         self.table = QTableWidget(0, 8)
+        self.table.setObjectName("TestRunnerResults")
         self.table.setHorizontalHeaderLabels(
             ["#", "FROM", "TO", "RESULT", "CODE", "RTT", "TIME", "notes"]
         )
@@ -108,9 +113,12 @@ class TestRunnerView(QMainWindow):
         )
 
         self.summary_label = QLabel("0 passed · 0 failed · 0 running")
+        self.summary_label.setObjectName("TestRunnerSummary")
         self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setObjectName("SecondaryAction")
         self.cancel_btn.setEnabled(False)
         self.export_btn = QPushButton("Export CSV")
+        self.export_btn.setObjectName("PrimaryAction")
         self.export_btn.setEnabled(False)
 
         self._build_ui()
@@ -125,16 +133,22 @@ class TestRunnerView(QMainWindow):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        paste_grid = QGridLayout()
+        paste_frame = QFrame(central)
+        paste_frame.setObjectName("TestRunnerPasteGrid")
+        paste_grid = QGridLayout(paste_frame)
+        paste_grid.setContentsMargins(0, 0, 0, 0)
         paste_grid.setColumnStretch(0, 1)
         paste_grid.setColumnStretch(1, 1)
         paste_grid.addWidget(QLabel("CALLERS"), 0, 0)
         paste_grid.addWidget(QLabel("TARGETS"), 0, 1)
         paste_grid.addWidget(self.callers_edit, 1, 0)
         paste_grid.addWidget(self.targets_edit, 1, 1)
-        layout.addLayout(paste_grid, 1)
+        layout.addWidget(paste_frame, 1)
 
-        controls = QHBoxLayout()
+        controls_frame = QFrame(central)
+        controls_frame.setObjectName("OperatorToolbar")
+        controls = QHBoxLayout(controls_frame)
+        controls.setContentsMargins(6, 6, 6, 6)
         controls.setSpacing(8)
         self._add_labeled_control(controls, "Mode", self.mode_combo)
         self._add_labeled_control(controls, "Pass", self.pass_combo)
@@ -142,7 +156,7 @@ class TestRunnerView(QMainWindow):
         self._add_labeled_control(controls, "Hold", self.hold_spin)
         self._add_labeled_control(controls, "Timeout", self.timeout_spin)
         controls.addStretch(1)
-        layout.addLayout(controls)
+        layout.addWidget(controls_frame)
 
         run_row = QHBoxLayout()
         run_row.addStretch(1)

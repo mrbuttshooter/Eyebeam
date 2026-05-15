@@ -41,6 +41,17 @@ def test_constructs_with_exact_title_and_disabled_run_button(qt_app: QApplicatio
     view.close()
 
 
+def test_test_runner_uses_operator_object_names(qt_app: QApplication) -> None:
+    view = RunnerWindow([])
+
+    assert view.findChild(QtWidgets.QFrame, "TestRunnerPasteGrid") is not None
+    assert view.findChild(QtWidgets.QFrame, "OperatorToolbar") is not None
+    assert view.table.objectName() == "TestRunnerResults"
+    assert view.run_btn.objectName() == "RunTestButton"
+
+    view.close()
+
+
 def test_run_count_updates_for_matrix(qt_app: QApplication) -> None:
     view = RunnerWindow([])
 

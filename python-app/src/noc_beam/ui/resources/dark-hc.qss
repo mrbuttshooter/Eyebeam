@@ -1090,3 +1090,25 @@ QLabel#DialogError {
 QFrame#DialogRail {
     border-right: 1px solid #FFFFFF;
 }
+QFrame#OperatorToolbar {
+    border: 1px solid #FFFFFF;
+    border-radius: 4px;
+    padding: 6px;
+}
+QTextEdit#TestRunnerPasteBox {
+    border: 1px solid #FFFFFF;
+    border-radius: 4px;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 12px;
+}
+QTableWidget#TestRunnerResults {
+    gridline-color: #FFFFFF;
+    selection-background-color: #1A1A1A;
+}
+QPushButton#RunTestButton {
+    min-height: 32px;
+    border-radius: 4px;
+    background-color: #00FF66;
+    color: #000000;
+    font-weight: 700;
+}
