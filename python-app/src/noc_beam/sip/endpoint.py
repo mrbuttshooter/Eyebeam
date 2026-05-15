@@ -33,6 +33,22 @@ log = logging.getLogger(__name__)
 _SIP_STATUS_RE = re.compile(r"^SIP/2\.0\s+(\d{3})(?:\s+(.*))?$", re.IGNORECASE)
 
 
+def collect_stun_servers(accounts: list[AccountConfig] | None) -> list[str]:
+    if not accounts:
+        return []
+    seen: set[str] = set()
+    servers: list[str] = []
+    for account in accounts:
+        if not account.enabled:
+            continue
+        server = account.stun_server.strip()
+        if not server or server in seen:
+            continue
+        seen.add(server)
+        servers.append(server)
+    return servers
+
+
 class SipEndpoint:
     """Holds the single pjsua2.Endpoint and our active accounts."""
 
@@ -58,7 +74,11 @@ class SipEndpoint:
     def is_started(self) -> bool:
         return self._started
 
-    def start(self, settings: GlobalSettings) -> None:
+    def start(
+        self,
+        settings: GlobalSettings,
+        accounts: list[AccountConfig] | None = None,
+    ) -> None:
         with self._lock:
             if self._started:
                 return
@@ -75,6 +95,9 @@ class SipEndpoint:
                 ep_cfg = pj.EpConfig()
                 ep_cfg.uaConfig.userAgent = settings.user_agent
                 ep_cfg.uaConfig.maxCalls = 16
+                for stun_server in collect_stun_servers(accounts):
+                    ep_cfg.uaConfig.stunServer.append(stun_server)
+                ep_cfg.uaConfig.stunIgnoreFailure = True
                 ep_cfg.logConfig.level = settings.log_level
                 ep_cfg.logConfig.consoleLevel = settings.log_level
                 ep_cfg.medConfig.clockRate = settings.audio.clock_rate

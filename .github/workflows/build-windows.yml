@@ -148,6 +148,19 @@ jobs:
           if (-not $json.endpoint_created -or -not $json.endpoint_destroyed) {
             throw "Packaged SIP smoke did not create and destroy an endpoint"
           }
+          if (-not $json.lib_initialized -or -not $json.lib_started) {
+            throw "Packaged SIP smoke did not initialize and start PJSIP"
+          }
+          foreach ($transport in @("udp", "tcp", "tls")) {
+            if (-not $json.transports.$transport.ok) {
+              throw "Packaged SIP smoke transport '$transport' failed"
+            }
+          }
+          foreach ($codec in @("g729", "opus")) {
+            if (-not $json.required_codecs.$codec) {
+              throw "Packaged SIP smoke did not find required codec '$codec'"
+            }
+          }
           if (-not $json.pjsip_version) {
             throw "Packaged SIP smoke did not report PJSIP version"
           }

@@ -111,7 +111,7 @@ class PhoneShell(QMainWindow):
         QTimer.singleShot(0, self._start_sip)
 
     def _start_sip(self):
-        SipEndpoint.instance().start(self.settings)
+        SipEndpoint.instance().start(self.settings, accounts=self.accounts)
         for acc in self.accounts:
             if acc.enabled:
                 self._add_account_to_endpoint(acc)

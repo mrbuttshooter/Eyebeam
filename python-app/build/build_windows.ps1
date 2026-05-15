@@ -16,7 +16,8 @@ param(
     [string]$PythonExe = "python",
     [string]$OpenSslTag = "openssl-3.0.13",
     [string]$PjsipTag = "2.14.1",
-    [string]$OpusTag = "v1.5.2"
+    [string]$OpusTag = "v1.5.2",
+    [int]$PackagedSmokeTimeoutSeconds = 30
 )
 
 $ErrorActionPreference = "Stop"
@@ -414,9 +415,24 @@ if (-not $SkipPackagedSmoke -and -not $SkipNativeBuild) {
     $SmokeProc = Start-Process `
         -FilePath $ExePath `
         -ArgumentList @("--sip-smoke", "--sip-smoke-output", $SmokeOut) `
-        -Wait `
         -PassThru `
         -WindowStyle Hidden
+
+    if (-not $SmokeProc.WaitForExit($PackagedSmokeTimeoutSeconds * 1000)) {
+        try {
+            Stop-Process -Id $SmokeProc.Id -Force -ErrorAction SilentlyContinue
+        } catch {
+        }
+        $TimeoutReport = @{
+            ok = $false
+            source = "timeout"
+            errors = @(
+                "Packaged SIP smoke timed out after $PackagedSmokeTimeoutSeconds seconds"
+            )
+        } | ConvertTo-Json -Depth 4
+        Set-Content -Encoding UTF8 -Path $SmokeOut -Value $TimeoutReport
+        throw "Packaged SIP smoke timed out after $PackagedSmokeTimeoutSeconds seconds"
+    }
 
     if (Test-Path $SmokeOut) {
         Get-Content -Raw -Path $SmokeOut | Write-Host
@@ -439,6 +455,19 @@ if (-not $SkipPackagedSmoke -and -not $SkipNativeBuild) {
     }
     if (-not $SmokeJson.endpoint_created -or -not $SmokeJson.endpoint_destroyed) {
         throw "Packaged SIP smoke did not create and destroy a PJSIP endpoint"
+    }
+    if (-not $SmokeJson.lib_initialized -or -not $SmokeJson.lib_started) {
+        throw "Packaged SIP smoke did not initialize and start PJSIP"
+    }
+    foreach ($transport in @("udp", "tcp", "tls")) {
+        if (-not $SmokeJson.transports.$transport.ok) {
+            throw "Packaged SIP smoke transport '$transport' failed"
+        }
+    }
+    foreach ($codec in @("g729", "opus")) {
+        if (-not $SmokeJson.required_codecs.$codec) {
+            throw "Packaged SIP smoke did not find required codec '$codec'"
+        }
     }
     if (-not $SmokeJson.pjsip_version) {
         throw "Packaged SIP smoke did not report a PJSIP version"
