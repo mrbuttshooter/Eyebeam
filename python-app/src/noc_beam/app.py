@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 from noc_beam import __app_name__
 from noc_beam.config.store import load_settings
 from noc_beam.logging_setup import setup_logging
-from noc_beam.ui.main_window import MainWindow
+from noc_beam.ui.phone_shell import PhoneShell
 from noc_beam.ui.theme import apply_theme
 
 log = logging.getLogger(__name__)
@@ -43,14 +43,17 @@ def run(argv: list[str]) -> int:
     app = QApplication(argv)
     app.setWindowIcon(_load_icon())
 
-    # Load persisted settings to pick the theme. MainWindow loads them
+    # Load persisted settings to pick the theme. PhoneShell loads them
     # again itself; this is the small price of theme being a process-
     # wide concern (QApplication.setStyleSheet) while the rest of
-    # settings live on the window.
+    # settings live on the window. Default theme is "light" (the
+    # Bria-evolution direction); dark / dark-hc remain available for
+    # users who prefer the original NOC dashboard look.
     settings = load_settings()
-    apply_theme(app, settings.appearance.high_contrast)
+    theme = getattr(settings.appearance, "theme", "light")
+    apply_theme(app, settings.appearance.high_contrast, theme=theme)
 
-    window = MainWindow()
+    window = PhoneShell()
     window.show()
 
     return app.exec()

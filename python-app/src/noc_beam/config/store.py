@@ -122,6 +122,8 @@ class AppearanceSettings:
     reduced_motion: bool = False
     # Swap dark.qss <-> dark-hc.qss. Phase F wires the toggle.
     high_contrast: bool = False
+    # Theme: "light" (Bria-evolution default) | "dark" (NOC dashboard look).
+    theme: str = "light"
 
 
 @dataclass

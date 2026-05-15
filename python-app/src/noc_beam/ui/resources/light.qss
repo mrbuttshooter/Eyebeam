@@ -1,0 +1,383 @@
+/* NOC_Beam -- light theme (Bria-evolution direction).
+   White background, warm orange brand accent, green call button.
+   Targets the Bria-style narrow vertical softphone shell. */
+
+
+/* ------------------------------------------------------------------
+   Base
+   ------------------------------------------------------------------ */
+QWidget {
+    background-color: #FFFFFF;
+    color:            #1F2933;
+    font-family:      "Segoe UI", "Inter", sans-serif;
+    font-size:        13px;
+    selection-background-color: #FFD7BD;
+    selection-color:  #1F2933;
+}
+
+QMainWindow, QDialog {
+    background-color: #FFFFFF;
+}
+
+
+/* ------------------------------------------------------------------
+   Menu bar (native Bria-style: top of window, no chrome)
+   ------------------------------------------------------------------ */
+QMenuBar {
+    background-color: #FFFFFF;
+    color: #57606A;
+    border: none;
+    border-bottom: 1px solid #ECEEF1;
+    padding: 2px 4px;
+}
+QMenuBar::item {
+    background: transparent;
+    padding: 4px 10px;
+    border-radius: 3px;
+}
+QMenuBar::item:selected { background-color: #ECEEF1; color: #1F2933; }
+
+QMenu {
+    background-color: #FFFFFF;
+    color: #1F2933;
+    border: 1px solid #C9CDD3;
+    padding: 4px 0;
+}
+QMenu::item { padding: 6px 18px; }
+QMenu::item:selected { background-color: #FFE0CC; color: #1F2933; }
+QMenu::separator { height: 1px; background: #ECEEF1; margin: 4px 6px; }
+
+
+/* ------------------------------------------------------------------
+   Top strip: brand + account + audio + status
+   ------------------------------------------------------------------ */
+QFrame#TopStrip {
+    background-color: #FFFFFF;
+    border: none;
+    border-bottom: 1px solid #ECEEF1;
+}
+
+QLabel#BrandMark {
+    background-color: #E85D04;
+    color: #FFFFFF;
+    border-radius: 14px;
+    min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+    qproperty-alignment: AlignCenter;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+QLabel#BrandWord {
+    color: #1F2933;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+}
+QLabel#BrandVer {
+    color: #94A0AD;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+}
+
+QLabel#AccountKicker {
+    color: #94A0AD;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+}
+QToolButton#AccountChip {
+    background: transparent;
+    color: #1F2933;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 6px 2px 4px;
+    font-size: 13px;
+    font-weight: 600;
+}
+QToolButton#AccountChip:hover {
+    background-color: #ECEEF1;
+    border-color: #E0E3E7;
+}
+QToolButton#AccountChip::menu-indicator { image: none; width: 0; }
+
+/* ------------------------------------------------------------------
+   Audio strip (mic + speaker + slider with orange fill)
+   ------------------------------------------------------------------ */
+QFrame#AudioStrip {
+    background-color: #FFFFFF;
+    border: none;
+}
+QToolButton#AudioBtn {
+    background: transparent;
+    color: #57606A;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px;
+    min-width: 24px;
+    min-height: 24px;
+}
+QToolButton#AudioBtn:hover { background-color: #ECEEF1; color: #1F2933; }
+QToolButton#AudioBtn::menu-indicator { image: none; width: 0; }
+
+QSlider#VolumeSlider::groove:horizontal {
+    height: 6px;
+    background: #ECEEF1;
+    border-radius: 3px;
+}
+QSlider#VolumeSlider::sub-page:horizontal {
+    background: #E85D04;
+    border-radius: 3px;
+}
+QSlider#VolumeSlider::add-page:horizontal {
+    background: #ECEEF1;
+    border-radius: 3px;
+}
+QSlider#VolumeSlider::handle:horizontal {
+    background: #FFFFFF;
+    border: 1.5px solid #E85D04;
+    width: 12px;
+    margin: -4px 0;
+    border-radius: 7px;
+}
+QSlider#VolumeSlider::handle:horizontal:hover { border-color: #FF7314; }
+
+
+/* ------------------------------------------------------------------
+   Status banner (account state, registration messages)
+   ------------------------------------------------------------------ */
+QLabel#StatusBanner {
+    color: #57606A;
+    font-size: 12px;
+    qproperty-alignment: AlignCenter;
+    padding: 6px 14px;
+}
+QLabel#StatusBanner[level="ok"]      { color: #2EBD5C; }
+QLabel#StatusBanner[level="warn"]    { color: #C97C0E; }
+QLabel#StatusBanner[level="danger"]  { color: #D33841; }
+QLabel#StatusBannerLink {
+    color: #2A8DC4;
+    font-size: 12px;
+    qproperty-alignment: AlignCenter;
+    padding: 0 14px 6px;
+}
+QLabel#StatusBannerLink:hover { color: #1A6FA0; text-decoration: underline; }
+
+
+/* ------------------------------------------------------------------
+   Dial bar (input + green call button)
+   ------------------------------------------------------------------ */
+QFrame#DialBar {
+    background-color: #FFFFFF;
+    border: none;
+}
+QLineEdit#DialInput {
+    background-color: #ECEEF1;
+    color: #1F2933;
+    border: 1px solid #ECEEF1;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 13px;
+    min-height: 24px;
+}
+QLineEdit#DialInput:focus {
+    background-color: #FFFFFF;
+    border-color: #E85D04;
+}
+QPushButton#CallButton {
+    background-color: #2EBD5C;
+    color: #FFFFFF;
+    border: 1px solid #2EBD5C;
+    border-radius: 4px;
+    padding: 7px 14px;
+    min-height: 24px;
+    min-width: 44px;
+    font-weight: 600;
+    font-size: 16px;
+}
+QPushButton#CallButton:hover { background-color: #46CF74; border-color: #46CF74; }
+QPushButton#CallButton:pressed { background-color: #1FA64C; border-color: #1FA64C; }
+QPushButton#CallButton:disabled { background-color: #E0E3E7; color: #94A0AD; border-color: #E0E3E7; }
+QPushButton#HangupButton {
+    background-color: #D33841;
+    color: #FFFFFF;
+    border: 1px solid #D33841;
+    border-radius: 4px;
+    padding: 7px 14px;
+    min-height: 24px;
+    min-width: 44px;
+    font-weight: 600;
+}
+QPushButton#HangupButton:hover { background-color: #E55260; border-color: #E55260; }
+
+
+/* ------------------------------------------------------------------
+   Dialpad (Bria-style: typography over chrome)
+   ------------------------------------------------------------------ */
+QFrame#Dialpad { background-color: #FFFFFF; border: none; }
+QPushButton#DialpadKey {
+    background: transparent;
+    color: #1F2933;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 0;
+    min-height: 56px;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 28px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+}
+QPushButton#DialpadKey:hover { background-color: #F5F6F8; }
+QPushButton#DialpadKey:pressed { background-color: #ECEEF1; }
+QPushButton#DialpadKey:disabled { color: #C9CDD3; }
+
+
+/* ------------------------------------------------------------------
+   Bottom tab bar (4 icons, orange when active)
+   ------------------------------------------------------------------ */
+QFrame#BottomTabs {
+    background-color: #FFFFFF;
+    border: none;
+    border-top: 1px solid #ECEEF1;
+}
+QToolButton#TabBtn {
+    background: transparent;
+    color: #94A0AD;
+    border: none;
+    border-top: 2px solid transparent;
+    padding: 8px 6px 6px 6px;
+    min-height: 36px;
+    min-width: 56px;
+}
+QToolButton#TabBtn:hover { color: #57606A; background-color: #F5F6F8; }
+QToolButton#TabBtn:checked {
+    color: #E85D04;
+    border-top: 2px solid #E85D04;
+    background-color: #FFFFFF;
+}
+QToolButton#TabBtn:focus { outline: none; }
+
+
+/* ------------------------------------------------------------------
+   Lists (calls / accounts / history)
+   ------------------------------------------------------------------ */
+QListWidget, QTableWidget, QTableView {
+    background-color: #FFFFFF;
+    color: #1F2933;
+    alternate-background-color: #F5F6F8;
+    border: 1px solid #ECEEF1;
+    border-radius: 4px;
+    gridline-color: #ECEEF1;
+    outline: 0;
+}
+QListWidget::item, QTableView::item {
+    padding: 6px 10px;
+    border: none;
+}
+QListWidget::item:hover, QTableView::item:hover { background-color: #F5F6F8; }
+QListWidget::item:selected, QTableView::item:selected {
+    background-color: #FFE0CC;
+    color: #1F2933;
+    border-left: 2px solid #E85D04;
+}
+
+QHeaderView::section {
+    background-color: #F5F6F8;
+    color: #57606A;
+    border: none;
+    border-right: 1px solid #ECEEF1;
+    border-bottom: 1px solid #ECEEF1;
+    padding: 6px 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 10px;
+}
+
+
+/* ------------------------------------------------------------------
+   Inputs (general)
+   ------------------------------------------------------------------ */
+QLineEdit, QComboBox, QSpinBox, QTextEdit, QPlainTextEdit {
+    background-color: #FFFFFF;
+    color: #1F2933;
+    border: 1px solid #C9CDD3;
+    border-radius: 4px;
+    padding: 5px 10px;
+    min-height: 22px;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTextEdit:focus, QPlainTextEdit:focus {
+    border-color: #E85D04;
+}
+
+QPushButton {
+    background-color: #FFFFFF;
+    color: #1F2933;
+    border: 1px solid #C9CDD3;
+    border-radius: 4px;
+    padding: 6px 14px;
+    min-height: 26px;
+}
+QPushButton:hover { background-color: #F5F6F8; border-color: #94A0AD; }
+QPushButton:pressed { background-color: #ECEEF1; }
+QPushButton:disabled { color: #94A0AD; background-color: #F5F6F8; border-color: #ECEEF1; }
+QPushButton:focus { outline: none; border-color: #E85D04; }
+
+QPushButton#PrimaryAction {
+    background-color: #E85D04;
+    color: #FFFFFF;
+    border-color: #E85D04;
+    font-weight: 600;
+}
+QPushButton#PrimaryAction:hover { background-color: #FF7314; border-color: #FF7314; }
+QPushButton#PrimaryAction:pressed { background-color: #C24B00; }
+
+
+/* ------------------------------------------------------------------
+   Scrollbar (slim, neutral)
+   ------------------------------------------------------------------ */
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: #C9CDD3;
+    border-radius: 4px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover { background: #94A0AD; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; }
+QScrollBar::handle:horizontal {
+    background: #C9CDD3;
+    border-radius: 4px;
+    min-width: 24px;
+}
+QScrollBar::handle:horizontal:hover { background: #94A0AD; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+
+
+/* ------------------------------------------------------------------
+   Tooltip
+   ------------------------------------------------------------------ */
+QToolTip {
+    background: #1F2933;
+    color: #FFFFFF;
+    border: 1px solid #1F2933;
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+
+/* ------------------------------------------------------------------
+   Splitter / dialog message box
+   ------------------------------------------------------------------ */
+QSplitter::handle { background: #ECEEF1; }
+QMessageBox { background-color: #FFFFFF; }
+QMessageBox QLabel { color: #1F2933; }
