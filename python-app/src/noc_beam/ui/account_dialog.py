@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
 from PySide6.QtCore import QTimer, Qt
@@ -26,6 +27,11 @@ log = logging.getLogger(__name__)
 # How long to wait for a registration response before declaring timeout.
 TEST_TIMEOUT_MS = 8000
 
+# Reject anything that isn't a normal host name. Specifically blocks
+# CR/LF and other control chars that could smuggle SIP headers when
+# the URI is interpolated into an outgoing request.
+_DOMAIN_RX = re.compile(r"^[A-Za-z0-9._:\[\]\-]+$")
+
 
 class AccountDialog(QDialog):
     def __init__(self, account: AccountConfig | None = None, parent=None) -> None:  # noqa: ANN001
@@ -45,6 +51,11 @@ class AccountDialog(QDialog):
         self.password.setEchoMode(QLineEdit.Password)
         self.proxy = QLineEdit(account.proxy)
         self.stun_server = QLineEdit(account.stun_server)
+        # Optional port. Blank or 0 = transport default (5060 / 5061).
+        # Many real ITSPs publish on non-default ports.
+        self.port = QLineEdit("" if not getattr(account, "port", 0) else str(account.port))
+        self.port.setPlaceholderText("default (5060 / 5061)")
+        self.port.setMaximumWidth(180)
 
         self.transport = QComboBox()
         self.transport.addItems(["udp", "tcp", "tls"])
@@ -76,6 +87,7 @@ class AccountDialog(QDialog):
         connection_form = QFormLayout()
         connection_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         connection_form.addRow("Domain *", self.domain)
+        connection_form.addRow("Port", self.port)
         connection_form.addRow("Password", self.password)
         connection_form.addRow("Outbound proxy", self.proxy)
         connection_form.addRow("STUN server", self.stun_server)
@@ -127,6 +139,11 @@ class AccountDialog(QDialog):
         self._test_conn = None
 
     def result_account(self) -> AccountConfig:
+        port_txt = self.port.text().strip()
+        try:
+            port_val = int(port_txt) if port_txt else 0
+        except ValueError:
+            port_val = 0
         return AccountConfig(
             id=self._account_id,
             display_name=self.display_name.text().strip(),
@@ -141,6 +158,7 @@ class AccountDialog(QDialog):
             dtmf_method=self.dtmf_method.currentText(),
             stun_server=self.stun_server.text().strip(),
             enabled=self.enabled.isChecked(),
+            port=port_val,
         )
 
     def accept(self) -> None:
@@ -154,7 +172,43 @@ class AccountDialog(QDialog):
             first = self.username if "Username" in missing else self.domain
             first.setFocus()
             return
+        # Domain field can carry SIP-injection if it contains \r, \n,
+        # or other control chars -- the URI is interpolated into a
+        # SIP message later. Reject anything that isn't host-allowed.
+        domain = self.domain.text().strip()
+        if not _DOMAIN_RX.match(domain):
+            self.error.setText(
+                "Domain must be a host name (letters, digits, dots, dashes only)."
+            )
+            self.domain.setFocus()
+            return
+        # Optional port: if filled, must be 1..65535.
+        port_txt = self.port.text().strip()
+        if port_txt:
+            try:
+                port_val = int(port_txt)
+                if not (1 <= port_val <= 65535):
+                    raise ValueError
+            except ValueError:
+                self.error.setText("Port must be a number between 1 and 65535.")
+                self.port.setFocus()
+                return
+        # Tear down any in-flight test-registration before accepting --
+        # the test account would otherwise leak past dialog close.
+        self._cleanup_test()
         super().accept()
+
+    def reject(self) -> None:
+        # Same cleanup on Cancel: without this, a test-registration
+        # that was issued and then Cancel'd leaves a __test__* PJSIP
+        # account live AND keeps the registration_changed signal
+        # connected to a slot on a deleted QDialog -> SIGSEGV.
+        self._cleanup_test()
+        super().reject()
+
+    def closeEvent(self, event):  # noqa: ANN001
+        self._cleanup_test()
+        super().closeEvent(event)
 
     # ------------------------------------------------------------------
     # Test registration

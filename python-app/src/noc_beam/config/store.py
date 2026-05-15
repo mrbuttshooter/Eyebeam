@@ -77,6 +77,9 @@ class AccountConfig:
     dtmf_method: str = "rfc2833"    # rfc2833 | info | inband
     stun_server: str = ""
     enabled: bool = True
+    # Optional non-default port. 0 / blank = use the transport default
+    # (UDP/TCP 5060, TLS 5061). When set, overrides PJSIP's resolution.
+    port: int = 0
 
     def to_storable(self) -> dict[str, Any]:
         d = asdict(self)
@@ -85,8 +88,18 @@ class AccountConfig:
 
     @classmethod
     def from_storable(cls, d: dict[str, Any]) -> "AccountConfig":
-        pw = _unprotect(d.get("password", ""))
-        return cls(**{**d, "password": pw})
+        # Filter to known fields so an unknown key (forward-compat) or a
+        # removed field doesn't crash with TypeError -- without this
+        # one bad row in accounts.json silently wiped EVERY account.
+        from dataclasses import fields as _fields
+        known = {f.name for f in _fields(cls)}
+        clean = {k: v for k, v in d.items() if k in known}
+        clean["password"] = _unprotect(d.get("password", ""))
+        # Backfill required `id` if missing (corrupted file recovery).
+        if "id" not in clean or not clean["id"]:
+            import uuid as _uuid
+            clean["id"] = str(_uuid.uuid4())
+        return cls(**clean)
 
 
 @dataclass

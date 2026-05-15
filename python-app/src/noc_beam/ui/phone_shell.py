@@ -441,6 +441,11 @@ class PhoneShell(QMainWindow):
         self.trace_view = TraceView(self)
         self.accounts_view = AccountsView(self)
         self.accounts_view.add_clicked.connect(self._on_add_account)
+        # Per-row hover-action signals: previously emitted but never
+        # connected -- buttons looked active but did nothing.
+        self.accounts_view.edit_requested.connect(self._edit_account_by_id)
+        self.accounts_view.test_requested.connect(self._test_account_by_id)
+        self.accounts_view.delete_requested.connect(self._remove_account_by_id)
 
         self.stack = QStackedWidget(self)
         self.stack.addWidget(dialpad_page)             # 0 DIALPAD
@@ -609,7 +614,14 @@ class PhoneShell(QMainWindow):
             if not self._save_accounts_or_warn(accounts):
                 return
             self.accounts = accounts
-            if cfg.enabled: self._add_account_to_endpoint(cfg)
+            if cfg.enabled:
+                self._add_account_to_endpoint(cfg)
+                # Immediate feedback so the user knows the dialog
+                # accepted the input -- otherwise the UI looks frozen
+                # for the 5-10s the registrar takes to reply.
+                self._set_status(
+                    f"Registering {cfg.username}@{cfg.domain}…", "muted"
+                )
             self._refresh_accounts()
 
     def _selected_account(self):
@@ -621,16 +633,10 @@ class PhoneShell(QMainWindow):
         acc = self._selected_account()
         if acc is None:
             QMessageBox.information(self, "Edit account", "Select an account first."); return
-        dlg = AccountDialog(account=acc, parent=self)
-        if _open_modal(dlg):
-            new_cfg = dlg.result_account()
-            accounts = [new_cfg if a.id == acc.id else a for a in self.accounts]
-            if not self._save_accounts_or_warn(accounts):
-                return
-            self.accounts = accounts
-            SipEndpoint.instance().remove_account(acc.id)
-            if new_cfg.enabled: self._add_account_to_endpoint(new_cfg)
-            self._refresh_accounts()
+        # Delegate to the by-id flow so all edit paths share the
+        # delete-in-call guard, registering-banner, and re-register
+        # handling.
+        self._edit_account_by_id(acc.id)
 
     def _on_account_settings(self):
         acc = self._selected_account()
@@ -651,7 +657,73 @@ class PhoneShell(QMainWindow):
         acc = self._selected_account()
         if acc is None:
             QMessageBox.information(self, "Remove account", "Select an account first."); return
-        if not _ask_yes_no(self, "Remove account", f"Remove {acc.username}@{acc.domain}?"):
+        self._remove_account_by_id(acc.id)
+
+    # ------------------------------------------------------------------
+    # By-id handlers (driven by AccountDetail's signals + AcctRow rows)
+    # ------------------------------------------------------------------
+    def _edit_account_by_id(self, account_id: str) -> None:
+        acc = next((a for a in self.accounts if a.id == account_id), None)
+        if acc is None:
+            return
+        dlg = AccountDialog(account=acc, parent=self)
+        if not _open_modal(dlg):
+            return
+        new_cfg = dlg.result_account()
+        # Editing the active account triggers remove+re-add, which
+        # tears down any live call's audio. Refuse if calls are up.
+        active_on = [
+            r for r in self.calls.active() if getattr(r, "account_id", None) == acc.id
+        ]
+        if active_on:
+            QMessageBox.warning(
+                self, "Edit account",
+                f"{acc.username}@{acc.domain} has {len(active_on)} active call(s). "
+                "Changes will apply after they end."
+            )
+            # Save the new config to disk but don't re-register yet --
+            # the next launch (or the next manual Test) picks it up.
+            accounts = [new_cfg if a.id == acc.id else a for a in self.accounts]
+            if not self._save_accounts_or_warn(accounts):
+                return
+            self.accounts = accounts
+            self._refresh_accounts()
+            return
+        accounts = [new_cfg if a.id == acc.id else a for a in self.accounts]
+        if not self._save_accounts_or_warn(accounts):
+            return
+        self.accounts = accounts
+        SipEndpoint.instance().remove_account(acc.id)
+        if new_cfg.enabled:
+            self._add_account_to_endpoint(new_cfg)
+            self._set_status(
+                f"Registering {new_cfg.username}@{new_cfg.domain}…", "muted"
+            )
+        self._refresh_accounts()
+
+    def _remove_account_by_id(self, account_id: str) -> None:
+        acc = next((a for a in self.accounts if a.id == account_id), None)
+        if acc is None:
+            return
+        # Delete-while-in-call guard. Removing the underlying PJSIP
+        # account while a call on it is CONFIRMED tears down the
+        # call's audio without sending BYE -- peer waits for timeout.
+        active_on = [
+            r for r in self.calls.active() if getattr(r, "account_id", None) == acc.id
+        ]
+        if active_on:
+            QMessageBox.warning(
+                self,
+                "Remove account",
+                (
+                    f"{acc.username}@{acc.domain} has {len(active_on)} active "
+                    "call(s). End them first, then remove the account."
+                ),
+            )
+            return
+        if not _ask_yes_no(
+            self, "Remove account", f"Remove {acc.username}@{acc.domain}?"
+        ):
             return
         SipEndpoint.instance().remove_account(acc.id)
         accounts = [a for a in self.accounts if a.id != acc.id]
@@ -659,6 +731,37 @@ class PhoneShell(QMainWindow):
             return
         self.accounts = accounts
         self._refresh_accounts()
+
+    def _test_account_by_id(self, account_id: str) -> None:
+        """Re-issue REGISTER on an existing account so the user can
+        verify creds without editing. Surfaces result via the usual
+        registration_changed signal path."""
+        acc = next((a for a in self.accounts if a.id == account_id), None)
+        if acc is None or not acc.enabled:
+            return
+        try:
+            SipEndpoint.instance().remove_account(acc.id)
+            self._add_account_to_endpoint(acc)
+            self._set_status(
+                f"Re-registering {acc.username}@{acc.domain}…", "muted"
+            )
+        except Exception:
+            log.exception("test_account_by_id failed")
+
+    def _unregister_account_by_id(self, account_id: str) -> None:
+        """Send Expires:0 by removing the PJSIP account; the row stays
+        in self.accounts so the user can re-register via Test."""
+        acc = next((a for a in self.accounts if a.id == account_id), None)
+        if acc is None:
+            return
+        try:
+            SipEndpoint.instance().remove_account(acc.id)
+            self._set_status(
+                f"Unregistered {acc.username}@{acc.domain}", "muted"
+            )
+            self._refresh_accounts()
+        except Exception:
+            log.exception("unregister_account_by_id failed")
 
     def _on_endpoint_error(self, msg):
         log.error("Endpoint error: %s", msg)
@@ -1335,13 +1438,33 @@ class PhoneShell(QMainWindow):
             splitter.setSizes([380, 720])
             self._accounts_window.setCentralWidget(splitter)
 
+            # Track which account is currently shown in the detail
+            # pane so the AccountDetail's parameter-less signals can be
+            # routed to the by-id handlers.
+            self._accounts_detail_id = ""
             self.accounts_view.selected_account_changed.connect(
                 self._on_accounts_window_selection
+            )
+            # Wire AccountDetail's action buttons (previously dead --
+            # signals emitted but never connected). Each handler dispatches
+            # to the by-id handler using the currently shown account.
+            self._accounts_detail.edit_requested.connect(
+                lambda: self._edit_account_by_id(self._accounts_detail_id)
+            )
+            self._accounts_detail.test_requested.connect(
+                lambda: self._test_account_by_id(self._accounts_detail_id)
+            )
+            self._accounts_detail.unregister_requested.connect(
+                lambda: self._unregister_account_by_id(self._accounts_detail_id)
+            )
+            self._accounts_detail.remove_requested.connect(
+                lambda: self._remove_account_by_id(self._accounts_detail_id)
             )
         self._accounts_window.show()
         self._accounts_window.raise_(); self._accounts_window.activateWindow()
 
     def _on_accounts_window_selection(self, account_id: str) -> None:
+        self._accounts_detail_id = account_id or ""
         if not account_id:
             self._accounts_detail.show_empty()
             return
