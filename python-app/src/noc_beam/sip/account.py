@@ -64,9 +64,16 @@ if PJSUA2_AVAILABLE:
             ac = pj.AccountConfig()
             cfg = self.cfg
 
-            ac.idUri = f"sip:{cfg.username}@{cfg.domain}"
-            registrar = cfg.domain
-            ac.regConfig.registrarUri = f"sip:{registrar}"
+            # Append :port when the user set a non-default port. Without
+            # this the per-account port field in the dialog was decorative.
+            port = int(getattr(cfg, "port", 0) or 0)
+            host = cfg.domain
+            if port and not (
+                cfg.domain.endswith(f":{port}") or "]" in cfg.domain
+            ):
+                host = f"{cfg.domain}:{port}"
+            ac.idUri = f"sip:{cfg.username}@{host}"
+            ac.regConfig.registrarUri = f"sip:{host}"
             ac.regConfig.registerOnAdd = cfg.register
 
             cred = pj.AuthCredInfo("digest", "*", cfg.auth_user or cfg.username, 0, cfg.password)

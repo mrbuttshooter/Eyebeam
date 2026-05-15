@@ -272,13 +272,18 @@ class AccountDialog(QDialog):
 
     def _cleanup_test(self) -> None:
         from noc_beam.sip.endpoint import SipEndpoint
-        from noc_beam.sip.events import sip_events
 
         if self._test_timer is not None:
             self._test_timer.stop()
             self._test_timer = None
+        # Only attempt a disconnect when we actually wired up the slot.
+        # _cleanup_test is now also called from reject() / closeEvent()
+        # before any test was started; the previous unconditional
+        # disconnect would raise RuntimeError (caught silently) on
+        # every dialog cancel, masking real wiring bugs.
         if self._test_conn is not None:
             try:
+                from noc_beam.sip.events import sip_events
                 sip_events().registration_changed.disconnect(self._on_reg_event)
             except Exception:
                 pass
