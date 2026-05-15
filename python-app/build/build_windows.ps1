@@ -111,13 +111,15 @@ if (-not $SkipNativeBuild -and -not (Test-Path "$NativeOut\_pjsua2.pyd")) {
 
     $ConfigSite = "pjlib\include\pj\config_site.h"
     if (-not (Test-Path $ConfigSite)) {
+        # WASAPI is intentionally OFF -- PJSIP 2.14.1's wasapi_dev.c leaves
+        # pjmedia_wasapi_factory unresolved at link time, breaking every
+        # downstream binary. WMME is the older audio API but it works.
         @"
 #define PJ_HAS_IPV6                 1
 #define PJ_HAS_SSL_SOCK             1
 #define PJMEDIA_HAS_SRTP            1
 #define PJMEDIA_HAS_BCG729          1
 #define PJMEDIA_HAS_OPUS_CODEC      1
-#define PJMEDIA_AUDIO_DEV_HAS_WASAPI 1
 #define PJMEDIA_AUDIO_DEV_HAS_WMME  1
 #define PJ_ENABLE_EXTRA_CHECK       1
 #define PJSUA_MAX_ACC               32
@@ -150,8 +152,11 @@ if (-not $SkipNativeBuild -and -not (Test-Path "$NativeOut\_pjsua2.pyd")) {
 "@ | Set-Content -Encoding UTF8 -Path "Directory.Build.props"
 
     # pjproject 2.14.1 vcxproj files target PlatformToolset v141 (VS2017) which
-    # isn't installed on most modern Windows hosts — override to v143 (VS2022).
-    Invoke-VcCmd "msbuild pjproject-vs14.sln /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /m"
+    # isn't installed on most modern Windows hosts -- override to v143 (VS2022).
+    # Build only pjsua2_lib + transitive dependencies; skip test/sample/CLI
+    # binaries that have known PJSIP packaging bugs (libopus.a misnamed,
+    # crypt32.lib not linked) and aren't shipped.
+    Invoke-VcCmd "msbuild pjproject-vs14.sln /t:pjsua2_lib /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /m"
 
     Write-Header "Building pjsua2 Python extension"
     Push-Location pjsip-apps\src\swig

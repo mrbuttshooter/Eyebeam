@@ -216,7 +216,12 @@ jobs:
           }
           Push-Location pjproject
 
-          # config_site.h enables TLS, SRTP, BCG729, Opus, WASAPI.
+          # config_site.h enables TLS, SRTP, BCG729, Opus, WMME.
+          # WASAPI is intentionally OFF: PJSIP 2.14.1's wasapi_dev.c has a
+          # link-path issue that leaves pjmedia_wasapi_factory undefined in
+          # pjmedia-audiodev.lib, which then breaks every downstream link.
+          # WMME is the older Windows audio API but is rock-solid and the
+          # fallback every soft-phone uses; NOC_Beam works fine on it.
           # NOTE: a PowerShell here-string (@"..."@) cannot live inside a YAML
           # `run: |` block because the closing "@ must start at column 1, which
           # YAML doesn't allow. Use an array of literal strings instead.
@@ -226,7 +231,6 @@ jobs:
             '#define PJMEDIA_HAS_SRTP            1',
             '#define PJMEDIA_HAS_BCG729          1',
             '#define PJMEDIA_HAS_OPUS_CODEC      1',
-            '#define PJMEDIA_AUDIO_DEV_HAS_WASAPI 1',
             '#define PJMEDIA_AUDIO_DEV_HAS_WMME  1',
             '#define PJSUA_MAX_ACC               32',
             '#define PJSUA_MAX_CALLS             16',
@@ -271,9 +275,24 @@ jobs:
           Write-Host "  LIB:     $externLibs"
 
           # PJSIP 2.14.1 .vcxproj files target the v141 (VS2017) toolset which
-          # isn't installed on windows-latest — override to v143 (VS2022).
+          # isn't installed on windows-latest -- override to v143 (VS2022).
+          #
+          # Build only the pjsua2_lib target (and its transitive deps:
+          # pjsua_lib -> pjsip_ua -> pjsip -> pjmedia + pjmedia-codec +
+          # pjmedia-audiodev -> pjnath -> pjlib_util -> pjlib). This skips
+          # the bundled test executables (pjmedia_test, pjsip_test,
+          # pjsystest), the demo apps (samples, pjsua-cli), and other
+          # surface area we never ship. Skipping them avoids three classes
+          # of failure that have nothing to do with NOC_Beam:
+          #   - pjsua/pjsystest .vcxproj hardcode 'libopus.a' (Linux name)
+          #     instead of opus.lib -> LNK1104
+          #   - pjsip_test doesn't link crypt32.lib for OpenSSL e_capi
+          #     -> 7 unresolved __imp_Cert* symbols
+          #   - samples links the audiodev subsystem and surfaces any
+          #     audio-backend gaps.
           # Capture full build log so failures show real errors in the runner log.
           msbuild pjproject-vs14.sln `
+            /t:pjsua2_lib `
             /p:Configuration=Release `
             /p:Platform=x64 `
             /p:PlatformToolset=v143 `
