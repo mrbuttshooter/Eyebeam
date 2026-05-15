@@ -27,10 +27,26 @@ _DIR_RX = re.compile(r"\.RX\s+(\d+)\s+bytes\s+packet from\s+(\S+)")
 _DIR_TX = re.compile(r"TX\s+(\d+)\s+bytes\s+packet to\s+(\S+)")
 
 
-class TraceLogWriter:
+# pjsua2's LogConfig.writer setter is type-checked at the SWIG layer:
+# it requires a pj::LogWriter*. Passing a plain Python class fails with
+# "in method 'LogConfig.writer_set', argument 2 of type 'pj::LogWriter *'".
+# Fix: when pjsua2 is loaded, inherit from pj.LogWriter so SWIG's
+# director mechanism can route C++ callbacks back to our write() method.
+# When pjsua2 is unavailable (UI-only stub mode), fall back to a plain
+# class that nothing calls into anyway.
+if PJSUA2_AVAILABLE and hasattr(pj, "LogWriter"):
+    _LogWriterBase = pj.LogWriter
+else:
+    _LogWriterBase = object
+
+
+class TraceLogWriter(_LogWriterBase):
     """A pjsua2 LogWriter that emits both raw lines and parsed SIP messages."""
 
     def __init__(self) -> None:
+        # Initialize the SWIG-bound base when present, otherwise no-op.
+        if _LogWriterBase is not object:
+            _LogWriterBase.__init__(self)
         self._buf: list[str] = []
         self._capturing = False
         self._direction = "?"
