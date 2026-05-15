@@ -192,16 +192,21 @@ class TraceMsgRow(QFrame):
 
         ts = QLabel(msg.when, self)
         ts.setObjectName("TraceMsgTime")
+        ts.setFixedWidth(64)
 
         dir_lbl = QLabel(msg.direction, self)
         dir_lbl.setObjectName("TraceMsgDir")
         dir_lbl.setProperty("dir", "rx" if msg.direction == "RX" else "tx")
+        dir_lbl.setFixedWidth(28)
 
         chip = _Chip(msg.chip, msg.chip_level, self)
+        chip.setFixedWidth(48)
 
         summary = QLabel(msg.summary, self)
         summary.setObjectName("TraceMsgSummary")
         summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        summary.setMinimumWidth(120)
+        summary.setToolTip(msg.summary)
 
         head = QHBoxLayout()
         head.setContentsMargins(28, 4, 10, 4)
@@ -247,10 +252,12 @@ class TraceDialogRow(QFrame):
 
         time_lbl = QLabel(dialog.msgs[0].when, self)
         time_lbl.setObjectName("TraceDialogTime")
+        time_lbl.setFixedWidth(64)
 
         self._id_lbl = QLabel(dialog.short_id, self)
         self._id_lbl.setObjectName("TraceDialogId")
         self._id_lbl.setToolTip(dialog.call_id)
+        self._id_lbl.setFixedWidth(88)
 
         self._chips_holder = QFrame(self)
         self._chips_holder.setObjectName("TraceChipsHolder")

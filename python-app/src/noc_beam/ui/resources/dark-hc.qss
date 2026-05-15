@@ -1063,3 +1063,20 @@ QFrame#DenseRowActions {
 QFrame#HistoryRow[result="missed"], QFrame#HistoryRow[result="failed"] {
     background-color: #330000;
 }
+QFrame#TraceDialogRow, QFrame#TraceMsgRow {
+    border-bottom: 1px solid #FFFFFF;
+}
+QLabel#TraceDialogTime, QLabel#TraceMsgTime, QLabel#TraceDialogId {
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 11px;
+}
+QLabel#TraceMsgDir[dir="rx"] {
+    color: #00E5FF;
+}
+QLabel#TraceMsgDir[dir="tx"] {
+    color: #00FF66;
+}
+QTextEdit#TraceMsgBody {
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 11px;
+}
