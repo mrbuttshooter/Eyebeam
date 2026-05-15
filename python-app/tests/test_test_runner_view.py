@@ -17,6 +17,9 @@ if _APP is None:
 
 from noc_beam.testing.plan import TestCall as PlanCall
 from noc_beam.testing.runner import TestResult as RunnerResult
+from noc_beam.config.store import GlobalSettings
+from noc_beam.ui import phone_shell as phone_shell_module
+from noc_beam.ui.phone_shell import PhoneShell
 from noc_beam.ui.test_runner_view import TestRunnerView as RunnerWindow
 
 
@@ -132,3 +135,27 @@ def test_close_event_without_active_runner_is_accepted(qt_app: QApplication) -> 
     assert event.isAccepted()
 
     view.close()
+
+
+def test_phone_shell_has_test_runner_menu_action(qt_app: QApplication, monkeypatch) -> None:
+    class FakeRinger:
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(phone_shell_module, "load_settings", GlobalSettings)
+    monkeypatch.setattr(phone_shell_module, "load_accounts", lambda: [])
+    monkeypatch.setattr(phone_shell_module, "Ringer", FakeRinger)
+
+    shell = PhoneShell()
+
+    try:
+        view_actions = next(items for group, items in shell._menu_actions if group == "View")
+        labels = [label for label, _slot in view_actions]
+
+        assert "Test Runner..." in labels
+    finally:
+        shell._really_quitting = True
+        shell.close()

@@ -142,6 +142,7 @@ class PhoneShell(QMainWindow):
             ("View", [
                 ("NOC Trace...",              self._on_open_trace),
                 ("NOC Accounts...",           self._on_open_accounts),
+                ("Test Runner...",            self._on_open_test_runner),
                 ("Diagnostics...",            self._on_diagnostics),
                 ("---", None),
                 ("Open wide dashboard...",    self._on_open_wide),
@@ -640,6 +641,15 @@ class PhoneShell(QMainWindow):
             self._accounts_window.setCentralWidget(self.accounts_view)
         self._accounts_window.show()
         self._accounts_window.raise_(); self._accounts_window.activateWindow()
+
+    def _on_open_test_runner(self):
+        from noc_beam.ui.test_runner_view import TestRunnerView
+        if not hasattr(self, "_test_runner_window"):
+            self._test_runner_window = TestRunnerView(self.accounts, self)
+            self._test_runner_window.resize(900, 620)
+        self._test_runner_window.accounts = list(self.accounts)
+        self._test_runner_window.show()
+        self._test_runner_window.raise_(); self._test_runner_window.activateWindow()
 
     def _on_open_wide(self):
         from noc_beam.ui.main_window import MainWindow
