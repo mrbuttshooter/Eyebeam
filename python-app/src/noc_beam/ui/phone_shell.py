@@ -52,6 +52,7 @@ from noc_beam.sip.events import sip_events
 from noc_beam.sip.quality import CallQualitySampler
 from noc_beam.sip.registration_retry import RegistrationRetry
 from noc_beam.ui.account_dialog import AccountDialog
+from noc_beam.ui.account_settings_dialog import AccountSettingsDialog
 from noc_beam.ui.accounts_view import AccountsView
 from noc_beam.ui.audio_strip import AudioStrip
 from noc_beam.ui.bottom_tabs import BottomTabs, Tab
@@ -98,6 +99,8 @@ class PhoneShell(QMainWindow):
         self._really_quitting = False
         self._reg_state = {}
         self._active_account_id = ""
+        self._always_on_top = False
+        self._always_on_top_action = None
 
         self._build_menu()
         self._build_ui()
@@ -133,6 +136,7 @@ class PhoneShell(QMainWindow):
             ("Softphone", [
                 ("Add account...",            self._on_add_account),
                 ("Edit selected account...",  self._on_edit_account),
+                ("Account settings...",       self._on_account_settings),
                 ("Remove selected account...", self._on_remove_account),
                 ("---", None),
                 ("Settings...",               self._on_settings),
@@ -145,6 +149,7 @@ class PhoneShell(QMainWindow):
                 ("Test Runner...",            self._on_open_test_runner),
                 ("Diagnostics...",            self._on_diagnostics),
                 ("---", None),
+                ("Always on Top",             self._on_toggle_always_on_top),
                 ("Open wide dashboard...",    self._on_open_wide),
             ]),
             ("Help", [
@@ -193,7 +198,14 @@ class PhoneShell(QMainWindow):
                 if label == "---":
                     big_menu.addSeparator()
                 else:
-                    big_menu.addAction(label, slot)
+                    action = big_menu.addAction(label)
+                    if label == "Always on Top":
+                        action.setCheckable(True)
+                        action.setChecked(self._always_on_top)
+                        self._always_on_top_action = action
+                        action.toggled.connect(slot)
+                    else:
+                        action.triggered.connect(lambda _checked=False, slot=slot: slot())
         self.menu_btn.setMenu(big_menu)
         brand_row.addWidget(self.menu_btn)
         top_l.addLayout(brand_row)
@@ -379,6 +391,19 @@ class PhoneShell(QMainWindow):
         if acc is None:
             QMessageBox.information(self, "Edit account", "Select an account first."); return
         dlg = AccountDialog(account=acc, parent=self)
+        if _open_modal(dlg):
+            new_cfg = dlg.result_account()
+            self.accounts = [new_cfg if a.id == acc.id else a for a in self.accounts]
+            save_accounts(self.accounts)
+            SipEndpoint.instance().remove_account(acc.id)
+            if new_cfg.enabled: self._add_account_to_endpoint(new_cfg)
+            self._refresh_accounts()
+
+    def _on_account_settings(self):
+        acc = self._selected_account()
+        if acc is None:
+            QMessageBox.information(self, "Account settings", "Select an account first."); return
+        dlg = AccountSettingsDialog(account=acc, parent=self)
         if _open_modal(dlg):
             new_cfg = dlg.result_account()
             self.accounts = [new_cfg if a.id == acc.id else a for a in self.accounts]
@@ -653,6 +678,18 @@ class PhoneShell(QMainWindow):
         self._test_runner_window.accounts = list(self.accounts)
         self._test_runner_window.show()
         self._test_runner_window.raise_(); self._test_runner_window.activateWindow()
+
+    def _on_toggle_always_on_top(self, checked=False):
+        self._always_on_top = bool(checked)
+        was_visible = self.isVisible()
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, self._always_on_top)
+        if self._always_on_top_action is not None:
+            self._always_on_top_action.setChecked(self._always_on_top)
+        if was_visible:
+            self.show()
+            if self._always_on_top:
+                self.raise_()
+                self.activateWindow()
 
     def _on_open_wide(self):
         from noc_beam.ui.main_window import MainWindow

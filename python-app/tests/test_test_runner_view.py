@@ -9,15 +9,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 QtWidgets = pytest.importorskip("PySide6.QtWidgets")
 QtGui = pytest.importorskip("PySide6.QtGui")
+QtCore = pytest.importorskip("PySide6.QtCore")
 QApplication = QtWidgets.QApplication
 QCloseEvent = QtGui.QCloseEvent
+Qt = QtCore.Qt
 _APP = QApplication.instance()
 if _APP is None:
     _APP = QApplication([])
 
 from noc_beam.testing.plan import TestCall as PlanCall
 from noc_beam.testing.runner import TestResult as RunnerResult
-from noc_beam.config.store import GlobalSettings
+from noc_beam.config.store import AccountConfig, GlobalSettings
 from noc_beam.ui import phone_shell as phone_shell_module
 from noc_beam.ui.phone_shell import PhoneShell
 from noc_beam.ui.test_runner_view import TestRunnerView as RunnerWindow
@@ -168,10 +170,141 @@ def test_phone_shell_has_test_runner_menu_action(qt_app: QApplication, monkeypat
     try:
         view_actions = next(items for group, items in shell._menu_actions if group == "View")
         labels = [label for label, _slot in view_actions]
+        softphone_actions = next(
+            items for group, items in shell._menu_actions if group == "Softphone"
+        )
+        softphone_labels = [label for label, _slot in softphone_actions]
 
+        assert "Account settings..." in softphone_labels
         assert "Test Runner..." in labels
+        assert "Always on Top" in labels
         assert len(scheduled_callbacks) == 1
         assert sip_startups == 0
+    finally:
+        shell._really_quitting = True
+        shell.close()
+
+
+def test_phone_shell_account_settings_updates_selected_account(
+    qt_app: QApplication,
+    monkeypatch,
+) -> None:
+    original = AccountConfig(
+        id="acct-1",
+        display_name="Primary",
+        username="1001",
+        domain="old.example.test",
+        enabled=True,
+    )
+    updated = AccountConfig(
+        id="acct-1",
+        display_name="Primary Updated",
+        username="2002",
+        domain="new.example.test",
+        enabled=True,
+    )
+    saved: list[list[AccountConfig]] = []
+    removed: list[str] = []
+    added: list[AccountConfig] = []
+
+    class FakeRinger:
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+    class FakeTimer:
+        @staticmethod
+        def singleShot(_msec, _callback) -> None:
+            pass
+
+    class FakeDialog:
+        Accepted = 1
+
+        def __init__(self, account, parent=None) -> None:
+            self.account = account
+            self.parent = parent
+
+        def result_account(self) -> AccountConfig:
+            return updated
+
+    class FakeEndpoint:
+        def remove_account(self, account_id: str) -> None:
+            removed.append(account_id)
+
+        def add_account(self, cfg: AccountConfig) -> None:
+            added.append(cfg)
+
+    class FakeSipEndpoint:
+        @staticmethod
+        def instance() -> FakeEndpoint:
+            return fake_endpoint
+
+    fake_endpoint = FakeEndpoint()
+
+    monkeypatch.setattr(phone_shell_module, "load_settings", GlobalSettings)
+    monkeypatch.setattr(phone_shell_module, "load_accounts", lambda: [original])
+    monkeypatch.setattr(phone_shell_module, "save_accounts", lambda accounts: saved.append(list(accounts)))
+    monkeypatch.setattr(phone_shell_module, "Ringer", FakeRinger)
+    monkeypatch.setattr(phone_shell_module, "QTimer", FakeTimer)
+    monkeypatch.setattr(phone_shell_module, "AccountSettingsDialog", FakeDialog)
+    monkeypatch.setattr(phone_shell_module, "SipEndpoint", FakeSipEndpoint)
+    monkeypatch.setattr(phone_shell_module, "_open_modal", lambda _dlg: True)
+    monkeypatch.setattr(PhoneShell, "_start_sip", lambda _self: None)
+
+    shell = PhoneShell()
+
+    try:
+        shell._on_account_settings()
+
+        assert saved == [[updated]]
+        assert shell.accounts == [updated]
+        assert removed == ["acct-1"]
+        assert added == [updated]
+        assert shell._active_account_id == "acct-1"
+    finally:
+        shell._really_quitting = True
+        shell.close()
+
+
+def test_phone_shell_always_on_top_action_toggles_window_flag(
+    qt_app: QApplication,
+    monkeypatch,
+) -> None:
+    class FakeRinger:
+        def start(self) -> None:
+            pass
+
+        def stop(self) -> None:
+            pass
+
+    class FakeTimer:
+        @staticmethod
+        def singleShot(_msec, _callback) -> None:
+            pass
+
+    monkeypatch.setattr(phone_shell_module, "load_settings", GlobalSettings)
+    monkeypatch.setattr(phone_shell_module, "load_accounts", lambda: [])
+    monkeypatch.setattr(phone_shell_module, "Ringer", FakeRinger)
+    monkeypatch.setattr(phone_shell_module, "QTimer", FakeTimer)
+    monkeypatch.setattr(PhoneShell, "_start_sip", lambda _self: None)
+
+    shell = PhoneShell()
+
+    try:
+        action = shell._always_on_top_action
+        assert action is not None
+        assert action.isCheckable()
+        assert not bool(shell.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+
+        action.setChecked(True)
+        assert bool(shell.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        assert shell._always_on_top
+
+        action.setChecked(False)
+        assert not bool(shell.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        assert not shell._always_on_top
     finally:
         shell._really_quitting = True
         shell.close()
