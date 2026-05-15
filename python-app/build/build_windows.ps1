@@ -10,6 +10,7 @@
 [CmdletBinding()]
 param(
     [switch]$SkipNativeBuild,
+    [switch]$PreflightOnly,
     [switch]$Clean,
     [string]$PythonExe = "python",
     [string]$OpenSslTag = "openssl-3.0.13",
@@ -28,10 +29,68 @@ function Write-Header($msg) {
     Write-Host "==> $msg" -ForegroundColor Cyan
 }
 
+function Test-Command($Name) {
+    Get-Command $Name -ErrorAction SilentlyContinue
+}
+
+function Assert-NativePrerequisites {
+    $missing = @()
+
+    if (-not (Test-Path $VcVars)) {
+        $missing += "VS 2022 Build Tools vcvars64.bat not found at '$VcVars'. Install hint: use Visual Studio Installer and select 'Desktop development with C++', or run winget install --id Microsoft.VisualStudio.2022.BuildTools -e."
+    }
+
+    $requiredCommands = @(
+        @{ Name = "git";   Hint = "Install hint: winget install --id Git.Git -e, choco install git, or install from https://git-scm.com/download/win." },
+        @{ Name = "cmake"; Hint = "Install hint: winget install --id Kitware.CMake -e, choco install cmake, or install from https://cmake.org/download/." },
+        @{ Name = "nasm";  Hint = "Install hint: winget install --id NASM.NASM -e, choco install nasm, or install from https://www.nasm.us/." },
+        @{ Name = "swig";  Hint = "Install hint: winget install --id SWIG.SWIG -e, choco install swig, or install from https://www.swig.org/download.html." },
+        @{ Name = "perl";  Hint = "Install hint: winget install --id StrawberryPerl.StrawberryPerl -e, choco install strawberryperl, or install Strawberry Perl from https://strawberryperl.com/." }
+    )
+
+    foreach ($command in $requiredCommands) {
+        if (-not (Test-Command $command.Name)) {
+            $missing += "$($command.Name) not found on PATH. $($command.Hint)"
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        throw "Missing native build prerequisites:`n - $($missing -join "`n - ")"
+    }
+
+    Write-Host "Native build prerequisites found: VS vcvars64.bat, git, cmake, nasm, swig, perl." -ForegroundColor Green
+}
+
+function Assert-PythonExecutable([string]$Executable) {
+    try {
+        $pythonVersion = & $Executable --version 2>&1
+    } catch {
+        throw "Python executable '$Executable' is not callable. Install Python 3.11 or pass -PythonExe with a valid python.exe path. $($_.Exception.Message)"
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python executable '$Executable' failed version check: $pythonVersion"
+    }
+
+    Write-Host "Python executable found: $pythonVersion" -ForegroundColor Green
+}
+
 function Invoke-VcCmd([string]$cmd) {
     # Runs a command inside the MSVC x64 environment.
     cmd /c "`"$VcVars`" && $cmd"
     if ($LASTEXITCODE -ne 0) { throw "Command failed: $cmd" }
+}
+
+if ($PreflightOnly) {
+    Write-Header "Running build preflight"
+    Assert-PythonExecutable $PythonExe
+    if (-not $SkipNativeBuild) {
+        Assert-NativePrerequisites
+    } else {
+        Write-Host "Native build prerequisite check skipped because -SkipNativeBuild was set." -ForegroundColor Yellow
+    }
+    Write-Host "Preflight checks passed. No dependencies installed, native builds run, or PyInstaller invoked." -ForegroundColor Green
+    exit 0
 }
 
 if ($Clean) {
@@ -43,11 +102,11 @@ if ($Clean) {
 # 1. Native build (PJSIP + OpenSSL + BCG729)
 # ------------------------------------------------------------------
 $NativeOut = Join-Path $RepoRoot "src\noc_beam\_native\pjsua2"
-if (-not $SkipNativeBuild -and -not (Test-Path "$NativeOut\_pjsua2.pyd")) {
+if (-not $SkipNativeBuild) {
+    Assert-NativePrerequisites
+}
 
-    if (-not (Test-Path $VcVars)) {
-        throw "VS 2022 Build Tools not found at $VcVars. Install with: winget install Microsoft.VisualStudio.2022.BuildTools"
-    }
+if (-not $SkipNativeBuild -and -not (Test-Path "$NativeOut\_pjsua2.pyd")) {
 
     New-Item -ItemType Directory -Force -Path $ThirdParty | Out-Null
     Push-Location $ThirdParty
