@@ -15,8 +15,12 @@ PJSIP. We register the Qt main thread once at startup via libRegisterThread.
 from __future__ import annotations
 
 import logging
+import re
+import socket
+import ssl
 import threading
-from typing import Optional
+import time
+import uuid
 
 from noc_beam.config.store import AccountConfig, GlobalSettings
 from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE, pj
@@ -26,11 +30,13 @@ from noc_beam.sip.events import sip_events
 
 log = logging.getLogger(__name__)
 
+_SIP_STATUS_RE = re.compile(r"^SIP/2\.0\s+(\d{3})(?:\s+(.*))?$", re.IGNORECASE)
+
 
 class SipEndpoint:
     """Holds the single pjsua2.Endpoint and our active accounts."""
 
-    _instance: Optional["SipEndpoint"] = None
+    _instance: SipEndpoint | None = None
 
     def __init__(self) -> None:
         self._ep = None
@@ -44,7 +50,7 @@ class SipEndpoint:
     # Lifecycle
     # ------------------------------------------------------------------
     @classmethod
-    def instance(cls) -> "SipEndpoint":
+    def instance(cls) -> SipEndpoint:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
@@ -211,6 +217,139 @@ class SipEndpoint:
         except Exception:
             log.exception("list_codecs failed")
             return []
+
+    # ------------------------------------------------------------------
+    # Diagnostics
+    # ------------------------------------------------------------------
+    def options_probe(self, target_uri: str, timeout_s: float = 3.0) -> tuple[int, str, float]:
+        """Send a SIP OPTIONS probe and return ``(code, reason, rtt_ms)``.
+
+        PJSUA2 does not expose an out-of-dialog OPTIONS helper in the Python
+        wrapper, so the diagnostics panel sends a minimal standards-compliant
+        request directly over UDP or TCP. This is intentionally a reachability
+        probe, not an authenticated account operation.
+        """
+        uri = target_uri.strip()
+        if not uri:
+            raise ValueError("OPTIONS target is required")
+        if not uri.startswith(("sip:", "sips:")):
+            uri = f"sip:{uri}"
+
+        scheme, host, port, transport = self._parse_probe_uri(uri)
+        if scheme == "sips" and transport == "tcp":
+            transport = "tls"
+        if transport not in {"udp", "tcp", "tls"}:
+            raise ValueError(f"Unsupported OPTIONS transport: {transport}")
+
+        start = time.perf_counter()
+        if transport in {"tcp", "tls"}:
+            response = self._send_options_tcp(uri, host, port, timeout_s, use_tls=transport == "tls")
+        else:
+            response = self._send_options_udp(uri, host, port, timeout_s)
+        rtt_ms = (time.perf_counter() - start) * 1000.0
+        code, reason = self._parse_options_response(response)
+        return code, reason, rtt_ms
+
+    @staticmethod
+    def _parse_probe_uri(uri: str) -> tuple[str, str, int, str]:
+        scheme, rest = uri.split(":", 1)
+        scheme = scheme.lower()
+        if scheme not in {"sip", "sips"}:
+            raise ValueError("OPTIONS target must use sip: or sips:")
+
+        main, _, params = rest.partition(";")
+        main = main.split("?", 1)[0]
+        hostport = main.rsplit("@", 1)[-1]
+        if not hostport:
+            raise ValueError("OPTIONS target host is required")
+
+        if hostport.startswith("["):
+            end = hostport.find("]")
+            if end < 0:
+                raise ValueError("Invalid IPv6 SIP target")
+            host = hostport[1:end]
+            tail = hostport[end + 1:]
+            port = int(tail[1:]) if tail.startswith(":") else (5061 if scheme == "sips" else 5060)
+        else:
+            if ":" in hostport:
+                host, port_text = hostport.rsplit(":", 1)
+                port = int(port_text)
+            else:
+                host = hostport
+                port = 5061 if scheme == "sips" else 5060
+
+        transport = "tls" if scheme == "sips" else "udp"
+        for param in params.split(";"):
+            key, _, value = param.partition("=")
+            if key.strip().lower() == "transport" and value:
+                transport = value.strip().lower()
+                break
+        return scheme, host, port, transport
+
+    def _send_options_udp(self, uri: str, host: str, port: int, timeout_s: float) -> bytes:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.settimeout(timeout_s)
+            sock.connect((host, port))
+            local_host, local_port = sock.getsockname()
+            request = self._build_options_request(uri, "UDP", local_host, local_port)
+            sock.send(request)
+            try:
+                return sock.recv(8192)
+            except TimeoutError:
+                return b"SIP/2.0 408 Request Timeout\r\n\r\n"
+
+    def _send_options_tcp(
+        self, uri: str, host: str, port: int, timeout_s: float, *, use_tls: bool = False
+    ) -> bytes:
+        try:
+            raw_sock = socket.create_connection((host, port), timeout=timeout_s)
+            with raw_sock:
+                sock = (
+                    ssl.create_default_context().wrap_socket(raw_sock, server_hostname=host)
+                    if use_tls
+                    else raw_sock
+                )
+                with sock:
+                    sock.settimeout(timeout_s)
+                    local_host, local_port = sock.getsockname()
+                    transport = "TLS" if use_tls else "TCP"
+                    request = self._build_options_request(uri, transport, local_host, local_port)
+                    sock.sendall(request)
+                    return sock.recv(8192)
+        except TimeoutError:
+            return b"SIP/2.0 408 Request Timeout\r\n\r\n"
+
+    @staticmethod
+    def _build_options_request(uri: str, transport: str, local_host: str, local_port: int) -> bytes:
+        branch = f"z9hG4bK-{uuid.uuid4().hex}"
+        tag = uuid.uuid4().hex[:12]
+        call_id = f"{uuid.uuid4().hex}@noc-beam"
+        lines = [
+            f"OPTIONS {uri} SIP/2.0",
+            f"Via: SIP/2.0/{transport} {local_host}:{local_port};branch={branch};rport",
+            "Max-Forwards: 70",
+            f"From: <sip:noc-beam@{local_host}>;tag={tag}",
+            f"To: <{uri}>",
+            f"Call-ID: {call_id}",
+            "CSeq: 1 OPTIONS",
+            f"Contact: <sip:noc-beam@{local_host}:{local_port}>",
+            "Accept: application/sdp",
+            "User-Agent: NOC_Beam",
+            "Content-Length: 0",
+            "",
+            "",
+        ]
+        return "\r\n".join(lines).encode("ascii")
+
+    @staticmethod
+    def _parse_options_response(response: bytes) -> tuple[int, str]:
+        if not response:
+            raise RuntimeError("Empty SIP response")
+        first_line = response.splitlines()[0].decode("ascii", errors="replace").strip()
+        match = _SIP_STATUS_RE.match(first_line)
+        if not match:
+            raise RuntimeError(f"Invalid SIP response: {first_line}")
+        return int(match.group(1)), (match.group(2) or "").strip()
 
     # ------------------------------------------------------------------
     # Accounts
