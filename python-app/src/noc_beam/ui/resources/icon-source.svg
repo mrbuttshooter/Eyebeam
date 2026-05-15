@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- App icon source. Matches the in-window BrandMark: orange rounded
+       square + white "N" centered. Replaces the prior beam-line mark
+       which read as a vague orange blob at 16x16 in the Windows title
+       bar. Regenerated into icon.ico via build/generate_icon.py. -->
+  <rect width="256" height="256" rx="36" ry="36" fill="#E85D04"/>
+  <text x="128" y="128"
+        font-family="Segoe UI, Inter, sans-serif"
+        font-weight="700"
+        font-size="160"
+        fill="#FFFFFF"
+        text-anchor="middle"
+        dominant-baseline="central"
+        letter-spacing="-2">N</text>
+</svg>

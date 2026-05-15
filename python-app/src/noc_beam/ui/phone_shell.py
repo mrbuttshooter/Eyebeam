@@ -118,66 +118,111 @@ class PhoneShell(QMainWindow):
             log.info("Headsets: %s", ", ".join(str(h) for h in headsets))
 
     def _build_menu(self):
-        mb = self.menuBar()
-        sp = mb.addMenu("&Softphone")
-        sp.addAction("Add account...", self._on_add_account)
-        sp.addAction("Edit selected account...", self._on_edit_account)
-        sp.addAction("Remove selected account...", self._on_remove_account)
-        sp.addSeparator()
-        sp.addAction("Settings...", self._on_settings)
-        sp.addSeparator()
-        quit_act = sp.addAction("Quit", self._on_quit)
+        # NO Qt menu bar -- on Windows 11, QMenuBar paints with native
+        # services that leave phantom AudioStrip icons behind the first
+        # menu item ("Softphone"). Defensive QSS + setNativeMenuBar(
+        # False) didn't clear it. Sidestepped by removing the menu bar
+        # entirely; the same actions are exposed via a hamburger menu
+        # button in the top strip (built in _build_ui below).
+
+        # Build the actions we'd have put in the menu bar -- they get
+        # attached to the hamburger button's QMenu in _build_ui.
+        from PySide6.QtGui import QAction
+
+        self._menu_actions: list[tuple[str, list[tuple[str, callable]]]] = [
+            ("Softphone", [
+                ("Add account...",            self._on_add_account),
+                ("Edit selected account...",  self._on_edit_account),
+                ("Remove selected account...", self._on_remove_account),
+                ("---", None),
+                ("Settings...",               self._on_settings),
+                ("---", None),
+                ("Quit  (Ctrl+Q)",            self._on_quit),
+            ]),
+            ("View", [
+                ("NOC Trace...",              self._on_open_trace),
+                ("NOC Accounts...",           self._on_open_accounts),
+                ("Diagnostics...",            self._on_diagnostics),
+                ("---", None),
+                ("Open wide dashboard...",    self._on_open_wide),
+            ]),
+            ("Help", [
+                ("About NOC_Beam",            self._on_about),
+            ]),
+        ]
+        # Window-scope shortcut for Quit so Ctrl+Q still works.
+        quit_act = QAction(self)
         quit_act.setShortcut(QKeySequence("Ctrl+Q"))
-
-        view = mb.addMenu("&View")
-        view.addAction("NOC Trace...", self._on_open_trace)
-        view.addAction("NOC Accounts...", self._on_open_accounts)
-        view.addAction("Diagnostics...", self._on_diagnostics)
-        view.addSeparator()
-        view.addAction("Open wide dashboard...", self._on_open_wide)
-
-        help_menu = mb.addMenu("&Help")
-        help_menu.addAction("About NOC_Beam", self._on_about)
+        quit_act.triggered.connect(self._on_quit)
+        self.addAction(quit_act)
 
     def _build_ui(self):
+        # IMPORTANT: every widget below uses `top` (the TopStrip frame) as
+        # its parent at construction, NOT `self` (the QMainWindow). When
+        # widgets are constructed with `self` as parent, Qt briefly paints
+        # them at (0, 0) of the QMainWindow -- which is INSIDE the menu
+        # bar's geometry. The layout reparents on addWidget, but the
+        # initial paint cycle leaves a phantom render that ghosts behind
+        # the first menu item ("Softphone") on Windows 11. Symptom: an
+        # orange rectangle + white block visible where "Softphone" text
+        # should be in the menu bar. Fix: parent at construction time.
         top = QFrame(self); top.setObjectName("TopStrip")
         top_l = QVBoxLayout(top)
         top_l.setContentsMargins(12, 10, 12, 10); top_l.setSpacing(6)
 
         brand_row = QHBoxLayout(); brand_row.setSpacing(8)
-        self.brand_mark = QLabel("N", self); self.brand_mark.setObjectName("BrandMark")
-        self.brand_word = QLabel(__app_name__, self); self.brand_word.setObjectName("BrandWord")
-        self.brand_ver = QLabel(__version__, self); self.brand_ver.setObjectName("BrandVer")
+        self.brand_mark = QLabel("N", top); self.brand_mark.setObjectName("BrandMark")
+        self.brand_word = QLabel(__app_name__, top); self.brand_word.setObjectName("BrandWord")
+        self.brand_ver = QLabel(__version__, top); self.brand_ver.setObjectName("BrandVer")
         brand_row.addWidget(self.brand_mark); brand_row.addWidget(self.brand_word)
         brand_row.addWidget(self.brand_ver); brand_row.addStretch(1)
+
+        # Hamburger menu (replaces the QMenuBar -- see _build_menu).
+        # Three vertical groups under one button on the right of the
+        # brand row, opens an InstantPopup QMenu.
+        self.menu_btn = QToolButton(top)
+        self.menu_btn.setObjectName("MenuButton")
+        self.menu_btn.setText("≡")
+        self.menu_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.menu_btn.setToolTip("Menu")
+        big_menu = QMenu(self.menu_btn)
+        for group_label, items in self._menu_actions:
+            section = big_menu.addSection(group_label)
+            for label, slot in items:
+                if label == "---":
+                    big_menu.addSeparator()
+                else:
+                    big_menu.addAction(label, slot)
+        self.menu_btn.setMenu(big_menu)
+        brand_row.addWidget(self.menu_btn)
         top_l.addLayout(brand_row)
 
         acct_row = QHBoxLayout(); acct_row.setContentsMargins(0, 6, 0, 0); acct_row.setSpacing(8)
-        kicker = QLabel("ACCOUNT", self); kicker.setObjectName("AccountKicker")
-        self.account_chip = QToolButton(self); self.account_chip.setObjectName("AccountChip")
+        kicker = QLabel("ACCOUNT", top); kicker.setObjectName("AccountKicker")
+        self.account_chip = QToolButton(top); self.account_chip.setObjectName("AccountChip")
         self.account_chip.setText("No account  v")
         self.account_chip.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.account_chip.setMenu(QMenu(self.account_chip))
         acct_row.addWidget(kicker); acct_row.addWidget(self.account_chip, 1)
         top_l.addLayout(acct_row)
 
-        self.audio = AudioStrip(self)
+        self.audio = AudioStrip(top)
         top_l.addWidget(self.audio)
 
-        self.status_banner = QLabel("Starting...", self)
+        self.status_banner = QLabel("Starting...", top)
         self.status_banner.setObjectName("StatusBanner")
         self.status_banner.setProperty("level", "muted")
         self.status_banner.setWordWrap(True)
-        self.status_link = QLabel("", self); self.status_link.setObjectName("StatusBannerLink")
+        self.status_link = QLabel("", top); self.status_link.setObjectName("StatusBannerLink")
         self.status_link.setVisible(False); self.status_link.setOpenExternalLinks(False)
         self.status_link.linkActivated.connect(self._on_status_link)
         top_l.addWidget(self.status_banner); top_l.addWidget(self.status_link)
 
         dial_row = QHBoxLayout(); dial_row.setContentsMargins(0, 4, 0, 0); dial_row.setSpacing(8)
-        self.dial_input = QLineEdit(self); self.dial_input.setObjectName("DialInput")
+        self.dial_input = QLineEdit(top); self.dial_input.setObjectName("DialInput")
         self.dial_input.setPlaceholderText("Enter number or SIP URI")
         self.dial_input.returnPressed.connect(self._on_dial_input_enter)
-        self.call_btn = QPushButton("Call", self); self.call_btn.setObjectName("CallButton")
+        self.call_btn = QPushButton("Call", top); self.call_btn.setObjectName("CallButton")
         self.call_btn.clicked.connect(self._on_dial_input_enter)
         dial_row.addWidget(self.dial_input, 1); dial_row.addWidget(self.call_btn)
         top_l.addLayout(dial_row)
@@ -230,6 +275,14 @@ class PhoneShell(QMainWindow):
         self.bottom_tabs.tab_changed.connect(self.stack.setCurrentIndex)
 
         central = QWidget(self)
+        # autoFillBackground only -- do NOT setStyleSheet here. Inline
+        # styles on the central widget cascade to descendants and
+        # override their objectName-targeted rules in light.qss (the
+        # BrandMark would lose its orange bg, the Call button would
+        # lose its text colour, etc.). The global app stylesheet
+        # already covers QWidget background; this just ensures the
+        # central widget paints opaquely.
+        central.setAutoFillBackground(True)
         cl = QVBoxLayout(central); cl.setContentsMargins(0, 0, 0, 0); cl.setSpacing(0)
         cl.addWidget(top); cl.addWidget(self.stack, 1); cl.addWidget(self.bottom_tabs)
         self.setCentralWidget(central)

@@ -19,7 +19,11 @@ from PySide6.QtSvg import QSvgRenderer
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 HERE = Path(__file__).resolve().parent
 RESOURCES = HERE.parent / "src" / "noc_beam" / "ui" / "resources"
-SRC_SVG = RESOURCES / "logo-mark.svg"
+# Use icon-source.svg (orange rounded-square "N" matching the Bria-
+# evolution BrandMark). The old beam-line mark renders as a vague blob
+# at 16 x 16 in the Windows title bar; the new mark is a clean
+# recognisable badge that ties the title bar to the in-window brand.
+SRC_SVG = RESOURCES / "icon-source.svg"
 DST_ICO = RESOURCES / "icon.ico"
 
 

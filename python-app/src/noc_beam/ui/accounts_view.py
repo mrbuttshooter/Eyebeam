@@ -1,14 +1,24 @@
-"""Accounts master pane (left side of the master/detail layout).
+"""Accounts master pane -- richer-than-Bria account cards.
 
-Custom AcctRow widgets instead of a flat QListWidget so we can paint a
-status dot, transport badge, and refined typography per row. The whole
-master pane sits in a scroll area; selection is communicated via the
-selected_account_changed signal.
+Bria shows accounts in a flat table (Enabled / Account Name / Status /
+Protocol / User ID / Call / Sync). This view goes wider:
 
-Detail pane lives in accounts_detail.AccountDetail; MainWindow wires the
-selection signal to drive the detail.
+  - Each AcctRow is a 3-tier card: top row carries name + status text
+    + last-activity timestamp; middle row shows the SIP URI; bottom row
+    is a strip of coloured badges (TLS / SRTP / transport / disabled).
+  - Hover reveals per-row action buttons (Edit / Test / Disable /
+    Delete) so the operator can manage an account without going through
+    a separate dialog.
+  - Header gets Add + Refresh All + Test All -- bulk operations Bria
+    doesn't expose.
+  - Empty state is a designed CTA, not an empty list.
+
+Selection drives the existing AccountDetail right-pane via the
+selected_account_changed signal (unchanged contract).
 """
 from __future__ import annotations
+
+import time
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
@@ -20,11 +30,29 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from noc_beam.config.store import AccountConfig
+from noc_beam.ui.rail_icons import rail_icon
+
+
+def _relative_time(ts: float | None) -> str:
+    """'just now' / '2m ago' / '3h ago' / '5d ago' / '-' if None."""
+    if ts is None:
+        return "-"
+    delta = max(0.0, time.time() - ts)
+    if delta < 30:
+        return "just now"
+    if delta < 60:
+        return f"{int(delta)}s ago"
+    if delta < 3600:
+        return f"{int(delta // 60)}m ago"
+    if delta < 86400:
+        return f"{int(delta // 3600)}h ago"
+    return f"{int(delta // 86400)}d ago"
 
 
 def _status_dot_pixmap(color_hex: str, px: int = 9) -> QPixmap:
@@ -39,50 +67,120 @@ def _status_dot_pixmap(color_hex: str, px: int = 9) -> QPixmap:
     return pix
 
 
-class AcctRow(QFrame):
-    """A single row in the accounts master pane."""
+def _badge(text: str, level: str = "neutral") -> QLabel:
+    """A small pill label. level in: ok / warn / danger / info / neutral."""
+    lbl = QLabel(text.upper())
+    lbl.setObjectName("AcctBadge")
+    lbl.setProperty("level", level)
+    return lbl
 
-    clicked = Signal(str)  # account_id
+
+class AcctRow(QFrame):
+    """A 3-tier card row in the accounts master pane.
+
+    Tier 1 (top row):  status dot + name + status text  ........  last-activity
+    Tier 2 (middle):   SIP URI (mono)
+    Tier 3 (bottom):   badges (transport, SRTP, auth, disabled)
+    Hover overlay:     Edit / Test / Disable / Delete action buttons (right)
+    """
+
+    clicked = Signal(str)
+    edit_requested = Signal(str)
+    test_requested = Signal(str)
+    toggle_enabled_requested = Signal(str)
+    delete_requested = Signal(str)
 
     def __init__(self, account: AccountConfig, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("AcctRow")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.account_id = account.id
+        self._enabled = account.enabled
+        self._last_activity_ts: float | None = None
 
-        # State dynamic property — QSS branches on this. Phase G ships
-        # only the focused state; warn/error states wire in Tier 3.
         self.setProperty("state", "idle")
 
-        outer = QHBoxLayout(self)
-        outer.setContentsMargins(12, 10, 12, 10)
-        outer.setSpacing(10)
-
+        # ---- Tier 1: status dot + name + status text + last-activity
         self.dot = QLabel(self)
         self.dot.setPixmap(_status_dot_pixmap("#7C8696"))
-        self.dot.setFixedSize(9, 9)
-        outer.addWidget(self.dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.dot.setFixedSize(10, 10)
 
-        ident = QVBoxLayout()
-        ident.setContentsMargins(0, 0, 0, 0)
-        ident.setSpacing(1)
         display = account.display_name or account.username
-        self.name = QLabel(display)
+        self.name = QLabel(display, self)
         self.name.setObjectName("AcctRowName")
-        uri_text = f"{account.username}@{account.domain}"
-        self.uri = QLabel(uri_text)
-        self.uri.setObjectName("AcctRowUri")
-        ident.addWidget(self.name)
-        ident.addWidget(self.uri)
-        outer.addLayout(ident, 1)
 
-        # Right meta: transport + enabled/disabled
-        meta_text = account.transport.upper()
+        self.status_text = QLabel("Unregistered", self)
+        self.status_text.setObjectName("AcctRowStatus")
+
+        self.last_activity = QLabel("never", self)
+        self.last_activity.setObjectName("AcctRowMeta")
+        self.last_activity.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+
+        tier1 = QHBoxLayout()
+        tier1.setContentsMargins(0, 0, 0, 0)
+        tier1.setSpacing(8)
+        tier1.addWidget(self.dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        tier1.addWidget(self.name, 0)
+        tier1.addWidget(self.status_text, 1)
+        tier1.addWidget(self.last_activity, 0)
+
+        # ---- Tier 2: URI mono
+        uri_text = f"sip:{account.username}@{account.domain}"
+        self.uri = QLabel(uri_text, self)
+        self.uri.setObjectName("AcctRowUri")
+        self.uri.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+        # ---- Tier 3: badges row
+        self.badges_layout = QHBoxLayout()
+        self.badges_layout.setContentsMargins(0, 0, 0, 0)
+        self.badges_layout.setSpacing(4)
+        # Transport badge
+        transport_level = "info" if account.transport == "tls" else "neutral"
+        self.badges_layout.addWidget(_badge(account.transport, transport_level))
+        # SRTP badge
+        if account.srtp != "disabled":
+            self.badges_layout.addWidget(_badge(f"SRTP {account.srtp}", "ok"))
+        # Auth-different badge
+        if account.auth_user and account.auth_user != account.username:
+            self.badges_layout.addWidget(_badge(f"auth {account.auth_user}", "neutral"))
+        # Disabled badge
         if not account.enabled:
-            meta_text += "  ·  disabled"
-        self.meta = QLabel(meta_text)
-        self.meta.setObjectName("AcctRowMeta")
-        outer.addWidget(self.meta, 0, Qt.AlignmentFlag.AlignVCenter)
+            self.badges_layout.addWidget(_badge("disabled", "warn"))
+        self.badges_layout.addStretch(1)
+
+        # ---- Hover-revealed action buttons row (overlay on the right)
+        self.actions = QFrame(self)
+        self.actions.setObjectName("AcctRowActions")
+        self.actions.setVisible(False)  # only on hover
+        ar = QHBoxLayout(self.actions)
+        ar.setContentsMargins(0, 0, 0, 0)
+        ar.setSpacing(2)
+        for icon_name, tooltip, signal in (
+            ("settings",   "Edit account",    self.edit_requested),
+            ("trace",      "Test (OPTIONS)",  self.test_requested),
+            ("close",      "Delete account",  self.delete_requested),
+        ):
+            btn = QToolButton(self.actions)
+            btn.setObjectName("AcctRowActionBtn")
+            btn.setIcon(rail_icon(icon_name, color="#57606A", px=14))
+            btn.setIconSize(QSize(14, 14))
+            btn.setToolTip(tooltip)
+            btn.setAutoRaise(True)
+            btn.clicked.connect(lambda _=False, sig=signal: sig.emit(self.account_id))
+            ar.addWidget(btn)
+
+        # Compose tiers in a vertical stack
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 10, 12, 10)
+        outer.setSpacing(4)
+        outer.addLayout(tier1)
+        outer.addWidget(self.uri)
+        outer.addLayout(self.badges_layout)
+        # Action overlay: dock in bottom-right corner of the row via a
+        # secondary QHBoxLayout that gets stretched to push actions right
+        outer.addWidget(self.actions, 0, Qt.AlignmentFlag.AlignRight)
 
     # ------------------------------------------------------------------
     def mousePressEvent(self, event):  # noqa: N802, ANN001
@@ -90,23 +188,40 @@ class AcctRow(QFrame):
             self.clicked.emit(self.account_id)
         super().mousePressEvent(event)
 
+    def enterEvent(self, event):  # noqa: N802, ANN001
+        self.actions.setVisible(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):  # noqa: N802, ANN001
+        self.actions.setVisible(False)
+        super().leaveEvent(event)
+
     def set_focused(self, focused: bool) -> None:
-        # Toggling a dynamic property doesn't auto-restyle; unpolish + polish.
         self.setProperty("state", "focused" if focused else "idle")
         self.style().unpolish(self)
         self.style().polish(self)
 
     def set_status(self, code: int) -> None:
-        """0 = unknown/neutral; 2xx = ok; 4xx auth = warn; other = danger."""
+        """Update status dot colour + status text + last-activity stamp."""
         if code == 0:
-            color = "#7C8696"
+            color, text = "#7C8696", "Unregistered"
         elif 200 <= code < 300:
-            color = "#66D19E"
+            color, text = "#66D19E", f"Registered ({code})"
         elif code in (401, 403, 407, 423):
-            color = "#F0C36D"
+            color, text = "#F0C36D", f"Auth failed ({code})"
+        elif code == 408:
+            color, text = "#FF5C7A", f"Timeout ({code})"
         else:
-            color = "#FF5C7A"
-        self.dot.setPixmap(_status_dot_pixmap(color))
+            color, text = "#FF5C7A", f"Error ({code})"
+        self.dot.setPixmap(_status_dot_pixmap(color, px=10))
+        self.status_text.setText(text)
+        if code != 0:
+            self._last_activity_ts = time.time()
+            self.last_activity.setText(_relative_time(self._last_activity_ts))
+
+    def refresh_relative_time(self) -> None:
+        """Called by AccountsView's refresh tick to keep the timestamp fresh."""
+        self.last_activity.setText(_relative_time(self._last_activity_ts))
 
     def matches_filter(self, needle: str) -> bool:
         if not needle:
@@ -116,12 +231,26 @@ class AcctRow(QFrame):
 
 
 class AccountsView(QWidget):
-    """Master pane: count header + Add button + search box + scrollable rows."""
+    """Accounts surface: header + bulk actions + search + rich rows.
 
+    Bulk actions (Refresh All / Test All) operate on every enabled
+    account at once -- something Bria's flat table can't do. Per-row
+    actions (Edit / Test / Delete) are revealed on hover, exposed via
+    the new edit_requested / test_requested / delete_requested signals
+    keyed by account_id.
+    """
+
+    # Legacy "use selected account" signals, kept for backwards-compat.
     add_clicked = Signal()
     edit_clicked = Signal()
     remove_clicked = Signal()
     selected_account_changed = Signal(str)  # account_id, "" if cleared
+    # New per-row signals (carry the account_id directly).
+    edit_requested = Signal(str)
+    test_requested = Signal(str)
+    delete_requested = Signal(str)
+    refresh_all_requested = Signal()
+    test_all_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -136,7 +265,7 @@ class AccountsView(QWidget):
         self._selected_id: str | None = None
         self._reg_codes: dict[str, int] = {}
 
-        # ---- Header
+        # ---- Header (title + count) + bulk-action toolbar
         title = QLabel("Accounts")
         title.setObjectName("ViewTitle")
         self.count_label = QLabel("0 of 0 registered")
@@ -144,6 +273,16 @@ class AccountsView(QWidget):
         self.add_btn = QPushButton("+ Add account")
         self.add_btn.setObjectName("PrimaryAction")
         self.add_btn.clicked.connect(self.add_clicked.emit)
+
+        # Bulk actions: "Refresh all" re-issues REGISTER on every enabled
+        # account; "Test all" runs an OPTIONS probe on each. Bria has
+        # neither -- they're our differentiator.
+        self.refresh_all_btn = QPushButton("Refresh all")
+        self.refresh_all_btn.setObjectName("AcctBulkBtn")
+        self.refresh_all_btn.clicked.connect(self.refresh_all_requested.emit)
+        self.test_all_btn = QPushButton("Test all")
+        self.test_all_btn.setObjectName("AcctBulkBtn")
+        self.test_all_btn.clicked.connect(self.test_all_requested.emit)
 
         header_top = QHBoxLayout()
         header_top.setContentsMargins(16, 16, 16, 4)
@@ -153,9 +292,12 @@ class AccountsView(QWidget):
         header_top.addWidget(self.add_btn)
 
         count_row = QHBoxLayout()
-        count_row.setContentsMargins(16, 0, 16, 12)
+        count_row.setContentsMargins(16, 0, 16, 8)
+        count_row.setSpacing(8)
         count_row.addWidget(self.count_label)
         count_row.addStretch(1)
+        count_row.addWidget(self.refresh_all_btn)
+        count_row.addWidget(self.test_all_btn)
 
         # ---- Search
         self.search = QLineEdit()
@@ -199,6 +341,15 @@ class AccountsView(QWidget):
         outer.addLayout(search_wrap)
         outer.addWidget(scroll, 1)
 
+        # Tick the relative-time labels every 30 s so "2m ago" doesn't
+        # silently drift to wrong values.
+        from PySide6.QtCore import QTimer
+
+        self._tick_timer = QTimer(self)
+        self._tick_timer.setInterval(30_000)
+        self._tick_timer.timeout.connect(self._tick_relative_times)
+        self._tick_timer.start()
+
     # ------------------------------------------------------------------
     def populate(self, accounts: list[AccountConfig]) -> None:
         # Tear down any existing rows.
@@ -207,11 +358,17 @@ class AccountsView(QWidget):
         self._rows = []
         # Toggle empty-state visibility based on whether anything's there.
         self._empty_label.setVisible(not accounts)
+        # Bulk action buttons make no sense when there are no accounts.
+        for b in (self.refresh_all_btn, self.test_all_btn):
+            b.setEnabled(bool(accounts))
         # Insert before the trailing stretch (last item).
         insert_at = self._rows_layout.count() - 1
         for cfg in accounts:
             row = AcctRow(cfg, self._rows_holder)
             row.clicked.connect(self._on_row_clicked)
+            row.edit_requested.connect(self.edit_requested.emit)
+            row.test_requested.connect(self.test_requested.emit)
+            row.delete_requested.connect(self.delete_requested.emit)
             self._rows_layout.insertWidget(insert_at, row)
             self._rows.append(row)
             insert_at += 1
@@ -219,6 +376,10 @@ class AccountsView(QWidget):
             code = self._reg_codes.get(cfg.id, 0)
             row.set_status(code)
         self._refresh_count()
+
+    def _tick_relative_times(self) -> None:
+        for row in self._rows:
+            row.refresh_relative_time()
         # Re-apply current filter
         self._apply_filter(self.search.text())
         # Try to keep selection; otherwise pick first

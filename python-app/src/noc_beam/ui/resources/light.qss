@@ -83,6 +83,23 @@ QLabel#BrandVer {
     font-size: 10px;
     letter-spacing: 0.04em;
 }
+QToolButton#MenuButton {
+    background: transparent;
+    color: #57606A;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 0 8px;
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 18px;
+    font-weight: 700;
+}
+QToolButton#MenuButton:hover {
+    background-color: #ECEEF1;
+    color: #1F2933;
+    border-color: #C9CDD3;
+}
+QToolButton#MenuButton::menu-indicator { image: none; width: 0; }
 
 QLabel#AccountKicker {
     color: #94A0AD;
@@ -630,16 +647,102 @@ QFrame#AcctRow[state="focused"] {
 QFrame#AcctRow[state="error"] { background-color: #FDF1F2; }
 
 QLabel#AcctRowName  { color: #1F2933; font-size: 13px; font-weight: 600; }
-QLabel#AcctRowUri   {
+QLabel#AcctRowStatus {
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    padding-left: 4px;
+}
+QLabel#AcctRowUri   {
+    color: #57606A;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 11px;
+    padding-left: 18px;
 }
 QLabel#AcctRowMeta  {
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 10px;
     letter-spacing: 0.04em;
+}
+
+/* Hover-revealed action overlay for AcctRow */
+QFrame#AcctRowActions {
+    background: transparent;
+    border: none;
+}
+QToolButton#AcctRowActionBtn {
+    background: transparent;
+    color: #57606A;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    padding: 2px;
+    min-width: 22px;
+    min-height: 22px;
+}
+QToolButton#AcctRowActionBtn:hover {
+    background-color: #ECEEF1;
+    border-color: #C9CDD3;
+    color: #1F2933;
+}
+
+/* Bulk action button (Refresh all / Test all) */
+QPushButton#AcctBulkBtn {
+    background-color: #FFFFFF;
+    color: #57606A;
+    border: 1px solid #C9CDD3;
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    min-height: 22px;
+}
+QPushButton#AcctBulkBtn:hover {
+    background-color: #FFE0CC;
+    border-color: #E85D04;
+    color: #C24B00;
+}
+QPushButton#AcctBulkBtn:disabled {
+    background-color: #F5F6F8;
+    color: #C9CDD3;
+    border-color: #ECEEF1;
+}
+
+/* Account badges (TLS / SRTP / disabled) */
+QLabel#AcctBadge {
+    background-color: #ECEEF1;
+    color: #57606A;
+    border: 1px solid #C9CDD3;
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-left: 18px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+QLabel#AcctBadge[level="ok"] {
+    color: #1FA64C;
+    background-color: #E8F7EE;
+    border-color: rgba(46, 189, 92, 0.4);
+}
+QLabel#AcctBadge[level="warn"] {
+    color: #C97C0E;
+    background-color: #FFF4DB;
+    border-color: rgba(240, 195, 109, 0.4);
+}
+QLabel#AcctBadge[level="danger"] {
+    color: #B22D35;
+    background-color: #FDF1F2;
+    border-color: rgba(211, 56, 65, 0.4);
+}
+QLabel#AcctBadge[level="info"] {
+    color: #1A6FA0;
+    background-color: #E8F2FA;
+    border-color: rgba(42, 141, 196, 0.4);
 }
 
 
