@@ -1112,3 +1112,14 @@ QPushButton#RunTestButton {
     color: #000000;
     font-weight: 700;
 }
+QPushButton#RejectButton {
+    min-height: 32px;
+    border-radius: 4px;
+    background-color: #FF4D4D;
+    color: #000000;
+}
+QLabel#StatusPill, QLabel#SipCodeBadge, QLabel#MetricChip,
+QToolButton#IconActionButton, QPushButton#PrimaryAction, QPushButton#SecondaryAction,
+QFrame#DenseListRow, QFrame#TraceMsgRow, QFrame#TraceDialogRow {
+    border-width: 1px;
+}

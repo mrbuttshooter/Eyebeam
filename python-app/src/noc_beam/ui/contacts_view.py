@@ -150,6 +150,8 @@ class GroupRow(QFrame):
         chev.setIcon(rail_icon("chevron-down", color="#94A0AD", px=12))
         chev.setIconSize(QSize(12, 12))
         chev.setAutoRaise(True)
+        chev.setToolTip(f"Toggle {name}")
+        chev.setAccessibleName(f"Toggle {name} group")
         chev.clicked.connect(lambda: self.clicked.emit(self.name))
 
         layout = QHBoxLayout(self)

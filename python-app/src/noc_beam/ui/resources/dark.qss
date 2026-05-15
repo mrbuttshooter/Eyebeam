@@ -1256,3 +1256,9 @@ QPushButton#RunTestButton {
     color: #FFFFFF;
     font-weight: 700;
 }
+QPushButton#RejectButton {
+    min-height: 32px;
+    border-radius: 4px;
+    background-color: #D33841;
+    color: #FFFFFF;
+}
