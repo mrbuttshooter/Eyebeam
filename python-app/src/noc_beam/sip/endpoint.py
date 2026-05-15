@@ -445,7 +445,14 @@ class SipEndpoint:
         """
         if code is None:
             try:
-                state = call.getInfo().state
+                # int() wrap is defensive: some pjsua2 SWIG/Cython
+                # builds return a wrapped enum object whose __eq__ vs
+                # int silently returns False. Without the wrap, every
+                # comparison falls through to the else branch below
+                # and an INCOMING call gets answered with 200 OK then
+                # immediately BYE'd instead of being properly rejected
+                # with 486 Busy Here.
+                state = int(call.getInfo().state)
             except Exception:
                 state = -1
             # pjsua2 PJSIP_INV_STATE_* numbers. 5 = CONFIRMED.

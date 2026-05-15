@@ -870,7 +870,23 @@ class PhoneShell(QMainWindow):
     def _on_answer(self, _call_id):
         call = self._selected_pjsua_call()
         if call is None: return
-        try: SipEndpoint.instance().answer_call(call); self.ringer.stop()
+        # Call-waiting: if there's another CONFIRMED call live, put it
+        # on hold BEFORE we answer the new one. Without this both
+        # parties end up mixed in the conference bridge audibly --
+        # wire-protocol accidental three-way.
+        ep = SipEndpoint.instance()
+        try:
+            for rec in self.calls.active():
+                if rec.call_id != _call_id and rec.state == CallState.CONFIRMED:
+                    other = ep.find_call(rec.call_id)
+                    if other is not None:
+                        try:
+                            ep.hold_call(other)
+                        except Exception:
+                            log.exception("auto-hold of call %s failed", rec.call_id)
+        except Exception:
+            log.exception("call-waiting auto-hold scan failed")
+        try: ep.answer_call(call); self.ringer.stop()
         except Exception: log.exception("answer failed")
 
     def _on_reject(self, _call_id):
@@ -1075,13 +1091,33 @@ class PhoneShell(QMainWindow):
             from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE
             if not PJSUA2_AVAILABLE:
                 return
-            info = call.getInfo()
             tx_level = rx_level = 0
+            # Re-read getInfo() inside the per-media try so a state
+            # flip between scans (PJSIP onCallMediaState callback can
+            # invalidate a media slot mid-iteration) doesn't SIGSEGV
+            # in the C layer when getAudioMedia is called against an
+            # already-torn-down slot.
+            try:
+                info = call.getInfo()
+            except Exception:
+                return
             for mi in info.media:
                 if mi.type != 1 or mi.status != 1:
                     continue
-                aud = call.getAudioMedia(mi.index)
-                # PJSIP gives raw 0..255 amplitude.
+                # Each PJSIP touch is its own try -- a getAudioMedia
+                # crash on one slot doesn't take out the polling loop.
+                try:
+                    # Re-validate status atomically before touching the
+                    # slot (status may have flipped since outer info
+                    # read; cheap enough to do per-iteration).
+                    info2 = call.getInfo()
+                    if mi.index >= len(info2.media):
+                        continue
+                    if info2.media[mi.index].status != 1:
+                        continue
+                    aud = call.getAudioMedia(mi.index)
+                except Exception:
+                    continue
                 # Same directionality inversion as the gain sliders:
                 #   call.getRxLevel() = audio coming IN to the call
                 #     port from the bridge (our mic) = TX direction
@@ -1152,9 +1188,18 @@ class PhoneShell(QMainWindow):
             row.setObjectName("CallStripRow")
             row.setCursor(Qt.CursorShape.PointingHandCursor)
             row.setFixedHeight(22)
-            row.mousePressEvent = (  # type: ignore[method-assign]
-                lambda _ev, cid=rec.call_id: self._select_call(cid)
-            )
+            # Row click selects the call -- but only if the click did
+            # NOT land on the X end button. Without the hit-test the
+            # X button's parent (the row) also gets the press and
+            # _select_call fires on a call that's about to terminate.
+            def _make_row_press(cid, row_ref):
+                def _press(ev):
+                    end = row_ref.findChild(QToolButton, "CallStripEndBtn")
+                    if end is not None and end.geometry().contains(ev.pos()):
+                        return  # X handles its own click
+                    self._select_call(cid)
+                return _press
+            row.mousePressEvent = _make_row_press(rec.call_id, row)  # type: ignore[method-assign]
             rl = QHBoxLayout(row)
             rl.setContentsMargins(8, 0, 4, 0)
             rl.setSpacing(6)
@@ -1366,6 +1411,39 @@ class PhoneShell(QMainWindow):
     def closeEvent(self, event):
         if not self._really_quitting and self.tray.available:
             event.ignore(); self.hide(); return
+        # Disconnect from singletons before tearing down the window.
+        # CallManager and sip_events outlive PhoneShell; without
+        # disconnecting, signal slots fire into a half-deleted Qt
+        # widget (RuntimeError "Internal C++ object already deleted").
+        # Reopening PhoneShell after a close also stacks duplicate
+        # connections per re-open if we don't clean up here.
+        try:
+            self.calls.call_added.disconnect()
+            self.calls.call_updated.disconnect()
+            self.calls.call_removed.disconnect()
+        except Exception:
+            pass
+        try:
+            ev = sip_events()
+            for sig_name in (
+                "endpoint_started", "endpoint_stopped", "endpoint_error",
+                "registration_changed", "call_incoming", "call_state_changed",
+                "call_media_active", "call_quality", "call_ended",
+            ):
+                sig = getattr(ev, sig_name, None)
+                if sig is not None:
+                    try:
+                        sig.disconnect()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        # Stop the audio level poll timer so it can't fire into a
+        # destroyed widget.
+        try:
+            self._level_timer.stop()
+        except Exception:
+            pass
         try: SipEndpoint.instance().stop()
         except Exception: log.exception("Endpoint stop error")
         super().closeEvent(event)
