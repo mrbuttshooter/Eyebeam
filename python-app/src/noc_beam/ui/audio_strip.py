@@ -90,7 +90,10 @@ class AudioStrip(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("AudioStrip")
-        self.setFixedHeight(54)
+        # Single-row layout (controls + meters inline) -- 34 px tall
+        # instead of 54 px. Was the single biggest vertical offender
+        # in the audit.
+        self.setFixedHeight(34)
 
         self._inputs: list[tuple[object, str]] = []
         self._outputs: list[tuple[object, str]] = []
@@ -173,54 +176,44 @@ class AudioStrip(QFrame):
         # its function.
         self.out_menu_btn = self.spk_dev_btn
 
-        # --- TX / RX live audio level bars (driven by phone_shell) ----
+        # --- TX / RX live audio level bars (inline with the controls) ---
+        # Bars are 4px tall, 70px wide -- wide enough to read activity
+        # without dominating the strip. Inline with the icons in one
+        # row instead of a second row.
         self.tx_bar = QProgressBar(self)
         self.tx_bar.setObjectName("AudioMeterTX")
         self.tx_bar.setRange(0, 100)
         self.tx_bar.setValue(0)
         self.tx_bar.setTextVisible(False)
-        self.tx_bar.setFixedHeight(6)
-        self.tx_bar.setFixedWidth(120)
+        self.tx_bar.setFixedHeight(4)
+        self.tx_bar.setFixedWidth(70)
         self.rx_bar = QProgressBar(self)
         self.rx_bar.setObjectName("AudioMeterRX")
         self.rx_bar.setRange(0, 100)
         self.rx_bar.setValue(0)
         self.rx_bar.setTextVisible(False)
-        self.rx_bar.setFixedHeight(6)
-        self.rx_bar.setFixedWidth(120)
-        tx_label = QLabel("TX", self); tx_label.setObjectName("AudioMeterLabel")
+        self.rx_bar.setFixedHeight(4)
+        self.rx_bar.setFixedWidth(70)
         rx_label = QLabel("RX", self); rx_label.setObjectName("AudioMeterLabel")
+        tx_label = QLabel("TX", self); tx_label.setObjectName("AudioMeterLabel")
 
-        controls_row = QHBoxLayout()
-        controls_row.setContentsMargins(0, 0, 0, 0)
-        controls_row.setSpacing(2)
-        # Mic group: [icon] [chevron] [number]
-        controls_row.addWidget(self.mic_btn)
-        controls_row.addWidget(self.mic_dev_btn)
-        controls_row.addWidget(self.mic_vol_btn)
-        controls_row.addSpacing(12)
-        # Speaker group: [icon] [chevron] [number]
-        controls_row.addWidget(self.spk_btn)
-        controls_row.addWidget(self.spk_dev_btn)
-        controls_row.addWidget(self.vol_btn)
-        controls_row.addStretch(1)
-
-        meters_row = QHBoxLayout()
-        meters_row.setContentsMargins(0, 0, 0, 0)
-        meters_row.setSpacing(6)
-        # RX (incoming audio) on the left, TX (outgoing mic) on the right.
-        meters_row.addWidget(rx_label)
-        meters_row.addWidget(self.rx_bar)
-        meters_row.addSpacing(8)
-        meters_row.addWidget(tx_label)
-        meters_row.addWidget(self.tx_bar)
-        meters_row.addStretch(1)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 4, 12, 4)
+        # Single-row layout: mic-grp · spk-grp · stretch · RX · TX
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 4, 10, 4)
         layout.setSpacing(2)
-        layout.addLayout(controls_row)
-        layout.addLayout(meters_row)
+        layout.addWidget(self.mic_btn)
+        layout.addWidget(self.mic_dev_btn)
+        layout.addWidget(self.mic_vol_btn)
+        layout.addSpacing(10)
+        layout.addWidget(self.spk_btn)
+        layout.addWidget(self.spk_dev_btn)
+        layout.addWidget(self.vol_btn)
+        layout.addStretch(1)
+        layout.addWidget(rx_label)
+        layout.addWidget(self.rx_bar)
+        layout.addSpacing(6)
+        layout.addWidget(tx_label)
+        layout.addWidget(self.tx_bar)
 
         # Volume popovers (created lazily, hidden by default)
         self._vol_popover: QFrame | None = None

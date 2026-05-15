@@ -262,23 +262,23 @@ QWidget#CallWidget { background-color: transparent; }
 /* The card itself: rounded surface with a subtle border. The card's
    `state` property tints the left border so the user can see at a
    glance whether the call is incoming, ringing out, or established. */
+/* Bria-style: flat tile, no colored stripe. State lives in the avatar
+   tint and the duration text only. The colored left border read as
+   "homemade" in user testing. */
 QFrame#CallCard {
     background-color: #FFFFFF;
-    border: 1px solid #ECEEF1;
-    border-left: 4px solid #ECEEF1;
-    border-radius: 8px;
+    border: none;
+    border-bottom: 1px solid #ECEEF1;
+    border-radius: 0;
 }
-QFrame#CallCard[state="incoming"] { border-left-color: #D33841; background-color: #FDF1F2; }
-QFrame#CallCard[state="active"]   { border-left-color: #2EBD5C; }
-QFrame#CallCard[state="outgoing"] { border-left-color: #E85D04; }
+QFrame#CallCard[state="incoming"] { background-color: #FDF1F2; }
 
-/* Avatar circle inside the card -- green when active, amber when
-   ringing out, red when an incoming call is alerting. */
+/* Avatar -- small round tint that carries the call's state. */
 QLabel#CallAvatar {
     background-color: #2EBD5C;
     color: #FFFFFF;
-    border-radius: 24px;
-    font-size: 22px;
+    border-radius: 14px;
+    font-size: 14px;
     font-weight: 700;
     qproperty-alignment: AlignCenter;
 }
@@ -286,10 +286,11 @@ QFrame#CallCard[state="incoming"] QLabel#CallAvatar { background-color: #D33841;
 QFrame#CallCard[state="outgoing"] QLabel#CallAvatar { background-color: #E85D04; }
 QFrame#CallCard[state="idle"]     QLabel#CallAvatar { background-color: #C9CDD3; }
 
-/* Peer block: headline number / SIP user up top, secondary name below. */
+/* Peer block: headline number / SIP user up top, secondary name below.
+   Use the system UI font, not mono -- mono on a contact name reads
+   like a terminal app. */
 QLabel#CallPeer {
     color: #1F2933;
-    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 16px;
     font-weight: 600;
     letter-spacing: -0.01em;

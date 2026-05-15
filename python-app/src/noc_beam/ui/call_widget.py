@@ -124,11 +124,14 @@ class CallWidget(QWidget):
         self.mute_btn = self._icon_btn(
             "mic", "Mute microphone", checkable=True, color="#1F2933"
         )
+        # Pause-bars for Hold (universal "pause" glyph). Swaps to a
+        # Play triangle when on hold.
         self.hold_btn = self._icon_btn(
-            "history", "Hold call", checkable=False, color="#1F2933"
+            "pause", "Hold call", checkable=False, color="#1F2933"
         )
+        # Phone-with-forward-arrow for Transfer.
         self.transfer_btn = self._icon_btn(
-            "trace", "Transfer call", checkable=False, color="#1F2933"
+            "call-forward", "Transfer call", checkable=False, color="#1F2933"
         )
         self.hangup_btn = self._icon_btn(
             "phone-down", "End call", checkable=False, color="#FFFFFF",
@@ -204,7 +207,12 @@ class CallWidget(QWidget):
         layout.addWidget(self._card)
 
         # Tick once a second while connected to update duration.
-        self._duration_timer = QTimer()
+        # Parented when possible (proper Qt ownership), falls back to
+        # parentless for the unit-test FakeTimer.
+        try:
+            self._duration_timer = QTimer(self)
+        except TypeError:
+            self._duration_timer = QTimer()
         try:
             self._duration_timer.setInterval(1000)
             self._duration_timer.timeout.connect(self._tick_duration)
@@ -291,10 +299,22 @@ class CallWidget(QWidget):
         self.state_label.setText(pill)
         self._on_hold = state_name == "HELD"
         self.hold_btn.setToolTip("Resume call" if self._on_hold else "Hold call")
-        # Re-render the hold icon with a different colour to signal HELD.
+        # Pause bars while talking; play triangle while held. Amber
+        # tint signals "this call is paused" without needing words.
         self.hold_btn.setIcon(
-            rail_icon("history", color="#E08A1A" if self._on_hold else "#1F2933", px=14)
+            rail_icon(
+                "play" if self._on_hold else "pause",
+                color="#E08A1A" if self._on_hold else "#1F2933",
+                px=14,
+            )
         )
+        # Bria-style: hide the SIP status pill once the call is
+        # CONFIRMED -- only show it for outgoing/incoming/error states
+        # where the user actually needs the code.
+        if state_name in ("CONFIRMED", "HELD"):
+            self.state_label.setVisible(False)
+        else:
+            self.state_label.setVisible(True)
 
         if 200 <= code < 300:
             self.state_label.setProperty("level", "ok")

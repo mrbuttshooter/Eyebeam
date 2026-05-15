@@ -427,7 +427,36 @@ class SipEndpoint:
         prm.statusCode = code
         call.answer(prm)
 
-    def hangup_call(self, call: SipCall, code: int = 603) -> None:
+    def hangup_call(self, call: SipCall, code: int | None = None) -> None:
+        """Terminate a call with the right SIP status code for its state.
+
+        SIP semantics:
+          * CONFIRMED dialog -> BYE with 200 (normal completion)
+          * CALLING / EARLY  -> CANCEL (pjsua2 emits CANCEL on hangup
+            of a non-confirmed dialog regardless of statusCode, but we
+            tag 487 Request Terminated for clean CDR/trace output)
+          * INCOMING ringing -> 486 Busy Here is the polite default
+          * Caller explicitly passes 603 only when REJECTING an incoming
+
+        Default-was-603 was a long-standing bug: CDRs/SIP-traces showed
+        every normal hangup as Decline; CUCM and BroadWorks dialplans
+        branch on 603 (forward-on-decline) so this was wire-protocol
+        wrong. Pick the code from the call's current state.
+        """
+        if code is None:
+            try:
+                state = call.getInfo().state
+            except Exception:
+                state = -1
+            # pjsua2 PJSIP_INV_STATE_* numbers. 5 = CONFIRMED.
+            if state == 5:
+                code = 200
+            elif state in (1, 3, 4):  # CALLING, EARLY, CONNECTING
+                code = 487
+            elif state == 2:  # INCOMING (we're the callee)
+                code = 486
+            else:
+                code = 200
         prm = pj.CallOpParam(True)
         prm.statusCode = code
         call.hangup(prm)

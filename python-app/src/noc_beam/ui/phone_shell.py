@@ -229,7 +229,7 @@ class PhoneShell(QMainWindow):
         # should be in the menu bar. Fix: parent at construction time.
         top = QFrame(self); top.setObjectName("TopStrip")
         top_l = QVBoxLayout(top)
-        top_l.setContentsMargins(12, 10, 12, 10); top_l.setSpacing(6)
+        top_l.setContentsMargins(10, 6, 10, 4); top_l.setSpacing(2)
 
         brand_row = QHBoxLayout(); brand_row.setSpacing(8)
         self.brand_mark = QLabel("N", top); self.brand_mark.setObjectName("BrandMark")
@@ -294,22 +294,20 @@ class PhoneShell(QMainWindow):
         top_l.addWidget(self.audio)
 
         # TX / RX live audio meter -- 200ms QTimer polls the active call's
-        # audio media and updates AudioStrip's progress bars.
-        # Constructed without a parent because tests monkey-patch QTimer
-        # with a FakeTimer that takes no constructor args.
-        self._level_timer = QTimer()
+        # audio media and updates AudioStrip's progress bars. Try with
+        # an explicit parent first (proper Qt ownership, no leak); fall
+        # back to no-arg construction so the unit-test FakeTimer keeps
+        # working.
+        try:
+            self._level_timer = QTimer(self)
+        except TypeError:
+            self._level_timer = QTimer()
         try:
             self._level_timer.setInterval(200)
-        except Exception:
-            pass
-        try:
             self._level_timer.timeout.connect(self._poll_audio_levels)
-        except Exception:
-            pass
-        try:
             self._level_timer.start()
         except Exception:
-            pass
+            log.exception("level timer setup failed")
 
         self.status_banner = QLabel("Starting...", top)
         self.status_banner.setObjectName("StatusBanner")
@@ -345,7 +343,7 @@ class PhoneShell(QMainWindow):
         self.dialpad.call_btn.setVisible(False)
         self.dialpad.hangup_btn.setVisible(False)
         dialpad_page = QWidget(self)
-        dpl = QVBoxLayout(dialpad_page); dpl.setContentsMargins(8, 8, 8, 8); dpl.setSpacing(6)
+        dpl = QVBoxLayout(dialpad_page); dpl.setContentsMargins(4, 2, 4, 2); dpl.setSpacing(2)
         self.call_widget = CallWidget()
         self.call_widget.answer_clicked.connect(self._on_answer)
         self.call_widget.reject_clicked.connect(self._on_reject)
@@ -417,7 +415,12 @@ class PhoneShell(QMainWindow):
         dpl.addWidget(self.call_widget)
         dpl.addWidget(self.first_run_hero)
         dpl.addWidget(self.dialpad)
-        dpl.addWidget(self.quick_dial, 1)
+        # Stretch goes on quick_dial WITHOUT a factor -- the density
+        # audit found stretch=1 caused this widget to absorb all extra
+        # space, pushing items below the fold and forcing a scroll bar
+        # at typical window heights.
+        dpl.addWidget(self.quick_dial)
+        dpl.addStretch(1)
 
         # Contacts + Favorites are Bria-parity tabs (the primary 4 in
         # Bria are Dialpad / Contacts / Favorites / History). NOC-only
@@ -756,6 +759,20 @@ class PhoneShell(QMainWindow):
         self.call_widget.update_state(rec.state.value, rec.last_code, rec.last_reason)
         if rec.codec:
             self.call_widget.update_media(rec.codec, rec.clock_rate, rec.channels)
+        # Sync the top-strip mic icon to THIS call's mute state -- the
+        # mute is per-call and switching calls switches whose mic mute
+        # is shown.
+        try:
+            muted = bool(getattr(rec, "muted", False))
+            self.audio.set_mic_muted(muted)
+        except Exception:
+            pass
+        # Multi-call strip refresh now that the selected call changed
+        # (rows other than selected are shown).
+        try:
+            self._refresh_calls_strip()
+        except Exception:
+            pass
 
     def _on_call_record_added(self, call_id):
         if self._selected_call_id is None: self._select_call(call_id)
@@ -773,9 +790,38 @@ class PhoneShell(QMainWindow):
                 end_code=rec.last_code, end_reason=rec.last_reason, codec=rec.codec,
             )
         if call_id == self._selected_call_id:
+            # Stale-peer fix: when remote_uri lands AFTER show_outgoing
+            # (e.g. PJSIP populates it after the first 18x or 200), the
+            # peer column was set once at register time and never
+            # refreshed. Re-render here whenever the URI differs from
+            # what's currently shown.
+            try:
+                cur_peer = self.call_widget.peer_label.text()
+                if rec.remote_uri and rec.remote_uri != cur_peer:
+                    if rec.direction == "in" and rec.state == CallState.INCOMING:
+                        self.call_widget.show_incoming(call_id, rec.remote_uri)
+                    else:
+                        self.call_widget.show_outgoing(call_id, rec.remote_uri)
+            except Exception:
+                pass
             self.call_widget.update_state(rec.state.value, rec.last_code, rec.last_reason)
             if rec.codec:
                 self.call_widget.update_media(rec.codec, rec.clock_rate, rec.channels)
+            # Re-apply per-call mute on resume (re-INVITE creates a new
+            # audio media slot at default 1.0; without re-applying our
+            # mute state silently un-mutes).
+            if rec.state == CallState.CONFIRMED and getattr(rec, "muted", False):
+                try:
+                    live = SipEndpoint.instance().find_call(call_id)
+                    if live is not None:
+                        SipEndpoint.instance().set_call_mute(live, True)
+                except Exception:
+                    log.exception("re-apply mute on resume failed")
+        # Multi-call strip rows show state too -- refresh on every update.
+        try:
+            self._refresh_calls_strip()
+        except Exception:
+            pass
 
     def _on_call_record_removed(self, call_id):
         if call_id == self._selected_call_id:
@@ -957,35 +1003,29 @@ class PhoneShell(QMainWindow):
             log.exception("audio-strip output volume adjust failed")
 
     def _on_audio_strip_mic_mute(self, muted: bool) -> None:
-        """Top-strip mic icon → silence the capture DEVICE.
+        """Top-strip mic icon → mute the SELECTED call only (per-call).
 
-        Same rationale as the speaker case: device-level so it survives
-        re-INVITEs and works regardless of how many calls are live.
-        adjustTxLevel(0) on capture stops the device from feeding any
-        audio into the conference bridge — no call port receives mic
-        audio. Bonus: works even when no call is up (the toggle is no
-        longer a silent no-op idle state).
+        Device-level mic mute (the previous implementation) was a
+        regression: it muted ALL active calls at once, so a user with
+        a 2-line setup couldn't selectively keep one party from hearing
+        them. set_call_mute uses capture.startTransmit/stopTransmit
+        targeted at THIS call's audio media slot — other calls keep
+        receiving capture audio.
+
+        Also stash the muted flag on the CallRecord so we can re-apply
+        on resume (re-INVITE creates a new audio slot at default 1.0
+        and would silently un-mute otherwise).
         """
-        try:
-            ep = SipEndpoint.instance()
-        except Exception:
+        call = self._selected_pjsua_call()
+        if call is None or self._selected_call_id is None:
+            # No live call -- nothing to mute. The toggle still tracks
+            # state visually; on next answered call we'll honour it.
             return
         try:
-            from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE
-            if not PJSUA2_AVAILABLE:
-                return
-            mic_v = self.audio.mic_slider.value()
-            level = 0.0 if muted else max(0.0, min(1.5, mic_v / 66.6))
-            capture = ep._ep.audDevManager().getCaptureDevMedia()
-            capture.adjustTxLevel(level)
+            SipEndpoint.instance().set_call_mute(call, muted)
+            self.calls.set_mute(self._selected_call_id, muted)
         except Exception:
-            log.exception("audio-strip mic (device) mute failed")
-        # Mirror the in-call CallWidget Mute button so both UIs agree.
-        if self._selected_call_id is not None:
-            try:
-                self.calls.set_mute(self._selected_call_id, muted)
-            except Exception:
-                pass
+            log.exception("audio-strip mic (per-call) mute failed")
         try:
             self.call_widget.mute_btn.blockSignals(True)
             self.call_widget.mute_btn.setChecked(muted)

@@ -111,6 +111,22 @@ _PATHS = {
         '<circle cx="17" cy="6" r="3"/>'
         '<path d="M23 18c0-2.5-2-4.5-5-4.5"/>'
     ),
+    # Two vertical bars -- Hold / Pause.
+    "pause": (
+        '<rect x="6" y="5" width="4" height="14" rx="1"/>'
+        '<rect x="14" y="5" width="4" height="14" rx="1"/>'
+    ),
+    # Play triangle -- Resume (companion to pause).
+    "play": (
+        '<path d="M7 5l12 7-12 7z"/>'
+    ),
+    # Phone handset with a forward arrow on top -- Transfer.
+    "call-forward": (
+        '<path d="M5 4h3l2 5-2 1.5a12 12 0 0 0 5.5 5.5L15 14l5 2v3a2 2 0 0 1-2 2'
+        ' A14 14 0 0 1 3 6 a2 2 0 0 1 2-2z"/>'
+        '<path d="M16 3l4 3-4 3"/>'
+        '<path d="M11 6h9"/>'
+    ),
 }
 
 
