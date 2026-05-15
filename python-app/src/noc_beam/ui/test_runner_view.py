@@ -97,10 +97,15 @@ class TestRunnerView(QMainWindow):
 
         self.run_btn = QPushButton("Run 0 calls")
         self.run_btn.setObjectName("RunTestButton")
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.setObjectName("TestRunnerStopBtn")
+        self.stop_btn.setEnabled(False)
+        self.clear_btn = QPushButton("Clear")
+        self.clear_btn.setObjectName("TestRunnerClearBtn")
         self.table = QTableWidget(0, 8)
         self.table.setObjectName("TestRunnerResults")
         self.table.setHorizontalHeaderLabels(
-            ["#", "FROM", "TO", "RESULT", "CODE", "RTT", "TIME", "notes"]
+            ["#", "FROM", "TO", "RESULT", "CODE", "RTT", "TIME", "NOTES"]
         )
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -112,8 +117,23 @@ class TestRunnerView(QMainWindow):
             7, QHeaderView.ResizeMode.Stretch
         )
 
-        self.summary_label = QLabel("0 passed · 0 failed · 0 running")
-        self.summary_label.setObjectName("TestRunnerSummary")
+        # Footer counter pills (mockup panel 8: "12 passed · 3 failed
+        # · 1 running · 0 pending"). Each is a coloured chip.
+        self.summary_passed = QLabel("0 passed")
+        self.summary_passed.setObjectName("TestRunnerCounter")
+        self.summary_passed.setProperty("level", "passed")
+        self.summary_failed = QLabel("0 failed")
+        self.summary_failed.setObjectName("TestRunnerCounter")
+        self.summary_failed.setProperty("level", "failed")
+        self.summary_running = QLabel("0 running")
+        self.summary_running.setObjectName("TestRunnerCounter")
+        self.summary_running.setProperty("level", "running")
+        self.summary_pending = QLabel("0 pending")
+        self.summary_pending.setObjectName("TestRunnerCounter")
+        self.summary_pending.setProperty("level", "pending")
+        # Legacy `summary_label` alias preserved for any callers that
+        # touch it.
+        self.summary_label = self.summary_passed
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setObjectName("SecondaryAction")
         self.cancel_btn.setEnabled(False)
@@ -159,14 +179,19 @@ class TestRunnerView(QMainWindow):
         layout.addWidget(controls_frame)
 
         run_row = QHBoxLayout()
-        run_row.addStretch(1)
-        run_row.addWidget(self.run_btn)
+        run_row.addWidget(self.run_btn, 1)
+        run_row.addWidget(self.stop_btn)
+        run_row.addWidget(self.clear_btn)
         layout.addLayout(run_row)
 
         layout.addWidget(self.table, 3)
 
         footer = QHBoxLayout()
-        footer.addWidget(self.summary_label)
+        footer.setSpacing(8)
+        footer.addWidget(self.summary_passed)
+        footer.addWidget(self.summary_failed)
+        footer.addWidget(self.summary_running)
+        footer.addWidget(self.summary_pending)
         footer.addStretch(1)
         footer.addWidget(self.cancel_btn)
         footer.addWidget(self.export_btn)
@@ -189,6 +214,8 @@ class TestRunnerView(QMainWindow):
         self.hold_spin.valueChanged.connect(self._refresh_plan_preview)
         self.timeout_spin.valueChanged.connect(self._refresh_plan_preview)
         self.run_btn.clicked.connect(self._on_run_clicked)
+        self.stop_btn.clicked.connect(self._on_cancel_clicked)
+        self.clear_btn.clicked.connect(self._on_clear_clicked)
         self.cancel_btn.clicked.connect(self._on_cancel_clicked)
         self.export_btn.clicked.connect(self._on_export_clicked)
 
@@ -262,6 +289,16 @@ class TestRunnerView(QMainWindow):
         if self.runner is not None:
             self.runner.cancel()
 
+    def _on_clear_clicked(self) -> None:
+        """Wipe the results table without cancelling a live run."""
+        if self.runner is not None:
+            return
+        self.results = []
+        self._row_by_call_index = {}
+        self.table.setRowCount(0)
+        self.export_btn.setEnabled(False)
+        self._refresh_summary()
+
     def closeEvent(self, event) -> None:  # noqa: N802, ANN001
         if self.runner is not None:
             self.runner.cancel()
@@ -319,33 +356,63 @@ class TestRunnerView(QMainWindow):
             self._set_text(row, column, text)
         return row
 
+    # ------------------------------------------------------------------
     def _populate_result_row(self, row: int, result: RunnerResult) -> None:
         code = "" if result.sip_code is None else str(result.sip_code)
         if result.sip_reason:
             code = f"{code} {result.sip_reason}".strip()
         rtt = "" if result.rtt_ms is None else f"{int(result.rtt_ms)} ms"
-        values = [
-            str(result.call.index),
-            result.from_account,
-            result.to_uri,
-            result.result,
-            code,
-            rtt,
-            f"{result.duration_s:.1f} s",
-            result.notes,
-        ]
-        for column, value in enumerate(values):
+        # Columns: # / FROM / TO / RESULT (badge) / CODE / RTT / TIME / NOTES
+        text_columns = {
+            0: str(result.call.index),
+            1: result.from_account,
+            2: result.to_uri,
+            4: code,
+            5: rtt,
+            6: f"{result.duration_s:.1f} s",
+            7: result.notes,
+        }
+        for column, value in text_columns.items():
             self._set_text(row, column, value)
+        self._set_result_badge(row, result.result)
+
+    def _set_result_badge(self, row: int, result: str) -> None:
+        """Render the RESULT column as a coloured pill badge."""
+        # Normalise the level for QSS branching.
+        level = result.lower() if result else "queued"
+        if level not in ("pass", "fail", "running", "queued"):
+            level = "queued"
+        # Clear any previous text item so the cell widget owns the cell.
+        self.table.takeItem(row, 3)
+        badge = QLabel(result.upper() if result else "QUEUED")
+        badge.setObjectName("TestRunnerBadge")
+        badge.setProperty("level", level)
+        badge.setAlignment(__import__("PySide6.QtCore", fromlist=["Qt"]).Qt.AlignmentFlag.AlignCenter)
+        # Wrap the label in a small frame so the cell has padding.
+        wrapper = QWidget()
+        wl = QHBoxLayout(wrapper)
+        wl.setContentsMargins(6, 2, 6, 2)
+        wl.addWidget(badge)
+        self.table.setCellWidget(row, 3, wrapper)
 
     def _refresh_summary(self) -> None:
         passed = sum(1 for result in self.results if result.result == "PASS")
         failed = sum(1 for result in self.results if result.result == "FAIL")
+        # Running / pending now read from the RESULT cell widget (a QLabel
+        # badge) rather than a text item, since we switched to coloured pills.
         running = 0
         for row in range(self.table.rowCount()):
-            item = self.table.item(row, 3)
-            if item is not None and item.text() == "running":
-                running += 1
-        self.summary_label.setText(f"{passed} passed · {failed} failed · {running} running")
+            w = self.table.cellWidget(row, 3)
+            if w is not None:
+                badge = w.findChild(QLabel, "TestRunnerBadge")
+                if badge is not None and badge.text() == "RUNNING":
+                    running += 1
+        completed = passed + failed + running
+        pending = max(0, self.table.rowCount() - completed)
+        self.summary_passed.setText(f"{passed} passed")
+        self.summary_failed.setText(f"{failed} failed")
+        self.summary_running.setText(f"{running} running")
+        self.summary_pending.setText(f"{pending} pending")
 
     def _set_text(self, row: int, column: int, text: str) -> None:
         item = self.table.item(row, column)
