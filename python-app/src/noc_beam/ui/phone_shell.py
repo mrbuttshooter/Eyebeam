@@ -409,6 +409,15 @@ class PhoneShell(QMainWindow):
         self.calls.call_added.connect(lambda _cid: self._refresh_calls_strip())
         self.calls.call_removed.connect(lambda _cid: self._refresh_calls_strip())
         self.calls.call_updated.connect(lambda _cid: self._refresh_calls_strip())
+        # Hide the keypad + recents while a call is up. Massive
+        # vertical reclaim -- when in-call the screen focuses on the
+        # call(s), not on dialing the next one. Listen on _updated
+        # too because call_added fires with the record still in
+        # CallState.NULL (before update_state(CALLING) lands), and
+        # is_active filters out NULL.
+        self.calls.call_added.connect(lambda _cid: self._refresh_in_call_layout())
+        self.calls.call_updated.connect(lambda _cid: self._refresh_in_call_layout())
+        self.calls.call_removed.connect(lambda _cid: self._refresh_in_call_layout())
 
         dpl.addWidget(self.calls_strip)
         dpl.addWidget(self.call_widget)
@@ -1083,11 +1092,10 @@ class PhoneShell(QMainWindow):
     def _refresh_calls_strip(self) -> None:
         """Re-render the compact multi-call strip.
 
-        One thin row per active call (clickable = select; small red X
-        = hangup just this one). Hidden when 0 or 1 call is active --
-        for the single-call case the regular Active Call card already
-        carries End / Mute / etc. The "End all" pill only appears
-        when 2+ calls are live.
+        Shows OTHER active calls (not the currently-selected one --
+        that's already in the Active Call card above). Click a row
+        to switch which call is active; X hangs that call up.
+        Hidden when there are no other calls to show.
         """
         # Tear down existing strip widgets.
         while self.calls_strip_layout.count():
@@ -1096,21 +1104,20 @@ class PhoneShell(QMainWindow):
             if w is not None:
                 w.setParent(None)
                 w.deleteLater()
+        # Strip excludes the selected call -- the main Active Call
+        # card already shows it. So with 1 call up the strip is empty
+        # (hidden); with N calls the strip shows N-1.
         active = self.calls.active()
-        # No strip at all when 0 or 1 calls. Single-call state is
-        # already covered by the main Active Call card; the strip
-        # earns its space only when there's >1 call to switch between.
-        if len(active) < 2:
+        others = [r for r in active if r.call_id != self._selected_call_id]
+        if not others:
             self.calls_strip.setVisible(False)
             return
         self.calls_strip.setVisible(True)
-        for rec in active:
+        for rec in others:
             row = QFrame(self.calls_strip)
             row.setObjectName("CallStripRow")
-            row.setProperty("selected", rec.call_id == self._selected_call_id)
             row.setCursor(Qt.CursorShape.PointingHandCursor)
             row.setFixedHeight(22)
-            # Whole row is the "Show" gesture -- click anywhere selects.
             row.mousePressEvent = (  # type: ignore[method-assign]
                 lambda _ev, cid=rec.call_id: self._select_call(cid)
             )
@@ -1134,18 +1141,44 @@ class PhoneShell(QMainWindow):
             rl.addWidget(state_lbl)
             rl.addWidget(end_btn)
             self.calls_strip_layout.addWidget(row)
-        # End-all pill, compact.
-        footer = QFrame(self.calls_strip)
-        footer.setObjectName("CallStripFooter")
-        footer.setFixedHeight(24)
-        fl = QHBoxLayout(footer)
-        fl.setContentsMargins(8, 2, 4, 2)
-        fl.addStretch(1)
-        end_all_btn = QPushButton(f"End all ({len(active)})", footer)
-        end_all_btn.setObjectName("CallStripEndAllBtn")
-        end_all_btn.clicked.connect(self._on_end_all_calls)
-        fl.addWidget(end_all_btn)
-        self.calls_strip_layout.addWidget(footer)
+        # End-all pill only when 2+ calls total live (so user has
+        # something to bulk-clear).
+        if len(active) >= 2:
+            footer = QFrame(self.calls_strip)
+            footer.setObjectName("CallStripFooter")
+            footer.setFixedHeight(24)
+            fl = QHBoxLayout(footer)
+            fl.setContentsMargins(8, 2, 4, 2)
+            fl.addStretch(1)
+            end_all_btn = QPushButton(f"End all ({len(active)})", footer)
+            end_all_btn.setObjectName("CallStripEndAllBtn")
+            end_all_btn.clicked.connect(self._on_end_all_calls)
+            fl.addWidget(end_all_btn)
+            self.calls_strip_layout.addWidget(footer)
+
+    def _refresh_in_call_layout(self) -> None:
+        """Hide the dial keypad + Recents strip while a call is up.
+
+        Re-show them when the last call ends. This is the biggest
+        single vertical reclaim on the Dial page when multiple calls
+        are stacked: the Active Call card and the multi-call strip
+        get the entire bottom of the window without competing with
+        the keypad and recents list.
+        """
+        # Use .all() rather than .active() because a freshly registered
+        # call is in CallState.NULL until the next state update lands;
+        # .active() would incorrectly say "no call". We exclude only
+        # the explicitly DISCONNECTED records.
+        from noc_beam.sip.call_manager import CallState
+        in_call = any(
+            r.state != CallState.DISCONNECTED
+            for r in self.calls.all()
+        )
+        try:
+            self.dialpad.setVisible(not in_call)
+            self.quick_dial.setVisible(not in_call)
+        except Exception:
+            pass
 
     def _hangup_one(self, call_id: int) -> None:
         """Hangup a specific call by ID. Bypasses the selected-call

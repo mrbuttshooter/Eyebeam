@@ -82,7 +82,7 @@ class CallWidget(QWidget):
         # adding image assets).
         self._avatar = QLabel("☎", self._card)
         self._avatar.setObjectName("CallAvatar")
-        self._avatar.setFixedSize(48, 48)
+        self._avatar.setFixedSize(32, 32)
         self._avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Peer block: headline (number / SIP user) on top, secondary
@@ -113,8 +113,8 @@ class CallWidget(QWidget):
         right_col.addWidget(self.duration_label)
 
         card_row = QHBoxLayout(self._card)
-        card_row.setContentsMargins(12, 10, 12, 10)
-        card_row.setSpacing(12)
+        card_row.setContentsMargins(10, 6, 10, 6)
+        card_row.setSpacing(10)
         card_row.addWidget(self._avatar, 0, Qt.AlignmentFlag.AlignVCenter)
         card_row.addLayout(peer_col, 1)
         card_row.addLayout(right_col, 0)
@@ -154,7 +154,7 @@ class CallWidget(QWidget):
         self.transfer_btn.setObjectName("CallControlButton")
         for _b in (self.answer_btn, self.reject_btn, self.hangup_btn,
                    self.speaker_btn, self.hold_btn, self.mute_btn, self.transfer_btn):
-            _b.setMinimumHeight(36)
+            _b.setMinimumHeight(28)
 
         # Wire to outbound signals (unchanged contract).
         self.answer_btn.clicked.connect(lambda: self.answer_clicked.emit(self.call_id))
@@ -191,8 +191,8 @@ class CallWidget(QWidget):
         self._incoming_row_widget.setVisible(False)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(6, 4, 6, 4)
+        layout.setSpacing(4)
         layout.addWidget(self._card)
         layout.addLayout(meta_row)
         layout.addWidget(self._active_row_widget)
