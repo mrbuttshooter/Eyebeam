@@ -14,6 +14,19 @@ from PySide6.QtWidgets import QApplication
 
 log = logging.getLogger(__name__)
 
+REQUIRED_THEME_SELECTORS = (
+    "QLabel#StatusPill",
+    "QLabel#SipCodeBadge",
+    "QLabel#MetricChip",
+    "QToolButton#IconActionButton",
+    "QFrame#FormSection",
+    "QLabel#SectionHeader",
+    "QFrame#FooterActionBar",
+    "QPushButton#PrimaryAction",
+    "QPushButton#SecondaryAction",
+    "QWidget:focus",
+)
+
 
 def _load(name: str) -> str:
     try:

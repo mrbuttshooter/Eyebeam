@@ -1232,3 +1232,84 @@ QLabel#StatValue {
     font-size: 16px;
     font-weight: 600;
 }
+
+/* ------------------------------------------------------------------
+   Operator redesign primitives
+   ------------------------------------------------------------------ */
+QWidget:focus {
+    outline: none;
+}
+QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus, QToolButton:focus, QPushButton:focus {
+    border: 1px solid #E85D04;
+}
+QLabel#StatusPill, QLabel#SipCodeBadge, QLabel#MetricChip {
+    border-radius: 4px;
+    padding: 2px 8px;
+    min-height: 18px;
+    font-size: 11px;
+    font-weight: 600;
+}
+QLabel#StatusPill[level="ok"], QLabel#SipCodeBadge[level="ok"], QLabel#MetricChip[level="ok"] {
+    color: #116329;
+    background-color: #DFF7E8;
+    border: 1px solid #A9E7BC;
+}
+QLabel#StatusPill[level="progress"], QLabel#SipCodeBadge[level="progress"], QLabel#MetricChip[level="progress"] {
+    color: #8A5A00;
+    background-color: #FFF3CD;
+    border: 1px solid #F2D27A;
+}
+QLabel#StatusPill[level="danger"], QLabel#SipCodeBadge[level="danger"], QLabel#MetricChip[level="danger"] {
+    color: #9F1D28;
+    background-color: #FCE7E9;
+    border: 1px solid #F2B8BE;
+}
+QLabel#StatusPill[level="info"], QLabel#SipCodeBadge[level="info"], QLabel#MetricChip[level="info"] {
+    color: #145C8A;
+    background-color: #E5F2FA;
+    border: 1px solid #B8DDF2;
+}
+QLabel#StatusPill[level="muted"], QLabel#SipCodeBadge[level="muted"], QLabel#MetricChip[level="muted"] {
+    color: #57606A;
+    background-color: #F5F6F8;
+    border: 1px solid #D8DEE4;
+}
+QToolButton#IconActionButton {
+    background-color: transparent;
+    border: 1px solid #D8DEE4;
+    border-radius: 4px;
+    padding: 0;
+}
+QToolButton#IconActionButton:hover {
+    background-color: #F5F6F8;
+}
+QFrame#FormSection {
+    background-color: transparent;
+    border: none;
+}
+QLabel#SectionHeader {
+    color: #57606A;
+    font-size: 11px;
+    font-weight: 700;
+}
+QFrame#FooterActionBar {
+    background-color: #FFFFFF;
+    border-top: 1px solid #D8DEE4;
+}
+QPushButton#PrimaryAction {
+    min-height: 32px;
+    border-radius: 4px;
+    padding: 0 14px;
+    background-color: #E85D04;
+    border: 1px solid #E85D04;
+    color: #FFFFFF;
+    font-weight: 700;
+}
+QPushButton#SecondaryAction {
+    min-height: 32px;
+    border-radius: 4px;
+    padding: 0 14px;
+    background-color: #FFFFFF;
+    border: 1px solid #D8DEE4;
+    color: #1F2933;
+}
