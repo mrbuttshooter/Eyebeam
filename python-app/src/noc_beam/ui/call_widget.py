@@ -94,10 +94,18 @@ class CallWidget(QWidget):
         self._avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Peer column (top: peer name; bottom: codec / MOS / state-sub).
+        # Both labels get an Ignored horizontal size policy so the
+        # layout can shrink the column when the window is narrow --
+        # without this the labels enforce their text-width minimum
+        # and the actions row gets pushed off the right edge in
+        # ~410 px softphone windows.
+        from PySide6.QtWidgets import QSizePolicy as _SP
         self.peer_label = QLabel("", self._card)
         self.peer_label.setObjectName("CallPeer")
+        self.peer_label.setSizePolicy(_SP.Policy.Ignored, _SP.Policy.Preferred)
         self.peer_sub_label = QLabel("", self._card)
         self.peer_sub_label.setObjectName("CallPeerSub")
+        self.peer_sub_label.setSizePolicy(_SP.Policy.Ignored, _SP.Policy.Preferred)
         peer_col = QVBoxLayout()
         peer_col.setContentsMargins(0, 0, 0, 0)
         peer_col.setSpacing(0)
@@ -156,7 +164,11 @@ class CallWidget(QWidget):
 
         actions_row = QHBoxLayout()
         actions_row.setContentsMargins(0, 0, 0, 0)
-        actions_row.setSpacing(4)
+        # 2 px between buttons (was 4) -- saves 6 px across the row,
+        # which combined with the 48 px end button + shrinkable peer
+        # column keeps the End button on-screen even when there's a
+        # multi-call strip eating vertical real estate above.
+        actions_row.setSpacing(2)
         actions_row.addWidget(self.mute_btn)
         actions_row.addWidget(self.hold_btn)
         actions_row.addWidget(self.transfer_btn)
@@ -186,8 +198,10 @@ class CallWidget(QWidget):
 
         # ----- Card layout (one horizontal row) --------------------------
         card_row = QHBoxLayout(self._card)
-        card_row.setContentsMargins(8, 4, 6, 4)
-        card_row.setSpacing(8)
+        card_row.setContentsMargins(6, 4, 4, 4)
+        # Tightened spacing (8 -> 6) to claw back another 8 px across
+        # the row so the End button fits even in compact-window mode.
+        card_row.setSpacing(6)
         card_row.addWidget(self._avatar, 0, Qt.AlignmentFlag.AlignVCenter)
         card_row.addLayout(peer_col, 1)
         card_row.addLayout(meta_col, 0)
