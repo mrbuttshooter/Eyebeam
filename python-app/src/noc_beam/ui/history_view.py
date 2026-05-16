@@ -233,9 +233,19 @@ class HistoryView(QWidget):
 
         self._search = QLineEdit()
         self._search.setObjectName("HistorySearch")
+        self._search.setAccessibleName("History search")
         self._search.setPlaceholderText("Search peer URI / number…")
         self._search.setClearButtonEnabled(True)
         self._search.textChanged.connect(self._refresh_rows)
+        # The clear-button QLineEdit creates internally is a QToolButton
+        # with no text/icon/accessibleName -- which breaks the a11y
+        # contract test that walks every QPushButton+QToolButton in the
+        # shell. Tag it with a tooltip + accessible name so it counts.
+        from PySide6.QtWidgets import QToolButton as _QTB
+        for tb in self._search.findChildren(_QTB):
+            if not tb.accessibleName():
+                tb.setAccessibleName("Clear search")
+                tb.setToolTip("Clear search")
 
         self._dir_filter = QComboBox()
         self._dir_filter.setObjectName("HistoryFilter")

@@ -29,6 +29,19 @@ class AudioDevice:
 def enumerate_devices() -> list[AudioDevice]:
     if not PJSUA2_AVAILABLE:
         return []
+    # Gate on our SipEndpoint having actually called libCreate().
+    # pj.Endpoint.instance() returns a global C++ object whose vtable
+    # is uninitialised until libCreate; calling audDevManager() on the
+    # uninitialised instance produces an access violation in native
+    # code (no Python exception to catch). The settings dialog used
+    # to crash any test that imported it before the SIP endpoint was
+    # constructed; this guard returns [] cleanly instead.
+    try:
+        from noc_beam.sip.endpoint import SipEndpoint
+        if not SipEndpoint.instance().is_started():
+            return []
+    except Exception:
+        return []
     try:
         ep = pj.Endpoint.instance()
     except Exception:

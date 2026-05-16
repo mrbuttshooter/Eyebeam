@@ -136,7 +136,12 @@ class SettingsDialog(QDialog):
         self._reset_btn = reset_btn
 
         footer = QFrame(self)
-        footer.setObjectName("SettingsFooter")
+        # FooterActionBar is the contract objectName the dialog-redesign
+        # test asserts on. SettingsFooter is the historical selector
+        # that dark.qss styles. Set the former as objectName and the
+        # latter as a dynamic property so both lookups still hit.
+        footer.setObjectName("FooterActionBar")
+        footer.setProperty("class", "SettingsFooter")
         footer_row = QHBoxLayout(footer)
         footer_row.setContentsMargins(16, 10, 16, 10)
         footer_row.setSpacing(8)

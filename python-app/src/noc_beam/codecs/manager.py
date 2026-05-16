@@ -32,8 +32,19 @@ class CodecInfo:
         return self.priority > 0
 
 
+def _endpoint_ready() -> bool:
+    # See audio/devices.enumerate_devices() for the rationale. Touching
+    # pj.Endpoint.instance() before libCreate dereferences an
+    # uninitialised C++ vtable and segfaults the process.
+    try:
+        from noc_beam.sip.endpoint import SipEndpoint
+        return SipEndpoint.instance().is_started()
+    except Exception:
+        return False
+
+
 def list_codecs() -> list[CodecInfo]:
-    if not PJSUA2_AVAILABLE:
+    if not PJSUA2_AVAILABLE or not _endpoint_ready():
         return []
     try:
         ep = pj.Endpoint.instance()
@@ -46,7 +57,7 @@ def list_codecs() -> list[CodecInfo]:
 
 def set_priority(codec_id: str, priority: int) -> None:
     priority = max(0, min(255, priority))
-    if not PJSUA2_AVAILABLE:
+    if not PJSUA2_AVAILABLE or not _endpoint_ready():
         return
     try:
         pj.Endpoint.instance().codecSetPriority(codec_id, priority)
