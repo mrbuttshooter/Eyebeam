@@ -72,11 +72,30 @@ if PJSUA2_AVAILABLE:
                 cfg.domain.endswith(f":{port}") or "]" in cfg.domain
             ):
                 host = f"{cfg.domain}:{port}"
-            ac.idUri = f"sip:{cfg.username}@{host}"
-            ac.regConfig.registrarUri = f"sip:{host}"
+
+            # `;transport=` parameter on registrarUri / contact. Without
+            # this PJSIP picks transport based on URI scheme + DNS NAPTR
+            # which often defaults to UDP even when the account is set to
+            # TLS, producing the classic "registers fine on UDP, calls
+            # fail because Contact: advertises a TLS port we never bound"
+            # gotcha. Be explicit.
+            transport = (cfg.transport or "udp").lower()
+            scheme = "sips" if transport == "tls" else "sip"
+            transport_param = f";transport={transport}" if transport in ("tcp", "tls") else ""
+            ac.idUri = f"{scheme}:{cfg.username}@{host}{transport_param}"
+            ac.regConfig.registrarUri = f"{scheme}:{host}{transport_param}"
             ac.regConfig.registerOnAdd = cfg.register
 
-            cred = pj.AuthCredInfo("digest", "*", cfg.auth_user or cfg.username, 0, cfg.password)
+            # Auth realm: pinning to the account's domain instead of the
+            # `*` wildcard prevents the credential from being offered to
+            # an unrelated proxy that happens to share the same dialog
+            # (the wildcard credential is a known information-leak vector
+            # against malicious 401 challenges from off-path attackers).
+            # Fall back to `*` only when the domain is blank.
+            realm = (cfg.domain or "*").split(":", 1)[0] or "*"
+            cred = pj.AuthCredInfo(
+                "digest", realm, cfg.auth_user or cfg.username, 0, cfg.password
+            )
             ac.sipConfig.authCreds.append(cred)
 
             if cfg.proxy:

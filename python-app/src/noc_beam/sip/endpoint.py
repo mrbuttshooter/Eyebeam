@@ -131,6 +131,26 @@ class SipEndpoint:
             if not self._started:
                 return
             try:
+                # Polite un-REGISTER for every account before tear-down. Without
+                # this the registrar keeps a stale binding for the configured
+                # expires window (often 3600s); incoming INVITEs route to a
+                # dead client until the binding times out. setRegistration(False)
+                # sends REGISTER with Expires:0; we then spin libHandleEvents
+                # a few times to give the wire round-trip a chance to complete
+                # before libDestroy yanks the transport out from under it.
+                for acc in list(self._accounts.values()):
+                    try:
+                        if getattr(acc.cfg, "register", True):
+                            acc.setRegistration(False)
+                    except Exception:
+                        log.exception("Un-register on stop failed for %s", acc.cfg.id)
+                if self._ep is not None:
+                    deadline = time.monotonic() + 1.5
+                    while time.monotonic() < deadline:
+                        try:
+                            self._ep.libHandleEvents(50)
+                        except Exception:
+                            break
                 for acc in list(self._accounts.values()):
                     try:
                         acc.shutdown()
@@ -171,6 +191,23 @@ class SipEndpoint:
 
         tcfg_tls = pj.TransportConfig()
         tcfg_tls.port = port + 1 if port else 0
+        # Verify the registrar's certificate by default. PJSIP defaults
+        # to verifyServer=False which means TLS gives you encryption
+        # without authentication -- a downgrade from regular HTTPS that
+        # most ops teams don't realise. method=TLSv1.2+ rules out the
+        # SSLv3/TLSv1.0 fallback that some old PBXes still try to negotiate.
+        try:
+            tls = tcfg_tls.tlsConfig
+            tls.verifyServer = True
+            tls.verifyClient = False
+            # PJSIP_SSL_DEFAULT_METHOD = 0 picks the system best; we
+            # pin to TLS 1.2+ via the pj enum if the build exposes it.
+            try:
+                tls.method = getattr(pj, "PJSIP_TLSV1_2_METHOD", tls.method)
+            except Exception:
+                pass
+        except Exception:
+            log.warning("Could not configure TLS verifyServer (older pjsua2 build)")
         try:
             self._transports["tls"] = self._ep.transportCreate(
                 pj.PJSIP_TRANSPORT_TLS, tcfg_tls
@@ -574,13 +611,21 @@ class SipEndpoint:
             call.dialDtmf(digits)
 
     def _send_dtmf_info(self, call: SipCall, digits: str) -> None:
-        """One SIP INFO per digit with an `application/dtmf-relay` body."""
+        """One SIP INFO per digit with an `application/dtmf-relay` body.
+
+        Earlier this borrowed `pj.SendInstantMessageParam` (an IM type)
+        just to read its `contentType`/`content` attributes; in newer
+        pjsua2 builds those fields don't exist and the call raised
+        AttributeError before any wire bytes were sent. Build the
+        CallSendRequestParam directly.
+        """
         for d in digits:
             try:
-                prm = pj.SendInstantMessageParam()
-                prm.contentType = "application/dtmf-relay"
-                prm.content = f"Signal={d}\r\nDuration=160\r\n"
-                call.sendRequest(self._build_info_param(prm.contentType, prm.content))
+                req = self._build_info_param(
+                    "application/dtmf-relay",
+                    f"Signal={d}\r\nDuration=160\r\n",
+                )
+                call.sendRequest(req)
             except Exception:
                 # pjsua2's call.sendRequest signature varies across versions;
                 # fall back to the in-band path so the digit isn't silently
