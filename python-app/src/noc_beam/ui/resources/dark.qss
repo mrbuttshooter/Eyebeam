@@ -1570,3 +1570,50 @@ QSlider#VolumeSlider::handle:horizontal {
 }
 QSlider#VolumeSlider::sub-page:horizontal { background: #7FD3FF; }
 QSlider#VolumeSlider::add-page:horizontal { background: #2C3C50; }
+
+/* ------------------------------------------------------------------
+   Recent Calls strip chips -- dark parity with light.qss:1576-1612
+   ------------------------------------------------------------------ */
+QLabel#RecentsChip {
+    background-color: #1F252E;
+    color: #B6C2D0;
+    border: 1px solid #2A3340;
+    border-radius: 8px;
+    padding: 1px 8px;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    min-width: 38px;
+}
+QLabel#RecentsChip[level="ok"] {
+    background-color: #0E2418;
+    color: #66D19E;
+    border-color: rgba(102,209,158,0.45);
+}
+QLabel#RecentsChip[level="progress"] {
+    background-color: #2A2008;
+    color: #F2CC60;
+    border-color: rgba(242,204,96,0.45);
+}
+QLabel#RecentsChip[level="auth"] {
+    background-color: #2A2008;
+    color: #F2CC60;
+    border-color: rgba(242,204,96,0.55);
+}
+QLabel#RecentsChip[level="warn"] {
+    background-color: #2B210A;
+    color: #FFD96A;
+    border-color: rgba(255,217,106,0.45);
+}
+QLabel#RecentsChip[level="error"] {
+    background-color: #2B1118;
+    color: #FF8DA0;
+    border-color: rgba(255,92,122,0.45);
+}
+QLabel#RecentsTime {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 10px;
+    min-width: 56px;
+}
