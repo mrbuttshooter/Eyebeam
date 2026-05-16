@@ -126,11 +126,19 @@ class HistoryRow(QFrame):
         arrow_lbl.setFixedWidth(20)
         arrow_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+        # Peer + meta labels get Ignored horizontal size policy so the
+        # text column can shrink when the window is narrow. Without
+        # this, the labels enforce their full text-width as a hard
+        # minimum and the badge / info / call buttons get clipped off
+        # the right edge (same root cause as the call-card overflow
+        # fixed in 11c7ca6). The tooltip carries the full URI.
+        from PySide6.QtWidgets import QSizePolicy as _SP
         peer_text = entry.peer_uri or "(unknown)"
         peer_lbl = QLabel(peer_text)
         peer_lbl.setObjectName("HistoryRowPeer")
         peer_lbl.setProperty("result", _result_class(entry))
         peer_lbl.setToolTip(peer_text)
+        peer_lbl.setSizePolicy(_SP.Policy.Ignored, _SP.Policy.Preferred)
 
         when = _fmt_when(entry.ended_at or entry.started_at)
         dur = _fmt_duration(entry.duration_s)
@@ -141,6 +149,7 @@ class HistoryRow(QFrame):
             bits.append(f"{entry.end_code} {entry.end_reason}".strip())
         meta_lbl = QLabel(" · ".join(b for b in bits if b))
         meta_lbl.setObjectName("HistoryRowMeta")
+        meta_lbl.setSizePolicy(_SP.Policy.Ignored, _SP.Policy.Preferred)
 
         text_col = QVBoxLayout()
         text_col.setContentsMargins(0, 0, 0, 0)
@@ -169,8 +178,11 @@ class HistoryRow(QFrame):
         badge = SipCodeBadge(code, entry.end_reason, self)
 
         outer = QHBoxLayout(self)
-        outer.setContentsMargins(8, 6, 8, 6)
-        outer.setSpacing(8)
+        # Tighter margins + spacing so the row fits in the compact
+        # softphone width even with the badge + info + call buttons
+        # all visible. The text column shrinks to fill what's left.
+        outer.setContentsMargins(6, 6, 6, 6)
+        outer.setSpacing(4)
         outer.addWidget(arrow_lbl, 0, Qt.AlignmentFlag.AlignTop)
         outer.addLayout(text_col, 1)
         outer.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
