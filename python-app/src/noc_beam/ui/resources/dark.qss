@@ -1287,13 +1287,19 @@ QToolButton#AccountChip {
     font-size: 12px;
     font-weight: 700;
 }
+/* StatusBanner -- Bria-style compact inline label (text colour only,
+   no pill chrome). Previously this was a full pill with background +
+   border which made dark mode look different from light (light is
+   plain coloured text). Now both themes render the banner as inline
+   text -- level colours come from the [level=...] selectors further
+   down. */
 QLabel#StatusBanner {
-    background-color: #102B1A;
-    color: #8DDBA6;
-    border: 1px solid #66D19E;
-    border-radius: 5px;
-    padding: 5px 8px;
-    font-weight: 700;
+    background: transparent;
+    color: #B6C2D0;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    font-weight: 500;
 }
 QLineEdit#DialInput {
     background-color: #0B1118;
@@ -1406,27 +1412,14 @@ QToolButton#AccountChip[health="warn"]    { border-left: 3px solid #FFD96A; }
 QToolButton#AccountChip[health="danger"]  { border-left: 3px solid #FF5C7A; }
 QToolButton#AccountChip[health="muted"]   { border-left: 3px solid #9BA8B7; }
 
-/* Status banner level states (was hard-coded green only). */
-QLabel#StatusBanner[level="ok"] {
-    background-color: #102B1A;
-    color: #8DDBA6;
-    border: 1px solid #66D19E;
-}
-QLabel#StatusBanner[level="warn"] {
-    background-color: #2B210A;
-    color: #FFD96A;
-    border: 1px solid #FFD96A;
-}
-QLabel#StatusBanner[level="danger"] {
-    background-color: #2B1118;
-    color: #FF8DA0;
-    border: 1px solid #FF5C7A;
-}
-QLabel#StatusBanner[level="muted"] {
-    background-color: #161E27;
-    color: #9BA8B7;
-    border: 1px solid #2C3C50;
-}
+/* Status banner level states -- text-colour only (Bria parity with
+   light.qss:181-183). The earlier pill-with-background treatment
+   created a visual asymmetry between dark and light themes; both
+   now use inline coloured text. */
+QLabel#StatusBanner[level="ok"]      { color: #66D19E; }
+QLabel#StatusBanner[level="warn"]    { color: #FFD96A; }
+QLabel#StatusBanner[level="danger"]  { color: #FF8DA0; }
+QLabel#StatusBanner[level="muted"]   { color: #9BA8B7; }
 
 /* AudioStrip pieces (dark mode was falling through to unstyled
    native widgets). Mirrors light.qss:136-146 + 1904-1925 with

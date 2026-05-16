@@ -534,7 +534,8 @@ class PhoneShell(QMainWindow):
         ):
             self._signals.bind(sig, slot)
 
-    def _set_status(self, text, level="muted", link_text="", link_action=""):
+    def _set_status(self, text, level="muted", link_text="", link_action="",
+                     transient: bool = False):
         # Prepend a coloured dot glyph so the registration / endpoint
         # state is scannable at a glance instead of relying on text colour
         # alone (which a stressed user can miss).
@@ -548,6 +549,40 @@ class PhoneShell(QMainWindow):
             self.status_link.setVisible(True)
         else:
             self.status_link.setVisible(False); self.status_link.clear()
+        # Transient status messages (e.g. "Settings applied",
+        # "Transferring...", post-apply notices) used to stick on the
+        # banner forever until something else changed it, which made
+        # the banner misleading -- the app could be in Ready state
+        # but the banner kept showing a 10-minute-old "Settings
+        # applied" toast. Auto-revert after 3 seconds.
+        try:
+            self._status_revert_timer.stop()
+        except Exception:
+            from PySide6.QtCore import QTimer as _QT
+            self._status_revert_timer = _QT(self)
+            self._status_revert_timer.setSingleShot(True)
+            self._status_revert_timer.timeout.connect(self._revert_status_to_baseline)
+        if transient:
+            self._status_revert_timer.start(3000)
+
+    def _revert_status_to_baseline(self) -> None:
+        """Recompute the steady-state status banner: registered account
+        => 'Ready', no account => 'No SIP account configured', etc.
+        Called by the 3-second transient-status auto-revert timer."""
+        try:
+            if not self.accounts:
+                self._set_status(
+                    "No SIP account configured", "warn",
+                    "Add account", "add-account",
+                )
+                return
+            ep = SipEndpoint.instance()
+            if not ep.is_started():
+                self._set_status("Starting SIP endpoint…", "muted")
+                return
+            self._set_status("Ready", "ok")
+        except Exception:
+            self._set_status("Ready", "ok")
 
     def _on_status_link(self, action):
         if action == "add-account":
@@ -1115,7 +1150,7 @@ class PhoneShell(QMainWindow):
             SipEndpoint.instance().blind_transfer(
                 call, target, account_id=self._active_account_id
             )
-            self._set_status(f"Transferring to {target}…", "muted")
+            self._set_status(f"Transferring to {target}…", "muted", transient=True)
         except Exception as exc:
             log.exception("blind transfer failed")
             QMessageBox.warning(self, "Transfer failed", str(exc))
@@ -1627,7 +1662,7 @@ class PhoneShell(QMainWindow):
                 )
             except Exception:
                 log.exception("set_active_devices failed")
-            self._set_status("Settings applied", "ok")
+            self._set_status("Settings applied", "ok", transient=True)
         # 4. Theme/reduced-motion is always safe to apply -- no audio
         # path involved.
         try:
