@@ -33,7 +33,12 @@ class Tab(IntEnum):
     CONTACTS  = 1
     FAVORITES = 2
     HISTORY   = 3
-    TRACE     = 4
+    # TRACE was removed from the bottom tabs. The lower nav is
+    # call-flow chrome (things the user reaches for DURING a call);
+    # SIP trace is a diagnostic surface that doesn't belong in that
+    # mental model. Bria/Zoiper/Linphone don't surface packet trace
+    # inline either. The popup window (View -> SIP Trace, Ctrl+Shift+T)
+    # is the only entry point now.
 
 
 _TABS: tuple[tuple[Tab, str, str, str], ...] = (
@@ -41,7 +46,6 @@ _TABS: tuple[tuple[Tab, str, str, str], ...] = (
     (Tab.CONTACTS,  "user",  "Contacts",  "Contacts and groups"),
     (Tab.FAVORITES, "star",  "Favorites", "Starred contacts"),
     (Tab.HISTORY,   "clock", "History",   "Call history"),
-    (Tab.TRACE,     "trace", "Trace",     "SIP signalling trace"),
 )
 
 

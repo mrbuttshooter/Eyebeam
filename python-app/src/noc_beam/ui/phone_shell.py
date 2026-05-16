@@ -15,13 +15,15 @@ chrome + a classic menu bar. Composition (top to bottom):
     |                                        |
     |          STACKED CONTENT AREA          |
     |  - Tab 0: Dialpad                      |
-    |  - Tab 1: Trace (narrow row list)      |
-    |  - Tab 2: Accounts (master list)       |
+    |  - Tab 1: Contacts                     |
+    |  - Tab 2: Favorites                    |
     |  - Tab 3: History                      |
     |                                        |
     +----------------------------------------+
-    |  [Dial]  [Trace]  [Accts]  [Hist]      |  bottom tabs
+    | [Dial] [Contacts] [Favs] [History]     |  bottom tabs
     +----------------------------------------+
+    SIP Trace + Accounts management + Test Runner + Diagnostics
+    open in their own windows via the View menu (Bria parity).
 
 Reuses the existing widgets. Settings + Diagnostics + the wider
 dashboard live behind View menu (open as separate windows).
@@ -65,7 +67,9 @@ from noc_beam.ui.favorites_view import FavoritesView
 from noc_beam.ui.history_view import HistoryView
 from noc_beam.ui.settings_dialog import SettingsDialog
 from noc_beam.ui.theme import apply_theme
-from noc_beam.ui.trace_view import TraceView
+# TraceView is imported lazily inside _on_open_trace -- removing the
+# top-level import lets PhoneShell construct without paying the
+# trace_view module-load cost when the user never opens Trace.
 from noc_beam.ui.tray import Presence, TrayController
 
 log = logging.getLogger(__name__)
@@ -447,10 +451,13 @@ class PhoneShell(QMainWindow):
         self.history_view = HistoryView(self)
         self.history_view.redial_requested.connect(self._on_call_requested)
 
-        # Trace + Accounts are constructed for the View-menu windows;
-        # they're not in the stack but we keep references so signals
-        # (sip_message, etc.) wire once and stay live.
-        self.trace_view = TraceView(self)
+        # Accounts is constructed for the View-menu window; not in
+        # the stack but kept around. TraceView used to be here too
+        # but Trace is now popup-only (created on demand in
+        # _on_open_trace) -- removing the eager construction also
+        # eliminates the dangling sip_message subscriber that lived
+        # for the entire app lifetime regardless of whether the
+        # user ever opened Trace.
         self.accounts_view = AccountsView(self)
         self.accounts_view.add_clicked.connect(self._on_add_account)
         # Per-row hover-action signals: previously emitted but never
@@ -464,7 +471,10 @@ class PhoneShell(QMainWindow):
         self.stack.addWidget(self.contacts_view)       # 1 CONTACTS
         self.stack.addWidget(self.favorites_view)      # 2 FAVORITES
         self.stack.addWidget(self.history_view)        # 3 HISTORY
-        self.stack.addWidget(self.trace_view)          # 4 TRACE
+        # Trace is popup-only now (View -> NOC Trace...,
+        # Ctrl+Shift+T). The bottom-tab integration was a
+        # diagnostic-tool-in-call-flow-chrome mismatch; Bria /
+        # Zoiper / Linphone don't surface packet trace inline.
 
         self.bottom_tabs = BottomTabs(self)
         self.bottom_tabs.tab_changed.connect(self.stack.setCurrentIndex)
@@ -1734,14 +1744,18 @@ class PhoneShell(QMainWindow):
 
     def _install_shortcuts(self):
         for seq, slot in (
-            ("Return",  self._on_dial_input_enter),
-            ("Esc",     self._on_hangup_requested),
-            ("Ctrl+1",  lambda: self.bottom_tabs.select(int(Tab.DIALPAD))),
-            ("Ctrl+2",  lambda: self.bottom_tabs.select(int(Tab.CONTACTS))),
-            ("Ctrl+3",  lambda: self.bottom_tabs.select(int(Tab.FAVORITES))),
-            ("Ctrl+4",  lambda: self.bottom_tabs.select(int(Tab.HISTORY))),
-            ("Ctrl+5",  lambda: self.bottom_tabs.select(int(Tab.TRACE))),
-            ("Ctrl+K",  lambda: self.dial_input.setFocus(Qt.FocusReason.ShortcutFocusReason)),
+            ("Return",        self._on_dial_input_enter),
+            ("Esc",           self._on_hangup_requested),
+            ("Ctrl+1",        lambda: self.bottom_tabs.select(int(Tab.DIALPAD))),
+            ("Ctrl+2",        lambda: self.bottom_tabs.select(int(Tab.CONTACTS))),
+            ("Ctrl+3",        lambda: self.bottom_tabs.select(int(Tab.FAVORITES))),
+            ("Ctrl+4",        lambda: self.bottom_tabs.select(int(Tab.HISTORY))),
+            # Trace moved out of the bottom tabs into the View-menu
+            # popup. Ctrl+Shift+T is the conventional "developer
+            # tools" binding (browsers, IDEs); freeing Ctrl+5 for
+            # future use.
+            ("Ctrl+Shift+T",  self._on_open_trace),
+            ("Ctrl+K",        lambda: self.dial_input.setFocus(Qt.FocusReason.ShortcutFocusReason)),
         ):
             sc = QShortcut(QKeySequence(seq), self)
             sc.setContext(Qt.ShortcutContext.WindowShortcut)

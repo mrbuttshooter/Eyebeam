@@ -47,7 +47,12 @@ def test_bottom_tabs_are_compact_and_include_existing_pages(qt_app: QApplication
     try:
         assert tabs.height() == BOTTOM_NAV_HEIGHT
         assert tabs._buttons[int(Tab.DIALPAD)].text().startswith("Dial")
-        assert tabs._buttons[int(Tab.TRACE)].text().startswith("Trace")
+        # Trace was removed from the bottom tabs (now popup-only via
+        # View -> NOC Trace... or Ctrl+Shift+T). Assert the four
+        # remaining tabs match Bria's softphone tab structure.
+        assert tabs._buttons[int(Tab.CONTACTS)].text().startswith("Contacts")
+        assert tabs._buttons[int(Tab.FAVORITES)].text().startswith("Favorites")
+        assert tabs._buttons[int(Tab.HISTORY)].text().startswith("History")
     finally:
         tabs.close()
 
