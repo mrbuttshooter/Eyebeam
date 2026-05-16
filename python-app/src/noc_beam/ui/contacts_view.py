@@ -377,7 +377,10 @@ class ContactsView(QWidget):
             item = self._rows_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
-                widget.setParent(None)
+                # hide() before reparent-to-None: otherwise PySide6
+                # briefly promotes the orphaned widget to a top-level
+                # Windows window with the app icon + title.
+                widget.hide()
                 widget.deleteLater()
 
     def _matches(self, contact: Contact, needle: str) -> bool:

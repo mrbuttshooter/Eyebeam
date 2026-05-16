@@ -1292,12 +1292,18 @@ class PhoneShell(QMainWindow):
         call to selected. A small header bar shows total call count
         + End-all link when there's >1 call total.
         """
-        # Tear down existing strip widgets.
+        # Tear down existing strip widgets. hide() BEFORE the implicit
+        # parent-detachment from takeAt -- in PySide6, reparenting a
+        # visible QWidget without an explicit hide first briefly
+        # promotes it to a top-level Windows window (it picks up the
+        # app icon + "NOC_Beam" title) for the few ms between takeAt
+        # and deleteLater. That was the phantom "NO..." popup the
+        # user saw on every call_added / call_updated / call_removed.
         while self.calls_strip_layout.count():
             item = self.calls_strip_layout.takeAt(0)
             w = item.widget()
             if w is not None:
-                w.setParent(None)
+                w.hide()
                 w.deleteLater()
         active = self.calls.active()
         others = [r for r in active if r.call_id != self._selected_call_id]

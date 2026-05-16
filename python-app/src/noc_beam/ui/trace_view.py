@@ -396,26 +396,27 @@ class TraceDialogRow(QFrame):
         self._msg_rows.append(sub)
         self._body_layout.addWidget(sub)
         # Trim oldest msgs (and their widgets) past the per-dialog cap.
+        # hide() before deleteLater to avoid the PySide6 top-level-window
+        # flash when a visible widget is reparented to None during
+        # teardown.
         while len(self.dialog.msgs) > MAX_MSGS_PER_DIALOG:
             self.dialog.msgs.pop(0)
             old_row = self._msg_rows.pop(0)
-            old_row.setParent(None)
+            old_row.hide()
             old_row.deleteLater()
             # Drop the matching head chip + arrow pair.
             if self._chips_layout.count() >= 2:
-                # First entry is a chip; remove it. If the next one is
-                # an arrow, remove that too.
                 first = self._chips_layout.takeAt(0)
                 w = first.widget()
                 if w is not None:
-                    w.setParent(None)
+                    w.hide()
                     w.deleteLater()
                 second = self._chips_layout.itemAt(0)
                 if second is not None:
                     sw = second.widget()
                     if sw is not None and sw.objectName() == "TraceChipArrow":
                         self._chips_layout.takeAt(0)
-                        sw.setParent(None)
+                        sw.hide()
                         sw.deleteLater()
 
     def _show_menu(self, pos) -> None:
@@ -681,11 +682,12 @@ class TraceView(QWidget):
             insert_at = self._rows_layout.count() - 1
             self._rows_layout.insertWidget(insert_at, row)
             self._apply_filters_to(row)
-            # Cap dialog count
+            # Cap dialog count. hide() before deleteLater to avoid the
+            # top-level-window flash.
             while len(self._dialogs) > MAX_DIALOGS:
                 old_id, old_row = next(iter(self._dialogs.items()))
                 del self._dialogs[old_id]
-                old_row.setParent(None)
+                old_row.hide()
                 old_row.deleteLater()
 
         self._empty.setVisible(False)
@@ -736,7 +738,7 @@ class TraceView(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         for row in self._dialogs.values():
-            row.setParent(None)
+            row.hide()
             row.deleteLater()
         self._dialogs.clear()
         self._paused_buffer.clear()

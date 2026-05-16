@@ -150,7 +150,9 @@ class FavoritesView(QWidget):
             item = self._rows_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
-                widget.setParent(None)
+                # hide() before reparent-to-None to avoid the brief
+                # top-level-window flash on row teardown.
+                widget.hide()
                 widget.deleteLater()
 
     def _matches(self, contact: Contact, needle: str) -> bool:
