@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 from noc_beam import __app_name__
 from noc_beam.config.store import load_settings
+from noc_beam.crash_handler import install as install_crash_handler
 from noc_beam.logging_setup import setup_logging
 from noc_beam.ui.phone_shell import PhoneShell
 from noc_beam.ui.theme import apply_theme
@@ -33,6 +34,12 @@ def _load_icon() -> QIcon:
 
 def run(argv: list[str]) -> int:
     setup_logging()
+    # Install crash handlers BEFORE we touch PJSIP -- a startup-time
+    # native fault in libCreate is exactly the class of bug we most
+    # need traces for. faulthandler + sys.excepthook + threading
+    # excepthook all wired here; Sentry SDK opt-in via DSN env-var
+    # or config_dir()/sentry.dsn.
+    install_crash_handler()
     log.info("Starting %s", __app_name__)
 
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)

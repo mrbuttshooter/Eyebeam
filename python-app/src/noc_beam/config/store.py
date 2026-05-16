@@ -150,11 +150,37 @@ class StartupSettings:
 
 
 @dataclass
+class ComplianceSettings:
+    """Compliance + privacy preferences.
+
+    All default to the SAFER setting -- redact PII in traces, require
+    consent before recording, etc. Users / IT can flip toggles per
+    jurisdiction, but the out-of-box experience is GDPR + EU-Accessibility
+    -Act + two-party-consent friendly.
+    """
+    # Call recording is gated behind explicit consent. When True, the
+    # UI shows a "Record" toggle on the active-call card and a banner
+    # while recording is live. When False (default), the toggle is
+    # hidden entirely so a misclick can't begin recording.
+    call_recording_enabled: bool = False
+    # When True, recording starts ONLY after the user accepts a
+    # per-call consent dialog. The dialog reminds the user that
+    # most jurisdictions require notifying the remote party.
+    recording_consent_required: bool = True
+    # When True, the in-app SIP trace masks Authorization/digest
+    # headers and SIP URI user-parts before display + export. When
+    # False, full wire content is captured (diagnostic mode -- the
+    # UI shows a banner so the user knows raw capture is on).
+    trace_pii_redaction: bool = True
+
+
+@dataclass
 class GlobalSettings:
     audio: AudioSettings = field(default_factory=AudioSettings)
     codecs: CodecSettings = field(default_factory=CodecSettings)
     appearance: AppearanceSettings = field(default_factory=AppearanceSettings)
     startup: StartupSettings = field(default_factory=StartupSettings)
+    compliance: ComplianceSettings = field(default_factory=ComplianceSettings)
     sip_port: int = 0               # 0 = ephemeral
     log_level: int = 4              # PJSIP log level 0..6
     user_agent: str = "NOC_Beam/0.1"

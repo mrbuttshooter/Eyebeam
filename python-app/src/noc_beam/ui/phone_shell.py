@@ -106,6 +106,12 @@ class PhoneShell(QMainWindow):
         self.tray = TrayController(self)
         self.reg_retry = RegistrationRetry(self)
         self.quality_sampler = CallQualitySampler(self.calls, self)
+        # Endpoint supervisor: detects endpoint_error storms and
+        # performs a controlled SIP-only restart while preserving
+        # CallManager + UI state. Hooked into the same singleton
+        # sip_events mesh; disconnects on destruction.
+        from noc_beam.sip.supervisor import EndpointSupervisor
+        self.sip_supervisor = EndpointSupervisor(self)
         self._selected_call_id = None
         self._last_snapshots = {}
         self._really_quitting = False

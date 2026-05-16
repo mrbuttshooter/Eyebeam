@@ -141,6 +141,13 @@ class DialPad(QWidget):
             btn.setMinimumSize(40, 40)
             btn.setMaximumHeight(48)
             btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            # A11y: screen-readers announced "key 1, key 2..." with no
+            # context; now each gets "Dial 1", "Dial 2", etc. The 12
+            # keypad buttons + Call + Hangup + dial input cover the
+            # primary calling task surface.
+            btn.setAccessibleName(f"Dial {key}")
+            if sub:
+                btn.setAccessibleDescription(f"Key {key} ({sub})")
             btn.clicked.connect(lambda _=False, k=key: self._press(k))
             grid.addWidget(btn, i // 3, i % 3)
 

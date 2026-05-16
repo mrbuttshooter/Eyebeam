@@ -23,6 +23,73 @@ log = logging.getLogger(__name__)
 _SIP_START = re.compile(
     r"^(INVITE|REGISTER|ACK|BYE|CANCEL|OPTIONS|SUBSCRIBE|NOTIFY|REFER|MESSAGE|PUBLISH|INFO|UPDATE|PRACK)\s+sip[s]?:|^SIP/2\.0\s+\d{3}"
 )
+
+# --- PII / credential redaction ----------------------------------------
+# SIP traces written to disk OR shipped in support bundles must not
+# carry digest-auth material or unredacted user identifiers. The full-
+# wire trace lives on the in-app trace window for live debugging; this
+# layer masks anything that goes through `sip_message` so subscribers
+# (and any logger that mirrors them to disk) get a redacted body.
+#
+# Redaction is bypassable via a per-process "diagnostic mode" toggle
+# read from the SIP_TRACE_DIAGNOSTIC env var. The toggle is intended
+# for short-window deep debugging sessions and the UI advertises that
+# raw capture is on. Default = redacted.
+import os as _os
+
+_AUTH_HEADER_RE = re.compile(
+    r"^(Authorization|Proxy-Authorization|WWW-Authenticate|Proxy-Authenticate)\s*:.*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# Pulls username, response, nonce out of digest challenges so even if
+# the line is reformatted across versions we still scrub the secrets.
+_DIGEST_SECRET_FIELDS = re.compile(
+    r'(username|response|nonce|cnonce|opaque|nc)\s*=\s*"?[^",\s]*"?',
+    re.IGNORECASE,
+)
+# User-part of SIP URIs in From/To/Contact headers.
+_URI_USER_RE = re.compile(
+    r"(sip[s]?:)([^@\s<>;,\"]+)@",
+)
+
+
+def _diagnostic_mode_enabled() -> bool:
+    """True iff the user has explicitly opted into raw, unredacted
+    wire capture for this session. Anything else = redacted output."""
+    return _os.environ.get("SIP_TRACE_DIAGNOSTIC", "").lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def redact_sip_body(body: str) -> str:
+    """Return a copy of `body` with credentials + user-parts masked.
+
+    - Authorization/Proxy-Authorization/WWW-Authenticate header values
+      become "<redacted>"
+    - Any leftover digest field (username=, response=, nonce=, ...)
+      is replaced with `<field>="<redacted>"`
+    - SIP URI user-parts are shortened to first 2 chars + `***`
+      ("sip:mada_123@..." -> "sip:ma***@...")
+    """
+    if not body:
+        return body
+    out = _AUTH_HEADER_RE.sub(
+        lambda m: f"{m.group(0).split(':', 1)[0]}: <redacted>",
+        body,
+    )
+    out = _DIGEST_SECRET_FIELDS.sub(
+        lambda m: f'{m.group(1)}="<redacted>"',
+        out,
+    )
+    def _user_mask(m):
+        scheme, user = m.group(1), m.group(2)
+        if len(user) <= 2:
+            masked = "***"
+        else:
+            masked = user[:2] + "***"
+        return f"{scheme}{masked}@"
+    out = _URI_USER_RE.sub(_user_mask, out)
+    return out
 # PJSIP 2.10+ dropped the literal "packet" word in some builds. Match
 # both the historical "RX 451 bytes packet from UDP 1.2.3.4:5060"
 # format and the newer "RX 451 bytes from UDP 1.2.3.4:5060" form.
@@ -116,7 +183,12 @@ class TraceLogWriter(_LogWriterBase):
             return
         body = "\n".join(self._buf).strip()
         if body and _SIP_START.search(body):
-            sip_events().sip_message.emit(time.time(), self._direction, self._peer, body)
+            # Mask credentials + user-parts before emitting unless the
+            # user has explicitly opted into diagnostic mode this run.
+            emit_body = body if _diagnostic_mode_enabled() else redact_sip_body(body)
+            sip_events().sip_message.emit(
+                time.time(), self._direction, self._peer, emit_body,
+            )
         self._buf.clear()
         self._capturing = False
 

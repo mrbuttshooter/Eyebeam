@@ -264,6 +264,11 @@ class CallWidget(QWidget):
         btn.setIconSize(QSize(18, 18))
         btn.setCheckable(checkable)
         btn.setToolTip(tooltip)
+        # Accessible name mirrors the tooltip so screen-readers
+        # announce the action verb (Mute microphone / End call /
+        # Hold call) instead of just "tool button". A11y sweep.
+        btn.setAccessibleName(tooltip)
+        btn.setAccessibleDescription(tooltip)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFixedSize(36, 36)
         return btn
