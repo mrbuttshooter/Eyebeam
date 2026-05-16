@@ -128,6 +128,19 @@ class CdrDetailDialog(QDialog):
             self.redial_requested.emit(self._entry.peer_uri)
             self.accept()
 
+    @staticmethod
+    def _csv_safe(value):
+        """Prefix `'` when a CSV field starts with a character Excel/Sheets
+        would interpret as a formula trigger. A malicious caller-id
+        (peer_uri=`=cmd|...`) becomes a live formula on open otherwise --
+        classic CSV-injection vector. Per OWASP CSV-injection guidance."""
+        if value is None:
+            return ""
+        s = str(value)
+        if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+            return "'" + s
+        return s
+
     def _on_export(self) -> None:
         default_name = f"cdr-{self._entry.call_id}-{int(self._entry.ended_at)}.csv"
         path, _filter = QFileDialog.getSaveFileName(
@@ -135,6 +148,7 @@ class CdrDetailDialog(QDialog):
         )
         if not path:
             return
+        safe = self._csv_safe
         try:
             with open(path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
@@ -145,16 +159,16 @@ class CdrDetailDialog(QDialog):
                 ])
                 writer.writerow([
                     self._entry.call_id,
-                    self._entry.account_id,
-                    self._entry.peer_uri,
-                    self._entry.direction,
+                    safe(self._entry.account_id),
+                    safe(self._entry.peer_uri),
+                    safe(self._entry.direction),
                     _fmt_ts(self._entry.started_at),
                     _fmt_ts(self._entry.connected_at) if self._entry.connected_at else "",
                     _fmt_ts(self._entry.ended_at),
                     f"{self._entry.duration_s:.1f}",
                     self._entry.end_code,
-                    self._entry.end_reason,
-                    self._entry.codec,
+                    safe(self._entry.end_reason),
+                    safe(self._entry.codec),
                 ])
             QMessageBox.information(self, "Export CDR", f"Saved CDR to:\n{path}")
         except Exception as exc:

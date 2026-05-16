@@ -73,6 +73,11 @@ class TestRunner(QObject):
         self._results: list[TestResult] = []
         self._started = False
         self._cancelled = False
+        # Re-entrancy guard for _fill_slots; declared in __init__ so
+        # subclasses overriding __init__ that forget super().__init__
+        # still get a defined attribute and the guard short-circuits
+        # correctly. Was previously created lazily via getattr.
+        self._dispatching = False
         self._run_complete_emitted = False
 
         self.events.call_state_changed.connect(self._on_call_state_changed)

@@ -581,7 +581,12 @@ class TraceView(QWidget):
             btn.setObjectName("TraceFastChip")
             btn.setText(label)
             btn.setCheckable(True)
-            btn.toggled.connect(self._reapply_filters)
+            # Route via debounce timer (see _filter_debounce below) so
+            # chip toggles during a heavy trace coalesce the same way
+            # text typing does. Without this, clicking a chip while
+            # 200+ dialogs were visible froze the GUI for ~80 ms per
+            # toggle on the synchronous _reapply_filters walk.
+            btn.toggled.connect(lambda _checked: self._filter_debounce.start())
             self._method_chips[label] = btn
             chip_bar.addWidget(btn)
         chip_bar.addStretch(1)
@@ -630,19 +635,23 @@ class TraceView(QWidget):
         # ---- Wires ---------------------------------------------------
         self.clear_btn.clicked.connect(self._on_clear)
         self.export_btn.clicked.connect(self._on_export)
-        self.chk_rx.toggled.connect(self._reapply_filters)
-        self.chk_tx.toggled.connect(self._reapply_filters)
-        # Debounce the per-keystroke filter pass: every char typed
-        # used to walk the entire row collection (1000+ rows) and
-        # toggle each one's visibility, freezing the GUI during
+        # Debounce the filter pass: every input event used to walk
+        # the entire row collection (1000+ rows) and toggle each
+        # row's visibility synchronously, freezing the GUI during
         # heavy traces. 150ms timer coalesces a burst of keystrokes
-        # into one re-filter pass.
+        # OR chip/RX/TX toggles into one re-filter pass.
         self._filter_debounce = QTimer(self)
         self._filter_debounce.setSingleShot(True)
         self._filter_debounce.setInterval(150)
         self._filter_debounce.timeout.connect(self._reapply_filters)
         self.filter_edit.textChanged.connect(
             lambda _t: self._filter_debounce.start()
+        )
+        self.chk_rx.toggled.connect(
+            lambda _checked: self._filter_debounce.start()
+        )
+        self.chk_tx.toggled.connect(
+            lambda _checked: self._filter_debounce.start()
         )
         # CRITICAL: SIP messages arrive on PJSIP worker threads. Without
         # QueuedConnection the slot would mutate Qt widgets from the
@@ -663,6 +672,12 @@ class TraceView(QWidget):
     def _disconnect_signals(self, *_args) -> None:
         try:
             sip_events().sip_message.disconnect(self._on_sip_message)
+        except Exception:
+            pass
+        # Stop the debounce timer so its queued timeout can't fire
+        # _reapply_filters on a half-destroyed widget after closeEvent.
+        try:
+            self._filter_debounce.stop()
         except Exception:
             pass
 

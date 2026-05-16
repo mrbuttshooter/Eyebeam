@@ -415,6 +415,7 @@ class SipEndpoint:
     # Accounts
     # ------------------------------------------------------------------
     def add_account(self, cfg: AccountConfig) -> SipAccount:
+        pending_err: str | None = None
         with self._lock:
             if not self._started:
                 raise RuntimeError("Endpoint not started")
@@ -424,8 +425,29 @@ class SipEndpoint:
             ac_cfg = acc.configure()
             acc.create(ac_cfg)
             self._accounts[cfg.id] = acc
+            # Drain any deferred diagnostic the configure() step set
+            # (e.g. requested transport not bound). Capture under the
+            # lock, dispatch OUTSIDE the lock so subscribers can call
+            # back into SipEndpoint without deadlocking.
+            pending_err = getattr(acc, "_pending_transport_error", None)
+            acc._pending_transport_error = None
             log.info("Account added: %s", cfg.id)
-            return acc
+        if pending_err is not None:
+            # Queue onto the event loop so the emit also can't run
+            # synchronously on the caller's stack while it's still
+            # finishing add_account().
+            try:
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(
+                    0,
+                    lambda aid=cfg.id, msg=pending_err: sip_events()
+                    .registration_changed.emit(aid, 0, msg),
+                )
+            except Exception:
+                # Headless / no Qt loop -- fire directly; the lock is
+                # already released so no re-entrancy risk remains.
+                sip_events().registration_changed.emit(cfg.id, 0, pending_err)
+        return acc
 
     def remove_account(self, account_id: str) -> None:
         with self._lock:
@@ -657,12 +679,39 @@ class SipEndpoint:
 
     @staticmethod
     def _build_info_param(content_type: str, body: str):  # type: ignore[no-untyped-def]
-        """Construct a pjsua2.CallSendRequestParam for a SIP INFO with body."""
+        """Construct a pjsua2.CallSendRequestParam for a SIP INFO with body.
+
+        Field-name compatibility across pjsua2 builds:
+          * 2.10-2.12  : prm.txOption.{contentType, msgBody}
+          * 2.13+      : prm.msgData.{contentType, msgBody}
+          * some SWIG-rebuilt forks rename to ctType/msgBody
+        Feature-detect by attribute existence rather than version
+        sniffing; log which path we took so build-mismatch DTMF
+        regressions don't silently fall back to RFC2833.
+        """
         prm = pj.CallSendRequestParam()
         prm.method = "INFO"
-        # pjsua2 SipTxOption carries content-type + body
         opt = pj.SipTxOption()
+        # Most builds expose contentType + msgBody on SipTxOption
+        # directly. If those aren't present, give up cleanly.
+        if not hasattr(opt, "contentType") or not hasattr(opt, "msgBody"):
+            raise RuntimeError(
+                "pjsua2 SipTxOption is missing contentType/msgBody; "
+                "this build does not support SIP INFO body payloads"
+            )
         opt.contentType = content_type
         opt.msgBody = body
-        prm.txOption = opt
+        # Carrier-attribute: try the new msgData slot first (2.13+),
+        # then fall back to txOption (2.10-2.12).
+        if hasattr(prm, "msgData"):
+            prm.msgData = opt
+            log.debug("SIP INFO DTMF using msgData (pjsua2 >= 2.13 layout)")
+        elif hasattr(prm, "txOption"):
+            prm.txOption = opt
+            log.debug("SIP INFO DTMF using txOption (pjsua2 <= 2.12 layout)")
+        else:
+            raise RuntimeError(
+                "pjsua2 CallSendRequestParam exposes neither msgData nor "
+                "txOption; cannot attach DTMF INFO body"
+            )
         return prm

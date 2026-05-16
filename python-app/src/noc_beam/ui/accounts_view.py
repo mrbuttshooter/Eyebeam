@@ -382,18 +382,15 @@ class AccountsView(QWidget):
         self._refresh_count()
 
     def _tick_relative_times(self) -> None:
+        # 30-second tick refreshes "registered 2m ago" relative
+        # timestamps in place. Previously it also re-applied the
+        # filter AND auto-reselected the first row when selection
+        # was cleared -- which silently re-emitted
+        # selected_account_changed every half-minute even when the
+        # user had deliberately cleared selection. Just refresh
+        # the relative-time labels; nothing else.
         for row in self._rows:
             row.refresh_relative_time()
-        # Re-apply current filter
-        self._apply_filter(self.search.text())
-        # Try to keep selection; otherwise pick first
-        if self._selected_id and any(r.account_id == self._selected_id for r in self._rows):
-            self._highlight_selected()
-        elif self._rows:
-            self._on_row_clicked(self._rows[0].account_id)
-        else:
-            self._selected_id = None
-            self.selected_account_changed.emit("")
 
     def selected_account_id(self) -> str | None:
         return self._selected_id

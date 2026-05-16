@@ -44,6 +44,11 @@ if PJSUA2_AVAILABLE:
             self.cfg = cfg
             self._transports = transports
             self.calls: list[SipCall] = []
+            # Set by configure() when the requested transport isn't
+            # bound; consumed by SipEndpoint.add_account after the
+            # lock is released so the diagnostic emission can't
+            # re-enter the endpoint lock.
+            self._pending_transport_error: str | None = None
 
         # ------------------------------------------------------------------
         # pjsua2 callbacks
@@ -120,22 +125,24 @@ if PJSUA2_AVAILABLE:
                 ac.sipConfig.transportId = tid
             else:
                 # Requested transport isn't bound. Don't silently fall
-                # back to UDP -- emit a clear diagnostic so the user
-                # knows their TLS/TCP request was honoured.
-                from noc_beam.sip.events import sip_events
-                sip_events().registration_changed.emit(
-                    cfg.id, 0,
-                    f"Transport '{cfg.transport}' unavailable; "
-                    f"account will not register",
-                )
+                # back to UDP -- log + flag for deferred diagnostic
+                # emission. Earlier this fired sip_events().emit()
+                # SYNCHRONOUSLY inside configure() while endpoint._lock
+                # was held by add_account(); any subscriber that called
+                # back into SipEndpoint would re-enter under the lock
+                # and could deadlock or observe a half-built account.
+                # The flag is read by SipEndpoint.add_account AFTER the
+                # account is fully created and the lock released, then
+                # the diagnostic is dispatched via QTimer.singleShot(0).
                 log.error(
                     "Account %s requested transport=%s but no such "
                     "transport is bound; refusing silent UDP downgrade",
                     cfg.id, cfg.transport,
                 )
-                # Force pjsua2 to NOT register so the user sees the
-                # failure mode immediately instead of "registered fine"
-                # over the wrong transport.
+                self._pending_transport_error = (
+                    f"Transport '{cfg.transport}' unavailable; "
+                    f"account will not register"
+                )
                 ac.regConfig.registerOnAdd = False
 
             ac.mediaConfig.srtpUse = _srtp_use(cfg.srtp)

@@ -492,17 +492,11 @@ QLabel#ViewCount {
 }
 QLabel#ViewHint { color: #C8C8C8; font-size: 12px; }
 
-QPushButton#PrimaryAction {
-    background-color: #00E5FF;
-    color: #000000;
-    border: 1px solid #00E5FF;
-    border-radius: 2px;
-    padding: 7px 14px;
-    min-height: 28px;
-    font-weight: 700;
-}
-QPushButton#PrimaryAction:hover { background-color: #80F2FF; border-color: #80F2FF; }
-QPushButton#PrimaryAction:disabled { background: #000000; color: #888888; border-color: #888888; }
+/* PrimaryAction has a second, conflicting definition further down at
+   line ~966 (yellow on black, sized for footer action bars). The
+   second block wins on cascade. Removed this duplicate to make the
+   yellow rule the single source of truth; the hover/disabled states
+   that lived here are merged into the canonical block below. */
 
 
 QFrame#LCDPanel {
@@ -971,6 +965,15 @@ QPushButton#PrimaryAction {
     border: 1px solid #FFFF00;
     color: #000000;
     font-weight: 700;
+}
+QPushButton#PrimaryAction:hover {
+    background-color: #FFEC4D;
+    border-color: #FFEC4D;
+}
+QPushButton#PrimaryAction:disabled {
+    background-color: #000000;
+    color: #888888;
+    border-color: #888888;
 }
 QPushButton#SecondaryAction {
     min-height: 32px;

@@ -18,15 +18,12 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QPushButton,
     QSpinBox,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -506,6 +503,26 @@ class SettingsDialog(QDialog):
         idx = self.theme_combo.findData(current_theme)
         if idx >= 0:
             self.theme_combo.setCurrentIndex(idx)
+        # Two-way sync with the General pane's mirror combo. Previously
+        # only General -> Appearance was wired, so picking Dark in
+        # Appearance left General's combo showing stale "Light" until
+        # next open. Round-trip the data key via findData so the
+        # display-label difference between the two combos doesn't
+        # break the match (Appearance has "Light (Bria-style)",
+        # General has "Light").
+        def _sync_back_to_general():
+            gen = getattr(self, "_general_theme_combo", None)
+            if gen is None:
+                return
+            data = self.theme_combo.currentData()
+            gidx = gen.findData(data)
+            if gidx >= 0 and gen.currentIndex() != gidx:
+                gen.blockSignals(True)
+                gen.setCurrentIndex(gidx)
+                gen.blockSignals(False)
+        self.theme_combo.currentIndexChanged.connect(
+            lambda _i: _sync_back_to_general()
+        )
         theme_hint = QLabel("Applied immediately on Apply — no restart needed.")
         theme_hint.setObjectName("ViewHint")
         theme_hint.setWordWrap(True)

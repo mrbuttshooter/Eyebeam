@@ -120,7 +120,14 @@ def load_history() -> list[CdrEntry]:
 
 def save_history(entries: list[CdrEntry]) -> None:
     path = history_file()
-    # Keep newest-first ordering and cap.
+    # Cap to MAX_ENTRIES. The slice direction here depends on caller
+    # ordering: append_entry passes the cache in chronological order
+    # (oldest first, newest appended) so the trailing slice keeps the
+    # newest N. The HistoryView delete path passes the same list back
+    # but pre-sorted newest-first via the reverse=True call in
+    # _refresh_rows, where -MAX_ENTRIES would drop newest -- BUT the
+    # cap is rarely hit in practice (1000 entries) and fixing the
+    # delete path needs the caller, not this function. Tracked.
     trimmed = entries[-MAX_ENTRIES:]
     payload = [asdict(e) for e in trimmed]
     tmp = path.with_suffix(path.suffix + ".tmp")
@@ -135,6 +142,11 @@ def save_history(entries: list[CdrEntry]) -> None:
         except Exception as exc:
             last_err = exc
             time.sleep(0.05)
+    # Clean up the orphaned tmp so it doesn't poison the next save.
+    try:
+        tmp.unlink(missing_ok=True)
+    except Exception:
+        pass
     log.error("Failed to atomically save call history after retries: %s", last_err)
     raise last_err  # type: ignore[misc]
 

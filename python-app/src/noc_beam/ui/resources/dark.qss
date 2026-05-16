@@ -1403,3 +1403,130 @@ QToolButton#TabBtn:checked {
     border-top-color: #7FD3FF;
     font-weight: 800;
 }
+
+/* ------------------------------------------------------------------
+   Audit v3 gap closures -- dark theme parity with light.qss
+   ------------------------------------------------------------------ */
+
+/* Account chip health states (was missing -> dark mode never showed
+   coloured health dot affordance). Mirrors light.qss:120-122. */
+QToolButton#AccountChip[health="ok"]      { border-left: 3px solid #66D19E; }
+QToolButton#AccountChip[health="warn"]    { border-left: 3px solid #FFD96A; }
+QToolButton#AccountChip[health="danger"]  { border-left: 3px solid #FF5C7A; }
+QToolButton#AccountChip[health="muted"]   { border-left: 3px solid #9BA8B7; }
+
+/* Status banner level states (was hard-coded green only). */
+QLabel#StatusBanner[level="ok"] {
+    background-color: #102B1A;
+    color: #8DDBA6;
+    border: 1px solid #66D19E;
+}
+QLabel#StatusBanner[level="warn"] {
+    background-color: #2B210A;
+    color: #FFD96A;
+    border: 1px solid #FFD96A;
+}
+QLabel#StatusBanner[level="danger"] {
+    background-color: #2B1118;
+    color: #FF8DA0;
+    border: 1px solid #FF5C7A;
+}
+QLabel#StatusBanner[level="muted"] {
+    background-color: #161E27;
+    color: #9BA8B7;
+    border: 1px solid #2C3C50;
+}
+
+/* AudioStrip pieces (dark mode was falling through to unstyled
+   native widgets). Mirrors light.qss:136-146 + 1904-1925 with
+   the dark palette. */
+QToolButton#AudioBtn {
+    background-color: transparent;
+    color: #D8E2ED;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+QToolButton#AudioBtn:hover {
+    background-color: #182638;
+    border-color: #3C5068;
+}
+QToolButton#AudioBtn:checked {
+    background-color: #1A2B40;
+    color: #7FD3FF;
+}
+QToolButton#AudioChevron {
+    background-color: transparent;
+    color: #9BA8B7;
+    border: none;
+    padding: 0 2px;
+}
+QToolButton#AudioChevron:hover { color: #7FD3FF; }
+QProgressBar#AudioMeterTX, QProgressBar#AudioMeterRX {
+    background-color: #0B1118;
+    border: 1px solid #263241;
+    border-radius: 2px;
+    text-align: center;
+    color: transparent;
+}
+QProgressBar#AudioMeterTX::chunk { background-color: #66D19E; }
+QProgressBar#AudioMeterRX::chunk { background-color: #7FD3FF; }
+QLabel#AudioMeterLabel {
+    color: #9BA8B7;
+    font-size: 9px;
+    font-weight: 700;
+}
+QFrame#VolumePopover {
+    background-color: #111923;
+    border: 1px solid #2C3C50;
+    border-radius: 6px;
+}
+QLabel#VolumePopoverLabel {
+    color: #D8E2ED;
+    font-size: 11px;
+}
+
+/* Hamburger menu button (was unstyled native). Mirrors light.qss:86-102. */
+QToolButton#MenuButton {
+    background-color: transparent;
+    color: #D8E2ED;
+    border: none;
+    padding: 4px 8px;
+    font-size: 16px;
+}
+QToolButton#MenuButton:hover {
+    background-color: #182638;
+    color: #F4F7FB;
+}
+QToolButton#MenuButton::menu-indicator { image: none; width: 0; }
+
+/* First-run hero (dark theme was unstyled, only light + hc had it). */
+QFrame#FirstRunHero {
+    background-color: #111923;
+    border: 1px solid #2C3C50;
+    border-radius: 8px;
+}
+QLabel#FirstRunTitle {
+    color: #F4F7FB;
+    font-size: 18px;
+    font-weight: 700;
+}
+QLabel#FirstRunSub {
+    color: #B6C2D0;
+    font-size: 13px;
+    font-weight: 400;
+}
+QLabel#FirstRunHelp {
+    color: #9BA8B7;
+    font-size: 11px;
+}
+
+/* CallButton contrast fix: the late-pass white-on-green at
+   ~3.4:1 fails WCAG AA. Darken the green to lift contrast. */
+QPushButton#CallButton {
+    background-color: #2E9D5A;
+    border: 1px solid #2E9D5A;
+}
+QPushButton#CallButton:hover {
+    background-color: #42B576;
+}

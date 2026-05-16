@@ -307,11 +307,14 @@ class CallWidget(QWidget):
         self.hold_btn.setToolTip("Resume call" if self._on_hold else "Hold call")
         # Pause bars while talking; play triangle while held. Amber
         # tint signals "this call is paused" without needing words.
+        # Match the 18 px icon size the button was built with (line 245).
+        # Was 14 px which shrunk the hold/play glyph inside the 18 px
+        # slot after the first toggle -- visibly smaller than mute/transfer.
         self.hold_btn.setIcon(
             rail_icon(
                 "play" if self._on_hold else "pause",
                 color="#E08A1A" if self._on_hold else "#1F2933",
-                px=14,
+                px=18,
             )
         )
         # Bria-style: hide the SIP status pill once the call is

@@ -406,9 +406,19 @@ class PhoneShell(QMainWindow):
         self.calls_strip_layout.setContentsMargins(0, 0, 0, 0)
         self.calls_strip_layout.setSpacing(2)
         self.calls_strip.setVisible(False)
-        self.calls.call_added.connect(lambda _cid: self._refresh_calls_strip())
-        self.calls.call_removed.connect(lambda _cid: self._refresh_calls_strip())
-        self.calls.call_updated.connect(lambda _cid: self._refresh_calls_strip())
+        # Store the strip-refresh lambdas on self so closeEvent can
+        # disconnect them by reference. Without this, every PhoneShell
+        # ever constructed stacks another lambda on the call_manager()
+        # singleton -- the test suite hung past test #30 because the
+        # singleton was fanning every CallRecord mutation to 30+ dead
+        # PhoneShell instances, each chaining processEvents through
+        # the next via the strip-rebuild path. v3 audit root cause.
+        self._strip_refresh_added = lambda _cid: self._refresh_calls_strip()
+        self._strip_refresh_removed = lambda _cid: self._refresh_calls_strip()
+        self._strip_refresh_updated = lambda _cid: self._refresh_calls_strip()
+        self.calls.call_added.connect(self._strip_refresh_added)
+        self.calls.call_removed.connect(self._strip_refresh_removed)
+        self.calls.call_updated.connect(self._strip_refresh_updated)
         # Keypad + recents stay visible during calls -- the user still
         # needs DTMF and may want to dial a second call. The CallWidget
         # itself was made compact to make room.
@@ -964,6 +974,14 @@ class PhoneShell(QMainWindow):
             else:
                 self.call_widget.show_idle(); self.call_widget.setVisible(False)
                 self.dialpad.set_in_call(False)
+        # Drop the per-call quality buffer + ownership mapping so they
+        # don't accumulate forever in long-running sessions.
+        try:
+            detail = getattr(self, "_accounts_detail", None)
+            if detail is not None:
+                detail.forget_call_account(call_id)
+        except Exception:
+            pass
 
     def _on_dial_input_enter(self):
         target = self.dial_input.text().strip()
@@ -1395,12 +1413,17 @@ class PhoneShell(QMainWindow):
         row.setCursor(Qt.CursorShape.PointingHandCursor)
         row.setFixedHeight(36)
         # Row click → promote to selected, EXCEPT when click landed
-        # on the End button (which has its own handler).
+        # on the End button (which has its own handler). Chain to
+        # super() so Qt's normal click/select propagation still
+        # happens (was swallowing child-widget events otherwise).
+        _original = QFrame.mousePressEvent
         def _press(ev, _cid=cid, _row=row):
             end = _row.findChild(QToolButton, "CallStripEndBtn")
             if end is not None and end.geometry().contains(ev.pos()):
+                _original(_row, ev)
                 return
             self._select_call(_cid)
+            _original(_row, ev)
         row.mousePressEvent = _press  # type: ignore[method-assign]
 
         rl = QHBoxLayout(row)
@@ -1746,7 +1769,16 @@ class PhoneShell(QMainWindow):
             (self.calls.call_added, self._on_call_record_added),
             (self.calls.call_updated, self._on_call_record_updated),
             (self.calls.call_removed, self._on_call_record_removed),
+            # Strip-refresh lambdas. The v3 audit identified these
+            # three as the test-hang root cause: without disconnect
+            # they accumulated on the singleton across PhoneShell
+            # reinstantiations in the test suite.
+            (self.calls.call_added, getattr(self, "_strip_refresh_added", None)),
+            (self.calls.call_removed, getattr(self, "_strip_refresh_removed", None)),
+            (self.calls.call_updated, getattr(self, "_strip_refresh_updated", None)),
         ):
+            if slot is None:
+                continue
             try:
                 sig.disconnect(slot)
             except Exception:
