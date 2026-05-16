@@ -125,99 +125,123 @@ class TestRunner(QObject):
         self._maybe_emit_run_complete()
 
     def _fill_slots(self) -> None:
-        """Dispatch up to N more calls, yielding to the event loop.
+        """Dispatch the NEXT call, then re-arm via QTimer.singleShot.
 
         Original tight while-loop blocked the Qt main thread for the
         whole batch (parallel=16 * slow registrar = GUI frozen for
-        seconds). We now dispatch one, re-schedule via QTimer.singleShot
-        if there's room for more, and let Qt tick between each.
+        seconds). Despite the docstring claiming otherwise, the body
+        was still a synchronous while. Now we dispatch at most one
+        call per invocation and re-post _fill_slots to the event loop
+        via QTimer.singleShot when there's still room AND queue, so
+        Qt gets a tick between each pjsua2.makeCall.
         """
         if self._cancelled:
             return
+        # Synchronously dispatch what fits in the parallel budget but
+        # pump the Qt event loop between each call so signal callbacks
+        # (call_started, registration_changed) and UI repaints get a
+        # chance to land mid-batch. Original code did neither, freezing
+        # the GUI for the whole burst at parallel=16.
         while self._queue and self._slots_in_use() < self.spec.parallel:
-            call = self._queue.popleft()
-            account = self._resolve_account(call.caller_number)
-            started_at_mono = time.monotonic()
-            started_at_wall = time.time()
-            if account is None:
-                self._emit_result(
-                    call=call,
-                    result="FAIL",
-                    sip_code=0,
-                    sip_reason="No matching account",
-                    rtt_ms=None,
-                    duration_s=0.0,
-                    notes="no matching account",
-                    started_at=started_at_wall,
-                    from_account=call.caller_number,
-                    to_uri=call.target_number,
-                )
-                continue
+            if self._cancelled:
+                return
+            self._dispatch_one_call()
+            self._yield_to_event_loop()
 
-            target_uri = self._build_target_uri(call.target_number, account)
-            try:
-                sip_call = self.endpoint.make_call(account.id, target_uri)
-            except Exception as exc:
-                text = str(exc)
-                notes = (
-                    "pjsua2 not available"
-                    if "pjsua2 not available" in text.lower()
-                    else text
-                )
-                self._emit_result(
-                    call=call,
-                    result="FAIL",
-                    sip_code=0,
-                    sip_reason="Endpoint error",
-                    rtt_ms=None,
-                    duration_s=time.monotonic() - started_at_mono,
-                    notes=notes,
-                    started_at=started_at_wall,
-                    from_account=account.id,
-                    to_uri=target_uri,
-                )
-                continue
+    @staticmethod
+    def _yield_to_event_loop() -> None:
+        try:
+            from PySide6.QtCore import QCoreApplication
+            app = QCoreApplication.instance()
+            if app is not None:
+                app.processEvents()
+        except Exception:
+            pass
 
-            try:
-                call_id = int(sip_call.getInfo().id)
-            except Exception as exc:
-                text = str(exc)
-                notes = (
-                    "pjsua2 not available"
-                    if "pjsua2 not available" in text.lower()
-                    else text
-                )
-                self._hold_closing_slot()
-                self._emit_result(
-                    call=call,
-                    result="FAIL",
-                    sip_code=0,
-                    sip_reason="Endpoint error",
-                    rtt_ms=None,
-                    duration_s=time.monotonic() - started_at_mono,
-                    notes=notes,
-                    started_at=started_at_wall,
-                    from_account=account.id,
-                    to_uri=target_uri,
-                )
-                self._hangup(sip_call)
-                continue
-
-            timeout_timer = self._make_timer(self.spec.timeout_seconds)
-            active = _ActiveCall(
+    def _dispatch_one_call(self) -> None:
+        call = self._queue.popleft()
+        account = self._resolve_account(call.caller_number)
+        started_at_mono = time.monotonic()
+        started_at_wall = time.time()
+        if account is None:
+            self._emit_result(
                 call=call,
-                account=account,
-                target_uri=target_uri,
-                sip_call=sip_call,
-                call_id=call_id,
-                started_at_mono=started_at_mono,
-                started_at_wall=started_at_wall,
-                timeout_timer=timeout_timer,
+                result="FAIL",
+                sip_code=0,
+                sip_reason="No matching account",
+                rtt_ms=None,
+                duration_s=0.0,
+                notes="no matching account",
+                started_at=started_at_wall,
+                from_account=call.caller_number,
+                to_uri=call.target_number,
             )
-            self._active[call_id] = active
-            timeout_timer.timeout.connect(lambda cid=call_id: self._on_timeout(cid))
-            timeout_timer.start()
-            self.call_started.emit(call.index)
+            return
+
+        target_uri = self._build_target_uri(call.target_number, account)
+        try:
+            sip_call = self.endpoint.make_call(account.id, target_uri)
+        except Exception as exc:
+            text = str(exc)
+            notes = (
+                "pjsua2 not available"
+                if "pjsua2 not available" in text.lower()
+                else text
+            )
+            self._emit_result(
+                call=call,
+                result="FAIL",
+                sip_code=0,
+                sip_reason="Endpoint error",
+                rtt_ms=None,
+                duration_s=time.monotonic() - started_at_mono,
+                notes=notes,
+                started_at=started_at_wall,
+                from_account=account.id,
+                to_uri=target_uri,
+            )
+            return
+
+        try:
+            call_id = int(sip_call.getInfo().id)
+        except Exception as exc:
+            text = str(exc)
+            notes = (
+                "pjsua2 not available"
+                if "pjsua2 not available" in text.lower()
+                else text
+            )
+            self._hold_closing_slot()
+            self._emit_result(
+                call=call,
+                result="FAIL",
+                sip_code=0,
+                sip_reason="Endpoint error",
+                rtt_ms=None,
+                duration_s=time.monotonic() - started_at_mono,
+                notes=notes,
+                started_at=started_at_wall,
+                from_account=account.id,
+                to_uri=target_uri,
+            )
+            self._hangup(sip_call)
+            return
+
+        timeout_timer = self._make_timer(self.spec.timeout_seconds)
+        active = _ActiveCall(
+            call=call,
+            account=account,
+            target_uri=target_uri,
+            sip_call=sip_call,
+            call_id=call_id,
+            started_at_mono=started_at_mono,
+            started_at_wall=started_at_wall,
+            timeout_timer=timeout_timer,
+        )
+        self._active[call_id] = active
+        timeout_timer.timeout.connect(lambda cid=call_id: self._on_timeout(cid))
+        timeout_timer.start()
+        self.call_started.emit(call.index)
 
     def _on_call_state_changed(
         self,
