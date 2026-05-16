@@ -1249,8 +1249,17 @@ QPushButton#RejectButton {
    silently fought the v2 Bria-cyan tokens earlier in this file
    (#7FD3FF, #66D19E). Recolored to harmonise; structural rules kept.
    ------------------------------------------------------------------ */
-QMainWindow, QDialog, QWidget {
+/* Window canvas only -- DO NOT extend to QWidget. The universal
+   QWidget background-color rule used to stomp on SipCodeBadge /
+   StatusPill / MetricChip pill backgrounds (Qt's stylesheet cascade
+   with universal selectors at the bottom overrides typed-ID rules
+   in practice for QLabel painting). Result: chip pills rendered
+   transparent against the window, badges looked like plain text.
+   Keep the window-class scope; let children paint their own bg. */
+QMainWindow, QDialog {
     background-color: #0F151D;
+}
+QWidget {
     color: #EAF1F8;
 }
 QFrame#TopStrip {
