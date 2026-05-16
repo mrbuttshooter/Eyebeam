@@ -134,9 +134,11 @@ class TestRunnerView(QMainWindow):
         # Legacy `summary_label` alias preserved for any callers that
         # touch it.
         self.summary_label = self.summary_passed
-        self.cancel_btn = QPushButton("Cancel")
+        # Footer button is "Close" -- the run-control Stop lives in the
+        # header row next to Run. Two buttons firing the same cancel
+        # was just confusing (UX audit blocker 5).
+        self.cancel_btn = QPushButton("Close")
         self.cancel_btn.setObjectName("SecondaryAction")
-        self.cancel_btn.setEnabled(False)
         self.export_btn = QPushButton("Export CSV")
         self.export_btn.setObjectName("PrimaryAction")
         self.export_btn.setEnabled(False)
@@ -216,7 +218,7 @@ class TestRunnerView(QMainWindow):
         self.run_btn.clicked.connect(self._on_run_clicked)
         self.stop_btn.clicked.connect(self._on_cancel_clicked)
         self.clear_btn.clicked.connect(self._on_clear_clicked)
-        self.cancel_btn.clicked.connect(self._on_cancel_clicked)
+        self.cancel_btn.clicked.connect(self.close)
         self.export_btn.clicked.connect(self._on_export_clicked)
 
     def _spec_from_ui(self) -> PlanSpec:
@@ -265,7 +267,11 @@ class TestRunnerView(QMainWindow):
     def _on_call_started(self, call_index: int) -> None:
         row = self._row_by_call_index.get(call_index)
         if row is not None:
-            self._set_text(row, 3, "running")
+            # Install a proper RUNNING badge widget; previous code wrote
+            # plain text "running" which the footer counter (which scans
+            # for badge text "RUNNING") never matched, so the "running"
+            # chip was stuck at 0 throughout the run.
+            self._set_result_badge(row, "running")
         self._refresh_summary()
 
     def _on_call_completed(self, result: RunnerResult) -> None:

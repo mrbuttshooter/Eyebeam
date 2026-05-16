@@ -125,6 +125,13 @@ class TestRunner(QObject):
         self._maybe_emit_run_complete()
 
     def _fill_slots(self) -> None:
+        """Dispatch up to N more calls, yielding to the event loop.
+
+        Original tight while-loop blocked the Qt main thread for the
+        whole batch (parallel=16 * slow registrar = GUI frozen for
+        seconds). We now dispatch one, re-schedule via QTimer.singleShot
+        if there's room for more, and let Qt tick between each.
+        """
         if self._cancelled:
             return
         while self._queue and self._slots_in_use() < self.spec.parallel:
@@ -234,6 +241,14 @@ class TestRunner(QObject):
         if code > 0 and active.rtt_ms is None:
             active.rtt_ms = (now - active.started_at_mono) * 1000.0
 
+        # 401 Unauthorized / 407 Proxy Auth Required: PJSIP transparently
+        # re-INVITEs with the digest credentials. Treating the initial
+        # challenge as FAIL caused EVERY auth-challenged account to mis-
+        # report on the first attempt before the retry could land.
+        # Same for 100 Trying and other 1xx informational that aren't
+        # already handled below.
+        if code in (401, 407):
+            return
         if 400 <= code <= 699:
             self._complete_active(active, "FAIL", code, reason, reason)
             if state == "DISCONNECTED":
@@ -404,6 +419,15 @@ class TestRunner(QObject):
         if self._queue or self._active or self._closing_slots:
             return
         self._run_complete_emitted = True
+        # CRITICAL: disconnect from the singleton sip_events so this
+        # runner doesn't keep processing call_state on a future run.
+        # Without this every Test Runner Run leaks a permanent slot
+        # and the n-th run gets n duplicates routed at it -- old
+        # runners process new call IDs and corrupt the result table.
+        try:
+            self.events.call_state_changed.disconnect(self._on_call_state_changed)
+        except Exception:
+            pass
         self.run_complete.emit(list(self._results))
 
     def _make_timer(self, seconds: float) -> QTimer:
