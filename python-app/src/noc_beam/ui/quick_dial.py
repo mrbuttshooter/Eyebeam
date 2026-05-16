@@ -239,10 +239,17 @@ class QuickDialStrip(QFrame):
             history, key=lambda e: e.ended_at or 0, reverse=True
         )
         out: list[_DialTarget] = []
+        # Dedupe by peer URI: Bria's recents strip shows the last N
+        # DISTINCT peers, not the last N call events. Previously a
+        # user who hammered redial 5 times saw five identical rows.
+        seen: set[str] = set()
         for entry in history_sorted:
             uri = (entry.peer_uri or "").strip()
             if not uri:
                 continue
+            if uri in seen:
+                continue
+            seen.add(uri)
             arrow_glyph, arrow_lvl = _arrow(entry)
             chip_text, chip_lvl = _chip(entry)
             out.append(_DialTarget(

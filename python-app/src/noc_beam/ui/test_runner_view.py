@@ -380,15 +380,18 @@ class TestRunnerView(QMainWindow):
 
         self.export_btn.setEnabled(False)
         # Stop (header) toggles with run state; Close (footer) stays
-        # always enabled -- user should always be able to close the
-        # window even between runs.
-        self.stop_btn.setEnabled(True)
         self._refresh_summary()
 
+        # Construct the runner BEFORE enabling Stop. If Runner.__init__
+        # raises (e.g. endpoint=None resolution path) the Stop button
+        # used to stick in the enabled state with self.runner=None and
+        # clicking it AttributeError'd on .cancel(). Now Stop only
+        # turns on once we have an actual Runner to cancel.
         self.runner = Runner(spec, self.accounts, self)
         self.runner.call_started.connect(self._on_call_started)
         self.runner.call_completed.connect(self._on_call_completed)
         self.runner.run_complete.connect(self._on_run_complete)
+        self.stop_btn.setEnabled(True)
         self._refresh_plan_preview()
         self.runner.start()
 

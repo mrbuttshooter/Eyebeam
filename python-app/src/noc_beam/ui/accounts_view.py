@@ -168,9 +168,15 @@ class AcctRow(QFrame):
         ):
             btn = QToolButton(self.actions)
             btn.setObjectName("AcctRowActionBtn")
-            btn.setIcon(rail_icon(icon_name, color="#57606A", px=14))
+            # Use a mid-grey that works on BOTH light (~#FFFFFF bg) and
+            # dark (~#161B22 bg). #57606A was almost invisible on dark.
+            # Tooltip + accessibleName carry semantic intent so colour
+            # is decorative; #9BA8B7 has ~4.5:1 contrast on both
+            # canvases per a quick eyeball.
+            btn.setIcon(rail_icon(icon_name, color="#9BA8B7", px=14))
             btn.setIconSize(QSize(14, 14))
             btn.setToolTip(tooltip)
+            btn.setAccessibleName(tooltip)
             btn.setAutoRaise(True)
             btn.clicked.connect(lambda _=False, sig=signal: sig.emit(self.account_id))
             ar.addWidget(btn)
@@ -380,6 +386,14 @@ class AccountsView(QWidget):
             code = self._reg_codes.get(cfg.id, 0)
             row.set_status(code)
         self._refresh_count()
+        # Re-apply current search filter against the rebuilt rows.
+        # Previously a stale needle in self.search was ignored after
+        # a populate() rebuild -- the user saw the unfiltered list
+        # until they touched the search box.
+        try:
+            self._apply_filter(self.search.text())
+        except Exception:
+            pass
 
     def _tick_relative_times(self) -> None:
         # 30-second tick refreshes "registered 2m ago" relative

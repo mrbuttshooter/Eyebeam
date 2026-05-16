@@ -960,11 +960,9 @@ class PhoneShell(QMainWindow):
                         SipEndpoint.instance().set_call_mute(live, True)
                 except Exception:
                     log.exception("re-apply mute on resume failed")
-        # Multi-call strip rows show state too -- refresh on every update.
-        try:
-            self._refresh_calls_strip()
-        except Exception:
-            pass
+        # Strip refresh is wired via the singleton's call_updated
+        # subscribe (see _strip_refresh_updated in _build_ui) -- don't
+        # call it again here or every update fires the diff-pass twice.
 
     def _on_call_record_removed(self, call_id):
         if call_id == self._selected_call_id:

@@ -146,8 +146,9 @@ class TestRunner(QObject):
         # below can run user-driven events that re-enter _fill_slots
         # (e.g. the Stop button calls cancel() which iterates _active
         # while we're mid-dispatch -- race condition that could
-        # drop calls or double-hangup).
-        if getattr(self, "_dispatching", False):
+        # drop calls or double-hangup). _dispatching is initialised
+        # in __init__ so the bare attribute read is safe.
+        if self._dispatching:
             return
         self._dispatching = True
         try:

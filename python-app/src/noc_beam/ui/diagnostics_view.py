@@ -89,8 +89,14 @@ class _OptionsProbePanel(QWidget):
 
         row = QHBoxLayout()
         self.target = QLineEdit()
+        # objectName so this input picks up the same DialInput theme
+        # (mono URI field) used in the top dial bar. Was unstyled.
+        self.target.setObjectName("DialInput")
         self.target.setPlaceholderText("sip:proxy.example.com:5060")
         self.go_btn = QPushButton("Send OPTIONS")
+        # objectName so the button picks up PrimaryAction styling
+        # (cyan filled) consistent with other primary affordances.
+        self.go_btn.setObjectName("PrimaryAction")
         self.go_btn.clicked.connect(self._on_go)
         row.addWidget(self.target, 1)
         row.addWidget(self.go_btn)
@@ -158,6 +164,18 @@ class _RegisterTimingPanel(QWidget):
 
         self._last_seen: dict[str, float] = {}
         sip_events().registration_changed.connect(self._on_reg)
+        # Disconnect on destruction so the singleton sip_events doesn't
+        # keep firing into a dead panel when DiagnosticsView is closed
+        # and re-opened (mirrors the pattern in accounts_detail.py +
+        # trace_view.py). v4 audit flagged this as the last open
+        # singleton-leak suspect.
+        self.destroyed.connect(self._disconnect)
+
+    def _disconnect(self, *_args) -> None:
+        try:
+            sip_events().registration_changed.disconnect(self._on_reg)
+        except Exception:
+            pass
 
     def _on_reg(self, account_id: str, code: int, reason: str) -> None:
         if code == 0:
@@ -179,7 +197,9 @@ class _RegisterTimingPanel(QWidget):
         if 200 <= code < 300:
             code_item.setForeground(QtGui.QColor("#66D19E"))  # success token
         elif code in (401, 403, 407):
-            code_item.setForeground(QtGui.QColor("#EF5350"))  # danger token
+            # Match the danger token used elsewhere in dark.qss
+            # (was a fourth red, #EF5350, introduced in audit v2).
+            code_item.setForeground(QtGui.QColor("#FF5C7A"))
         self.table.setItem(row, 2, code_item)
         self.table.setItem(row, 3, QTableWidgetItem(delta))
 
@@ -324,6 +344,15 @@ class _RtcpXrPanel(QWidget):
         self._buf: deque[tuple[float, float, float, float, float]] = deque(maxlen=120)
         self._selected_call_id: int | None = None
         sip_events().call_quality.connect(self._on_quality)
+        # See _RegistrationPanel above -- mirror the destroyed-disconnect
+        # pattern so this panel doesn't leak subscribers across opens.
+        self.destroyed.connect(self._disconnect)
+
+    def _disconnect(self, *_args) -> None:
+        try:
+            sip_events().call_quality.disconnect(self._on_quality)
+        except Exception:
+            pass
 
     def set_selected_call(self, call_id: int | None) -> None:
         self._selected_call_id = call_id

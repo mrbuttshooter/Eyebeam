@@ -59,6 +59,7 @@ class SettingsDialog(QDialog):
     # without dismissing the dialog. Lets the user click Apply, see the
     # change, keep tweaking.
     apply_requested = Signal()
+    test_register_requested = Signal()
 
     def __init__(
         self,
@@ -629,10 +630,13 @@ class SettingsDialog(QDialog):
         outer.addLayout(reg)
 
         test_btn = QPushButton("Test Register")
-        test_btn.setObjectName("SettingsTestRegBtn")
+        test_btn.setObjectName("PrimaryAction")
         test_btn.setMinimumHeight(32)
-        # Note: actual test-register flow lives in AccountDialog; this
-        # button is a hook the shell can wire up via signals if it wants.
+        # Wired: emit test_register_requested so the host can route
+        # through the same flow the standalone AccountDialog uses.
+        # Previously the button existed but was a dead control with
+        # no click handler.
+        test_btn.clicked.connect(self.test_register_requested.emit)
         outer.addWidget(test_btn, 0, Qt.AlignmentFlag.AlignLeft)
 
         outer.addStretch(1)
@@ -731,9 +735,27 @@ class SettingsDialog(QDialog):
                 self.theme_combo.setCurrentIndex(idx)
         except Exception:
             pass
-        # Codecs -- reset each row's priority spinbox to its default-ish
-        # value (just leave the user's stored priority untouched; the
-        # spec doesn't define a "default priority" per codec).
+        # Codecs -- reset each spinbox to the priority pjsua2 currently
+        # advertises for that codec. Previously this was a comment that
+        # left codecs untouched; users hitting "Reset settings" reasonably
+        # expected the codec list to revert too, not stay at whatever
+        # they last set. We re-read list_codecs() (which returns the
+        # PJSIP-live priority, distinct from the GlobalSettings-stored
+        # priority) so the dialog's view matches what's actually
+        # running.
+        try:
+            from noc_beam.codecs.manager import list_codecs as _live_codecs
+            spins = getattr(self, "_codec_priority_spins", {})
+            for codec in _live_codecs():
+                spin = spins.get(codec.codec_id)
+                if spin is None:
+                    continue
+                try:
+                    spin.setValue(int(codec.priority))
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     @staticmethod
     def _select_by_data(combo: QComboBox, data: int) -> None:

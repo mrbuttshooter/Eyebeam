@@ -332,7 +332,13 @@ class ContactsView(QWidget):
 
     def reload(self) -> None:
         self._contacts = load_contacts()
-        self._expanded_groups.update(contact.group for contact in self._contacts)
+        live_groups = {contact.group for contact in self._contacts}
+        # Add newly-seen groups to expanded-set so first appearance
+        # is open by default; PRUNE groups that no longer exist so
+        # the set doesn't accumulate dead names across long sessions
+        # (rename-group leaves the old key behind otherwise).
+        self._expanded_groups.update(live_groups)
+        self._expanded_groups &= live_groups
         self._render()
 
     def _render(self) -> None:

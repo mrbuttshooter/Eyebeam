@@ -1530,3 +1530,55 @@ QPushButton#CallButton {
 QPushButton#CallButton:hover {
     background-color: #42B576;
 }
+
+/* ------------------------------------------------------------------
+   Round 5 audit fixes
+   ------------------------------------------------------------------ */
+
+/* StatusBannerLink (the inline link in the status banner) had no
+   rule -- fell through to default Qt link blue which clashes on
+   dark. Match the cyan accent. */
+QLabel#StatusBannerLink {
+    color: #7FD3FF;
+    font-weight: 600;
+}
+QLabel#StatusBannerLink:hover { color: #B5E5FF; }
+
+/* AccountChip health rules previously used `border-left: 3px solid`
+   which overrode only one side of the 1px chip border at line 387,
+   causing a 2px reflow when health flipped between states. Pin
+   the full 4-sided border so width stays constant. */
+QToolButton#AccountChip[health="ok"] {
+    border: 2px solid #66D19E;
+    padding: 4px 11px;   /* compensate -1px per side */
+}
+QToolButton#AccountChip[health="warn"] {
+    border: 2px solid #FFD96A;
+    padding: 4px 11px;
+}
+QToolButton#AccountChip[health="danger"] {
+    border: 2px solid #FF5C7A;
+    padding: 4px 11px;
+}
+QToolButton#AccountChip[health="muted"] {
+    border: 2px solid #9BA8B7;
+    padding: 4px 11px;
+}
+
+/* VolumeSlider (inside the audio-strip popover) -- dark theme had
+   no rule and was falling through to native Qt slider. Mirror the
+   dark-hc.qss treatment with palette tokens. */
+QSlider#VolumeSlider::groove:vertical {
+    background: #0B1118;
+    width: 6px;
+    border-radius: 3px;
+}
+QSlider#VolumeSlider::handle:vertical {
+    background: #7FD3FF;
+    border: 1px solid #7FD3FF;
+    height: 14px;
+    margin: 0 -6px;
+    border-radius: 7px;
+}
+QSlider#VolumeSlider::sub-page:vertical { background: #2C3C50; }
+QSlider#VolumeSlider::add-page:vertical { background: #7FD3FF; }

@@ -170,7 +170,13 @@ class DialPad(QWidget):
 
     # ------------------------------------------------------------------
     def _press(self, key: str) -> None:
-        self.entry.setText(self.entry.text() + key)
+        # When in a call the keys send DTMF tones, not dial-string
+        # input. Previously the digit was ALSO appended to the
+        # entry field, so by call-end the entry was littered with
+        # every DTMF tone the user pressed mid-call (e.g. IVR
+        # menu navigation left "12345" in the dial bar).
+        if self.call_btn.isEnabled():
+            self.entry.setText(self.entry.text() + key)
         self.digit_pressed.emit(key)
 
     def _on_call(self) -> None:
