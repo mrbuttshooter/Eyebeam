@@ -1272,15 +1272,13 @@ QFrame#TopStrip {
     border-bottom: 1px solid #263241;
 }
 QLabel#BrandMark {
-    background-color: #7FD3FF;
-    color: #FFFFFF;
-    border-radius: 5px;
-    min-width: 30px;
-    min-height: 30px;
-    max-width: 30px;
-    max-height: 30px;
-    font-size: 16px;
-    font-weight: 800;
+    /* Now displays the real app icon as a QPixmap; chrome stripped. */
+    background: transparent;
+    min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+    padding: 0;
 }
 QLabel#BrandWord {
     color: #F4F7FB;

@@ -271,7 +271,22 @@ class PhoneShell(QMainWindow):
         top_l.setContentsMargins(10, 6, 10, 4); top_l.setSpacing(2)
 
         brand_row = QHBoxLayout(); brand_row.setSpacing(8)
-        self.brand_mark = QLabel("N", top); self.brand_mark.setObjectName("BrandMark")
+        # Brand mark: render the real app icon (the cyan-beam N) as a
+        # QPixmap rather than the old text-on-orange-square placeholder.
+        # QIcon handles the multi-resolution .ico and gives us a crisp
+        # pixmap at the target display size on hi-DPI screens.
+        from PySide6.QtCore import QSize as _QSize
+        from PySide6.QtGui import QIcon as _QIcon
+        from pathlib import Path as _Path
+        _icon_path = _Path(__file__).parent / "resources" / "icon.ico"
+        self.brand_mark = QLabel("", top)
+        self.brand_mark.setObjectName("BrandMark")
+        try:
+            _bm_px = _QIcon(str(_icon_path)).pixmap(_QSize(28, 28))
+            if not _bm_px.isNull():
+                self.brand_mark.setPixmap(_bm_px)
+        except Exception:
+            self.brand_mark.setText("N")
         # Version moved out of the visible brand row -- it was reading like
         # a leftover build artifact next to the wordmark. Surfaced via the
         # brand-mark tooltip and the About dialog instead.
@@ -942,12 +957,21 @@ class PhoneShell(QMainWindow):
             finally:
                 le.blockSignals(False)
                 self.supplier_combo.blockSignals(False)
+            # Popup management:
+            # - Only call showPopup() if popup is NOT already visible
+            #   (prevents the hide+show flicker that was making the
+            #   cursor jump and rows appear auto-selected mid-typing).
+            # - When we DO open the popup, immediately take focus back
+            #   to the line edit -- Qt::Popup steals keyboard focus by
+            #   design, so without this the user's next keystroke goes
+            #   to the popup (navigating items) instead of the field.
             try:
-                if self._supplier_proxy.rowCount() > 0:
-                    self.supplier_combo.hidePopup()
+                view = self.supplier_combo.view()
+                rc = self._supplier_proxy.rowCount()
+                if rc > 0 and not view.isVisible():
                     self.supplier_combo.showPopup()
                     le.setFocus(Qt.FocusReason.OtherFocusReason)
-                else:
+                elif rc == 0 and view.isVisible():
                     self.supplier_combo.hidePopup()
             except Exception:
                 pass

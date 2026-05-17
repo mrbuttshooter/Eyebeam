@@ -660,12 +660,16 @@ class TestRunnerView(QMainWindow):
             finally:
                 le.blockSignals(False)
                 self.supplier_combo.blockSignals(False)
+            # See phone_shell: open popup only when not already visible,
+            # AND take focus back to the line edit immediately because
+            # Qt::Popup steals keyboard focus.
             try:
-                if self._supplier_proxy.rowCount() > 0:
-                    self.supplier_combo.hidePopup()
+                view = self.supplier_combo.view()
+                rc = self._supplier_proxy.rowCount()
+                if rc > 0 and not view.isVisible():
                     self.supplier_combo.showPopup()
                     le.setFocus(Qt.FocusReason.OtherFocusReason)
-                else:
+                elif rc == 0 and view.isVisible():
                     self.supplier_combo.hidePopup()
             except Exception:
                 pass

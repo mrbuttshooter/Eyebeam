@@ -58,18 +58,13 @@ QFrame#TopStrip {
 }
 
 QLabel#BrandMark {
-    /* Rounded square (4 px), Bria-style -- not a full circle. */
-    background-color: #E85D04;
-    color: #FFFFFF;
-    border-radius: 4px;
+    /* Now displays the real app icon as a QPixmap; chrome stripped. */
+    background: transparent;
     min-width: 28px;
     min-height: 28px;
     max-width: 28px;
     max-height: 28px;
-    qproperty-alignment: AlignCenter;
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0;
+    padding: 0;
 }
 QLabel#BrandWord {
     color: #1F2933;
