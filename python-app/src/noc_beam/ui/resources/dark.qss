@@ -1189,8 +1189,13 @@ QFrame#DenseRowActions {
     background-color: transparent;
     border: none;
 }
+/* Dropped the red wash on missed/failed history rows -- the arrow
+   colour + the SipCodeBadge pill already carry the failure signal,
+   the row-wide tint just made the list noisy. Leaving the rule in
+   place but neutralised so any future selector ordering doesn't
+   re-introduce a red bg by accident. */
 QFrame#HistoryRow[result="missed"], QFrame#HistoryRow[result="failed"] {
-    background-color: #2A1115;
+    background-color: transparent;
 }
 QFrame#TraceDialogRow, QFrame#TraceMsgRow {
     border-bottom: 1px solid #3B4654;
@@ -1830,4 +1835,134 @@ QListWidget#CodecDnDList::item:hover { background-color: #1F252E; }
 QListWidget#CodecDnDList::item:selected {
     background-color: #0D2535;
     color: #E5E9F0;
+}
+
+/* ------------------------------------------------------------------
+   Contacts / Favorites view -- dark theme port. light.qss had the
+   full styling (rows, group headers, search, action buttons); dark
+   was missing everything, so rows fell through to Qt native widgets
+   with WHITE backgrounds against the dark canvas. Mirrors the light
+   ruleset with palette tokens.
+   ------------------------------------------------------------------ */
+QWidget#ContactsView, QWidget#FavoritesView { background-color: #0F151D; }
+QFrame#ContactsBody { background-color: #0F151D; border: none; }
+QScrollArea#ContactsScroll { background-color: #0F151D; border: none; }
+
+QLineEdit#ContactsSearch {
+    background-color: #182030;
+    color: #EAF1F8;
+    border: 1px solid #263241;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+    min-height: 24px;
+}
+QLineEdit#ContactsSearch:focus {
+    background-color: #0F151D;
+    border-color: #7FD3FF;
+}
+
+QToolButton#ContactsActionBtn {
+    background: transparent;
+    color: #B6C2D0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px;
+    min-width: 28px;
+    min-height: 28px;
+}
+QToolButton#ContactsActionBtn:hover {
+    background-color: #182638;
+    color: #EAF1F8;
+}
+QToolButton#ContactsActionBtn[active="true"] {
+    background-color: #1A2B40;
+    color: #7FD3FF;
+    border: 1px solid #3C5068;
+}
+
+QFrame#ContactGroupRow {
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid #1B2129;
+}
+QFrame#ContactGroupRow:hover { background-color: transparent; }
+QLabel#GroupName { color: #EAF1F8; font-size: 13px; font-weight: 500; }
+QLabel#GroupCount {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+}
+QToolButton#GroupChevron {
+    background: transparent;
+    border: none;
+    color: #B6C2D0;
+    padding: 0;
+    min-width: 16px;
+    min-height: 16px;
+}
+QToolButton#GroupChevron:hover { color: #7FD3FF; }
+
+QFrame#ContactRow, QFrame#FavoriteRow {
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid #1B2129;
+}
+QFrame#ContactRow:hover, QFrame#FavoriteRow:hover {
+    background-color: transparent;
+}
+QLabel#ContactFavorite {
+    color: #FFD96A;
+    font-size: 13px;
+    font-weight: 700;
+}
+QLabel#ContactName { color: #EAF1F8; font-size: 13px; font-weight: 500; }
+QLabel#ContactNumber {
+    color: #7C8696;
+    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-size: 11px;
+}
+QToolButton#ContactRowActionBtn, QToolButton#ContactRowMore {
+    background: transparent;
+    color: #B6C2D0;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px;
+    min-width: 24px;
+    min-height: 24px;
+}
+QToolButton#ContactRowActionBtn:hover, QToolButton#ContactRowMore:hover {
+    background-color: #182638;
+    border-color: #3C5068;
+    color: #EAF1F8;
+}
+QToolButton#ContactRowActionBtn::menu-indicator,
+QToolButton#ContactRowMore::menu-indicator { image: none; width: 0; }
+
+QMenu#ContactRowMenu, QMenu#ContactsFilterMenu {
+    background-color: #111923;
+    color: #EAF1F8;
+    border: 1px solid #2C3C50;
+    padding: 4px 0;
+}
+QMenu#ContactRowMenu::item, QMenu#ContactsFilterMenu::item {
+    padding: 6px 14px;
+}
+QMenu#ContactRowMenu::item:selected, QMenu#ContactsFilterMenu::item:selected {
+    background-color: #1A2B40;
+    color: #7FD3FF;
+}
+QMenu#ContactRowMenu::separator, QMenu#ContactsFilterMenu::separator {
+    height: 1px;
+    background: #263241;
+    margin: 4px 8px;
+}
+
+/* AudioBtn hover: the user reported the hover-square's BOTTOM edge
+   looks clipped. Root cause: padding 2/6 + 1px border put the bottom
+   border exactly on the parent layout's row-bottom pixel which the
+   parent frame's border-bottom overpainted. Bump vertical padding
+   to 3px so the button has 1px breathing room below the border. */
+QToolButton#AudioBtn {
+    padding: 3px 6px;
 }

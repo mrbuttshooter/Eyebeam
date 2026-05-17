@@ -86,19 +86,11 @@ from noc_beam.testing.runner import TestRunner as Runner
 
 
 CSV_HEADER = [
-    "test_run_id",
-    "started_at",
-    "from_account",
-    "to_uri",
-    "result",
-    "sip_code",
-    "sip_reason",
-    "rtt_ms",
-    "duration_s",
-    "notes",
-    "fas_verdict",
-    "fas_confidence",
-    "fas_reasons",
+    "A Number",
+    "B Number",
+    "Date",
+    "Duration (s)",
+    "FAS Verdict",
 ]
 
 __test__ = False
@@ -891,14 +883,27 @@ class TestRunnerView(QMainWindow):
         super().closeEvent(event)
 
     def _on_export_clicked(self) -> None:
-        filename, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export CSV",
-            "",
-            "CSV files (*.csv);;All files (*)",
-        )
-        if filename:
-            self.export_csv(Path(filename))
+        """Auto-name the file as noc_beam_testrun_YYYYMMDD_HHMM.csv and
+        drop it on the user's Desktop. No save-as dialog, no success
+        popup (per operator request -- they're running multiple test
+        batches per minute and the confirmation noise was noise)."""
+        from datetime import datetime as _dt
+        name = f"noc_beam_testrun_{_dt.now():%Y%m%d_%H%M}.csv"
+        desktop = Path.home() / "Desktop"
+        out_dir = desktop if desktop.exists() else Path.home()
+        path = out_dir / name
+        try:
+            self.export_csv(path)
+            # Log only; no QMessageBox -- the file just appears.
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                "Test Runner CSV exported: %s (%d rows)", path, len(self.results)
+            )
+        except Exception:
+            import logging as _logging
+            _logging.getLogger(__name__).exception(
+                "Failed to export test-run CSV to %s", path
+            )
 
     @staticmethod
     def _csv_safe(value):
@@ -915,6 +920,14 @@ class TestRunnerView(QMainWindow):
         return s
 
     def export_csv(self, path: Path) -> None:
+        """Write the lean 5-column CSV: A Number, B Number, Date,
+        Duration, FAS Verdict. Operator request -- previously this
+        wrote 13 columns including run IDs, RTT, notes, FAS confidence
+        + reasons, which was too much noise for billing review.
+
+        A number is the originating account (from_account), B number
+        is the dialled URI (to_uri).
+        """
         safe = self._csv_safe
         with path.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle, lineterminator="\n")
@@ -923,20 +936,11 @@ class TestRunnerView(QMainWindow):
                 started = self._started_at_datetime(result.started_at)
                 writer.writerow(
                     [
-                        f"nb-{started:%Y%m%d-%H%M%S}-{result.call.index:03d}",
-                        self._format_started_at(started),
                         safe(result.from_account),
                         safe(result.to_uri),
-                        safe(result.result),
-                        "" if result.sip_code is None else result.sip_code,
-                        safe(result.sip_reason),
-                        "" if result.rtt_ms is None else int(result.rtt_ms),
+                        self._format_started_at(started),
                         f"{result.duration_s:.1f}",
-                        safe(result.notes),
                         safe(getattr(result, "fas_verdict", "") or ""),
-                        f"{getattr(result, 'fas_confidence', 0.0):.2f}"
-                            if getattr(result, "fas_verdict", "") else "",
-                        safe(getattr(result, "fas_reasons", "") or ""),
                     ]
                 )
 

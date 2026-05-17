@@ -11,9 +11,14 @@ import time
 
 from datetime import datetime, timedelta
 
+import csv
+import logging
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -28,6 +33,30 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+log = logging.getLogger(__name__)
+
+
+def _csv_safe(value) -> str:
+    """Prefix `'` when a CSV field starts with a character Excel/Sheets
+    treats as a formula trigger -- OWASP CSV-injection guidance."""
+    if value is None:
+        return ""
+    s = str(value)
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
+
+def _ab_numbers(entry: CdrEntry) -> tuple[str, str]:
+    """Return (A-number, B-number) for a CDR.
+
+    For OUTGOING calls: A = our account_id, B = the peer URI (called party).
+    For INCOMING calls: A = peer URI (caller), B = our account_id (called).
+    """
+    if entry.direction == "out":
+        return (entry.account_id or "", entry.peer_uri or "")
+    return (entry.peer_uri or "", entry.account_id or "")
 
 from noc_beam.config.history import (
     CdrEntry,
@@ -120,6 +149,14 @@ class HistoryRow(QFrame):
         self.setProperty("result", _result_class(entry))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+        # Selection checkbox: lets the user pick N rows for the bulk
+        # CSV export. When 0 are checked the export button falls back
+        # to "all currently visible" (= what passes the filter chips).
+        self._select_cb = QCheckBox(self)
+        self._select_cb.setObjectName("HistoryRowSelect")
+        self._select_cb.setToolTip("Select for CSV export")
+        self._select_cb.setCursor(Qt.CursorShape.PointingHandCursor)
+
         arrow_lbl = QLabel(_arrow(entry))
         arrow_lbl.setObjectName("HistoryRowArrow")
         arrow_lbl.setProperty("result", _result_class(entry))
@@ -186,6 +223,7 @@ class HistoryRow(QFrame):
         # all visible. The text column shrinks to fill what's left.
         outer.setContentsMargins(6, 6, 6, 6)
         outer.setSpacing(4)
+        outer.addWidget(self._select_cb, 0, Qt.AlignmentFlag.AlignVCenter)
         outer.addWidget(arrow_lbl, 0, Qt.AlignmentFlag.AlignTop)
         outer.addLayout(text_col, 1)
         outer.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -199,12 +237,15 @@ class HistoryRow(QFrame):
         if self._entry.peer_uri:
             self.redial.emit(self._entry.peer_uri)
 
+    def is_checked(self) -> bool:
+        """Whether this row's selection checkbox is ticked."""
+        return self._select_cb.isChecked()
+
     def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802, ANN001
         # Bria parity: double-click redials. Don't redial if the click
-        # landed on a child button (info/call) -- those have their own
-        # single-click actions.
+        # landed on a child button (info/call) or the selection checkbox.
         ch = self.childAt(event.pos())
-        if ch in (self._call_btn, self._info_btn):
+        if ch in (self._call_btn, self._info_btn, self._select_cb):
             event.accept()
             return
         self._emit_redial()
@@ -294,6 +335,17 @@ class HistoryView(QWidget):
         self._reload_btn.setText("⟳")
         self._reload_btn.setToolTip("Reload from disk")
         self._reload_btn.clicked.connect(self.reload)
+        # Export selected (or all visible if nothing checked) to a CSV
+        # named noc_beam_history_YYYYMMDD_HHMM.csv in ~/Desktop. No
+        # save-as dialog, no success popup -- just write the file and
+        # surface the path via the status line in the log.
+        self._export_btn = QPushButton("Export CSV")
+        self._export_btn.setObjectName("HistoryExportBtn")
+        self._export_btn.setToolTip(
+            "Export checked rows to CSV. If nothing is checked, exports all "
+            "currently-visible (filtered) rows."
+        )
+        self._export_btn.clicked.connect(self._on_export)
         self._clear_btn = QPushButton("Clear")
         self._clear_btn.setObjectName("HistoryClearBtn")
         self._clear_btn.clicked.connect(self._on_clear)
@@ -310,6 +362,7 @@ class HistoryView(QWidget):
         controls.addWidget(self._range_filter)
         controls.addStretch(1)
         controls.addWidget(self._reload_btn)
+        controls.addWidget(self._export_btn)
         controls.addWidget(self._clear_btn)
 
         self._empty_label = QLabel(
@@ -473,6 +526,47 @@ class HistoryView(QWidget):
         cb = QApplication.clipboard()
         if cb is not None:
             cb.setText(uri)
+
+    def _on_export(self) -> None:
+        """Write the chosen CDR entries to a CSV in ~/Desktop.
+
+        Selection rules:
+        - If any rows have their checkbox ticked -> export only those.
+        - Otherwise export all currently-visible (filtered) rows.
+
+        Columns are deliberately lean per operator request: A number,
+        B number, Date, Duration, FAS verdict. No save-as dialog, no
+        success alert -- the file just appears in Desktop. Failures
+        log to the file log only.
+        """
+        chosen = [r._entry for r in self._rows if r.is_checked()]
+        if not chosen:
+            chosen = [r._entry for r in self._rows]
+        if not chosen:
+            return  # nothing visible to export
+        from datetime import datetime as _dt
+        name = f"noc_beam_history_{_dt.now():%Y%m%d_%H%M}.csv"
+        desktop = Path.home() / "Desktop"
+        out_dir = desktop if desktop.exists() else Path.home()
+        out_path = out_dir / name
+        try:
+            with out_path.open("w", encoding="utf-8", newline="") as fh:
+                writer = csv.writer(fh, lineterminator="\n")
+                writer.writerow(["A Number", "B Number", "Date", "Duration (s)", "FAS Verdict"])
+                for e in chosen:
+                    a, b = _ab_numbers(e)
+                    when = e.started_at or e.ended_at or 0
+                    date_str = _dt.fromtimestamp(when).strftime("%Y-%m-%d %H:%M:%S") if when else ""
+                    writer.writerow([
+                        _csv_safe(a),
+                        _csv_safe(b),
+                        date_str,
+                        f"{e.duration_s:.1f}",
+                        _csv_safe(e.fas_verdict or ""),
+                    ])
+            log.info("History CSV exported: %s (%d rows)", out_path, len(chosen))
+        except Exception:
+            log.exception("Failed to export history CSV to %s", out_path)
 
     def _on_clear(self) -> None:
         # Confirm before nuking everything.

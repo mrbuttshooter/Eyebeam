@@ -247,8 +247,13 @@ class AccountDialog(QDialog):
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(14)
-        grid.addWidget(identity, 0, 0)
-        grid.addWidget(connection, 0, 1)
+        # Pin both cards to the TOP of the grid row. Without AlignTop
+        # Qt vertically centres the shorter card -- so when the user
+        # expands ADVANCED on the Connection side, the Identity card
+        # drifts down to keep its centre aligned with the now-taller
+        # Connection card. AlignTop keeps Identity anchored.
+        grid.addWidget(identity, 0, 0, Qt.AlignmentFlag.AlignTop)
+        grid.addWidget(connection, 0, 1, Qt.AlignmentFlag.AlignTop)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
 
