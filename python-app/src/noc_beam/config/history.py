@@ -59,6 +59,11 @@ class CdrEntry:
     end_code: int = 0
     end_reason: str = ""
     codec: str = ""
+    # FAS (False Answer Supervision) verdict captured at disconnect.
+    # Empty when FAS is disabled or the call never reached CONFIRMED.
+    fas_verdict: str = ""
+    fas_confidence: float = 0.0
+    fas_reasons: str = ""
 
     @property
     def duration_s(self) -> float:

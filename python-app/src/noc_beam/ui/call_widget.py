@@ -121,11 +121,19 @@ class CallWidget(QWidget):
         self.duration_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
+        # FAS verdict badge. Hidden by default; shown when the FAS
+        # engine emits a verdict for this call. Lives in the meta
+        # column so it sits next to state + duration without stealing
+        # space from the peer column.
+        from noc_beam.ui.components import FasBadge as _FasBadge
+        self.fas_badge = _FasBadge("", self._card)
+
         meta_col = QVBoxLayout()
         meta_col.setContentsMargins(0, 0, 0, 0)
         meta_col.setSpacing(0)
         meta_col.addWidget(self.state_label, 0, Qt.AlignmentFlag.AlignRight)
         meta_col.addWidget(self.duration_label)
+        meta_col.addWidget(self.fas_badge, 0, Qt.AlignmentFlag.AlignRight)
 
         # Inline icon-button actions for the active call. Tooltip
         # carries the verb so the icon-only chrome stays terse.
@@ -411,6 +419,17 @@ class CallWidget(QWidget):
             return
         chan = f", {channels}ch" if channels and channels > 1 else ""
         self.peer_sub_label.setText(f"{codec} @ {clock} Hz{chan}")
+
+    def update_fas(self, verdict: str, confidence: float = 0.0, reasons: str = "") -> None:
+        """Update the FAS badge for this call.
+
+        Called by phone_shell when the call's CallRecord re-renders with
+        an updated fas_verdict. Empty verdict hides the badge.
+        """
+        try:
+            self.fas_badge.update_verdict(verdict, confidence, reasons)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Internal helpers

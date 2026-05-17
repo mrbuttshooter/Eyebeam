@@ -42,6 +42,11 @@ class SipEvents(QObject):
     # call_id, mos (1.0..4.5), packet_loss_pct, jitter_ms, rtt_ms
     call_quality = Signal(int, float, float, float, float)
 
+    # --- FAS detection verdict (False Answer Supervision) ---
+    # call_id, verdict, confidence (0.0..1.0), reasons (human-readable)
+    # verdict is one of: ANALYZING, INCONCLUSIVE, LIKELY_REAL, SUSPICIOUS, LIKELY_FAS
+    call_fas_verdict = Signal(int, str, float, str)
+
     # --- generic log line (pjsip log_cb) ---
     log_line = Signal(int, str)
 

@@ -223,6 +223,16 @@ class SipEndpoint:
             if not self._started:
                 return
             try:
+                # Stop FAS detection FIRST. The worker thread reads from
+                # router buffers; if we tear down PJSIP first the worker
+                # may still be holding refs to disconnected calls' audio
+                # snapshots. Safe to call even when FAS never started.
+                try:
+                    from noc_beam.audio.fas_engine import stop_fas_engine
+
+                    stop_fas_engine()
+                except Exception:
+                    log.exception("FAS engine shutdown raised")
                 # Polite un-REGISTER for every account before tear-down. Without
                 # this the registrar keeps a stale binding for the configured
                 # expires window (often 3600s); incoming INVITEs route to a
@@ -571,6 +581,19 @@ class SipEndpoint:
 
     def get_account(self, account_id: str) -> SipAccount | None:
         return self._accounts.get(account_id)
+
+    def update_account(self, cfg: AccountConfig) -> SipAccount:
+        """Apply a new configuration to an existing account.
+
+        Used when the operator changes routing fields (e.g. picks a
+        new Teles supplier which swaps auth_user). The simplest
+        correct behavior is remove + re-add: PJSIP's modify() path
+        on auth credentials is fiddly and varies across builds.
+
+        Returns the freshly-created SipAccount. Re-registration happens
+        as part of add_account.
+        """
+        return self.add_account(cfg)
 
     def accounts(self) -> list[SipAccount]:
         return list(self._accounts.values())

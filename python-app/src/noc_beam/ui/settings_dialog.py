@@ -52,7 +52,7 @@ class SettingsDialog(QDialog):
     """Sidebar-nav settings. ``account`` is the active SIP account whose
     identity / server / registration is shown under the Account pane."""
 
-    NAV_ITEMS = ("General", "Audio", "Codecs", "Appearance", "Account", "Advanced")
+    NAV_ITEMS = ("General", "Audio", "Codecs", "Appearance", "FAS detection", "Suppliers", "Account", "Advanced")
 
     # Apply-without-close: the host (phone_shell._on_settings) connects
     # to this and runs its apply_to + save_settings + push-to-PJSIP path
@@ -171,14 +171,213 @@ class SettingsDialog(QDialog):
     # ------------------------------------------------------------------
     def _build_pane(self, key: str) -> QWidget:
         method = {
-            "General":    self._build_general_pane,
-            "Audio":      self._build_audio_pane,
-            "Codecs":     self._build_codec_pane,
-            "Appearance": self._build_appearance_pane,
-            "Account":    self._build_account_pane,
-            "Advanced":   self._build_advanced_pane,
+            "General":       self._build_general_pane,
+            "Audio":         self._build_audio_pane,
+            "Codecs":        self._build_codec_pane,
+            "Appearance":    self._build_appearance_pane,
+            "FAS detection": self._build_fas_pane,
+            "Suppliers":     self._build_suppliers_pane,
+            "Account":       self._build_account_pane,
+            "Advanced":      self._build_advanced_pane,
         }[key]
         return method()
+
+    def _build_suppliers_pane(self) -> QWidget:
+        """Editable list of carriers shared across all accounts.
+        Each row is a (id, name) pair. Add / Edit-in-place / Delete.
+        Changes are persisted to %APPDATA%/NOC_Beam/suppliers.json.
+        """
+        from PySide6.QtWidgets import (
+            QHeaderView, QPushButton, QTableWidget, QTableWidgetItem,
+        )
+
+        from noc_beam.config.suppliers import Supplier, load_suppliers, save_suppliers
+
+        w = QWidget()
+        w.setObjectName("SettingsPane")
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
+
+        title = QLabel("Suppliers / Carriers")
+        title.setObjectName("SettingsTitle")
+        layout.addWidget(title)
+
+        blurb = QLabel(
+            "Shared list of carrier IDs and names. Each account's routing "
+            "format converts the ID into either an auth username (Teles) "
+            "or a dial prefix (Genband)."
+        )
+        blurb.setObjectName("SettingsBlurb")
+        blurb.setWordWrap(True)
+        layout.addWidget(blurb)
+
+        table = QTableWidget(0, 2)
+        table.setHorizontalHeaderLabels(["ID", "Name"])
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(table, 1)
+
+        # Helpers
+        def _reload():
+            table.setRowCount(0)
+            for s in load_suppliers():
+                row = table.rowCount()
+                table.insertRow(row)
+                table.setItem(row, 0, QTableWidgetItem(s.id))
+                table.setItem(row, 1, QTableWidgetItem(s.name))
+
+        def _read_all() -> list:
+            out = []
+            for r in range(table.rowCount()):
+                sid_item = table.item(r, 0)
+                name_item = table.item(r, 1)
+                sid = (sid_item.text() if sid_item else "").strip()
+                name = (name_item.text() if name_item else "").strip()
+                if not sid:
+                    continue
+                out.append(Supplier(id=sid, name=name))
+            return out
+
+        def _add():
+            row = table.rowCount()
+            table.insertRow(row)
+            table.setItem(row, 0, QTableWidgetItem(""))
+            table.setItem(row, 1, QTableWidgetItem(""))
+            table.editItem(table.item(row, 0))
+
+        def _delete():
+            rows = sorted({i.row() for i in table.selectedIndexes()}, reverse=True)
+            for r in rows:
+                table.removeRow(r)
+
+        def _save():
+            try:
+                save_suppliers(_read_all())
+                save_btn.setText("Saved ✓")
+                from PySide6.QtCore import QTimer as _QT
+                _QT.singleShot(2000, lambda: save_btn.setText("Save"))
+            except Exception:
+                log.exception("Failed to save suppliers")
+                save_btn.setText("Save FAILED")
+
+        _reload()
+
+        row_btns = QHBoxLayout()
+        add_btn = QPushButton("Add carrier")
+        del_btn = QPushButton("Delete selected")
+        save_btn = QPushButton("Save")
+        save_btn.setObjectName("PrimaryAction")
+        add_btn.clicked.connect(_add)
+        del_btn.clicked.connect(_delete)
+        save_btn.clicked.connect(_save)
+        row_btns.addWidget(add_btn)
+        row_btns.addWidget(del_btn)
+        row_btns.addStretch(1)
+        row_btns.addWidget(save_btn)
+        layout.addLayout(row_btns)
+
+        return w
+
+    def _build_fas_pane(self) -> QWidget:
+        from PySide6.QtWidgets import (
+            QCheckBox, QComboBox, QFormLayout, QGroupBox, QSizePolicy, QSpacerItem,
+            QSpinBox,
+        )
+
+        fas = getattr(self._settings, "fas", None)
+        # Defensive: if upgrading from an older settings.json the field
+        # may not exist yet -- pull defaults from the dataclass.
+        if fas is None:
+            from noc_beam.config.store import FasSettings
+            fas = FasSettings()
+
+        w = QWidget()
+        w.setObjectName("SettingsPane")
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(16)
+
+        title = QLabel("False Answer Supervision")
+        title.setObjectName("SettingsTitle")
+        layout.addWidget(title)
+
+        blurb = QLabel(
+            "Detects when a SIP supplier returns 200 OK but the audio is "
+            "fake -- silence, ringback, a looped recording, or hold music. "
+            "Verdicts appear as a badge on each call card and in History."
+        )
+        blurb.setObjectName("SettingsBlurb")
+        blurb.setWordWrap(True)
+        layout.addWidget(blurb)
+
+        # ---- Enable + sensitivity -----------------------------------
+        engine_box = QGroupBox("Engine")
+        engine_form = QFormLayout(engine_box)
+        engine_form.setContentsMargins(12, 12, 12, 12)
+        engine_form.setSpacing(8)
+
+        self._fas_enabled = QCheckBox("Enable FAS detection")
+        self._fas_enabled.setChecked(bool(fas.enabled))
+        engine_form.addRow(self._fas_enabled)
+
+        self._fas_sensitivity = QComboBox()
+        self._fas_sensitivity.addItems(["conservative", "balanced", "aggressive"])
+        cur = (fas.sensitivity or "balanced").lower()
+        idx = self._fas_sensitivity.findText(cur)
+        if idx >= 0:
+            self._fas_sensitivity.setCurrentIndex(idx)
+        engine_form.addRow("Sensitivity:", self._fas_sensitivity)
+
+        layout.addWidget(engine_box)
+
+        # ---- Recording / retention -----------------------------------
+        clips_box = QGroupBox("Audio clip retention")
+        clips_form = QFormLayout(clips_box)
+        clips_form.setContentsMargins(12, 12, 12, 12)
+        clips_form.setSpacing(8)
+
+        self._fas_record_clips = QCheckBox(
+            "Save short audio clips per analysed call for review"
+        )
+        self._fas_record_clips.setChecked(bool(fas.record_clips))
+        clips_form.addRow(self._fas_record_clips)
+
+        self._fas_clip_count = QSpinBox()
+        self._fas_clip_count.setRange(0, 5000)
+        self._fas_clip_count.setSingleStep(50)
+        self._fas_clip_count.setValue(int(fas.clip_retention_count))
+        clips_form.addRow("Keep at most N clips:", self._fas_clip_count)
+
+        self._fas_clip_mb = QSpinBox()
+        self._fas_clip_mb.setRange(0, 50000)
+        self._fas_clip_mb.setSingleStep(100)
+        self._fas_clip_mb.setSuffix(" MB")
+        self._fas_clip_mb.setValue(int(fas.clip_retention_mb))
+        clips_form.addRow("Total disk budget:", self._fas_clip_mb)
+
+        layout.addWidget(clips_box)
+
+        # ---- Automation hook ------------------------------------------
+        auto_box = QGroupBox("Automation")
+        auto_form = QFormLayout(auto_box)
+        auto_form.setContentsMargins(12, 12, 12, 12)
+        auto_form.setSpacing(8)
+
+        self._fas_auto_pause = QSpinBox()
+        self._fas_auto_pause.setRange(0, 100)
+        self._fas_auto_pause.setValue(int(fas.auto_pause_on_fas_count))
+        self._fas_auto_pause.setSpecialValueText("Never")
+        auto_form.addRow(
+            "Pause Test Runner after N consecutive FAS verdicts:",
+            self._fas_auto_pause,
+        )
+
+        layout.addWidget(auto_box)
+
+        layout.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
+        return w
 
     def _build_general_pane(self) -> QWidget:
         from noc_beam import __app_name__, __version__
@@ -379,7 +578,18 @@ class SettingsDialog(QDialog):
         return w
 
     def _build_codec_pane(self) -> QWidget:
-        from PySide6.QtWidgets import QScrollArea
+        """Two-column drag/drop UI for codec ordering.
+
+        Left list:  ENABLED codecs ordered top -> bottom = highest -> lowest priority.
+        Right list: DISABLED codecs (priority = 0).
+        Drag between columns to enable / disable.
+        Drag within ENABLED to reorder priority.
+        On apply, ENABLED items get descending priorities (250, 245, 240, ...).
+        DISABLED items get priority 0.
+        """
+        from PySide6.QtCore import Qt as _Qt
+        from PySide6.QtWidgets import QListWidget, QListWidgetItem
+
         w = QWidget()
         w.setObjectName("SettingsPane")
         outer = QVBoxLayout(w)
@@ -390,112 +600,103 @@ class SettingsDialog(QDialog):
         title.setObjectName("SettingsTitle")
         outer.addWidget(title)
         subtitle = QLabel(
-            "Higher priority = preferred earlier in SIP offers/answers. "
-            "0 disables. Use ▲ / ▼ to bump priority by 5."
+            "Drag codecs between the two columns to enable/disable. "
+            "Drag inside ENABLED to reorder — top = highest priority."
         )
         subtitle.setObjectName("SettingsSubtitle")
         subtitle.setWordWrap(True)
         outer.addWidget(subtitle)
 
-        # Single card wraps the codec list (modern, card-based UI).
-        card = QFrame()
-        card.setObjectName("SettingsCard")
-        card_l = QVBoxLayout(card)
-        card_l.setContentsMargins(0, 0, 0, 0)
-        card_l.setSpacing(0)
+        # ---- two-column layout: ENABLED | DISABLED ----
+        cols = QHBoxLayout()
+        cols.setContentsMargins(0, 0, 0, 0)
+        cols.setSpacing(16)
 
-        # Header strip
-        header = QFrame()
-        header.setObjectName("CodecListHeader")
-        h_l = QHBoxLayout(header)
-        h_l.setContentsMargins(18, 12, 18, 12)
-        h_l.setSpacing(12)
-        h_name = QLabel("CODEC")
-        h_name.setObjectName("CodecListHeaderLabel")
-        h_prio = QLabel("PRIORITY")
-        h_prio.setObjectName("CodecListHeaderLabel")
-        h_prio.setFixedWidth(110)
-        h_prio.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        h_actions = QLabel("")
-        h_actions.setFixedWidth(70)
-        h_l.addWidget(h_name, 1)
-        h_l.addWidget(h_prio)
-        h_l.addWidget(h_actions)
-        card_l.addWidget(header)
+        def _make_col(label_text: str) -> tuple[QFrame, QListWidget]:
+            col = QFrame()
+            col.setObjectName("CodecDnDColumn")
+            cl = QVBoxLayout(col)
+            cl.setContentsMargins(0, 0, 0, 0)
+            cl.setSpacing(6)
+            lbl = QLabel(label_text)
+            lbl.setObjectName("CodecDnDColumnLabel")
+            cl.addWidget(lbl)
+            lst = QListWidget()
+            lst.setObjectName("CodecDnDList")
+            lst.setDragDropMode(QListWidget.DragDropMode.DragDrop)
+            lst.setDefaultDropAction(_Qt.DropAction.MoveAction)
+            lst.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+            lst.setMovement(QListWidget.Movement.Snap)
+            lst.setAlternatingRowColors(False)
+            lst.setUniformItemSizes(True)
+            cl.addWidget(lst, 1)
+            return col, lst
 
-        # codec_id → QSpinBox map for apply_to to read directly.
-        self._codec_priority_spins: dict[str, QSpinBox] = {}
+        enabled_col, self._codec_enabled_list = _make_col("ENABLED — drag to reorder")
+        disabled_col, self._codec_disabled_list = _make_col("DISABLED")
+        cols.addWidget(enabled_col, 1)
+        cols.addWidget(disabled_col, 1)
+        outer.addLayout(cols, 1)
 
+        # Populate from codec list. Priority > 0 -> enabled, sorted desc.
         codecs = list_codecs()
+        decorated: list[tuple[int, str, str]] = []  # (priority, codec_id, display)
         for c in codecs:
-            row = QFrame()
-            row.setObjectName("CodecRow")
-            row_l = QHBoxLayout(row)
-            row_l.setContentsMargins(18, 10, 18, 10)
-            row_l.setSpacing(12)
-
-            # Name column
-            name_col = QFrame()
-            name_col_l = QVBoxLayout(name_col)
-            name_col_l.setContentsMargins(0, 0, 0, 0)
-            name_col_l.setSpacing(2)
-            name_lbl = QLabel(c.codec_id.split("/", 1)[0])
-            name_lbl.setObjectName("CodecRowName")
-            sub_lbl = QLabel(c.display_name)
-            sub_lbl.setObjectName("CodecRowSub")
-            name_col_l.addWidget(name_lbl)
-            name_col_l.addWidget(sub_lbl)
-
-            # Priority spin
-            spin = QSpinBox()
-            spin.setRange(0, 255)
             stored = self._lookup_stored_priority(c.codec_id)
-            spin.setValue(stored if stored is not None else c.priority)
-            spin.setFixedWidth(110)
-            spin.setObjectName("CodecRowPriority")
-            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._codec_priority_spins[c.codec_id] = spin
+            pri = stored if stored is not None else c.priority
+            decorated.append((pri, c.codec_id, c.display_name))
 
-            # Reorder buttons
-            up_btn = QToolButton()
-            up_btn.setObjectName("CodecRowReorderBtn")
-            up_btn.setText("▲")
-            up_btn.setFixedSize(28, 28)
-            up_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            up_btn.setToolTip("Boost priority by 5")
-            up_btn.clicked.connect(
-                lambda _checked=False, s=spin: s.setValue(min(255, s.value() + 5))
-            )
-            down_btn = QToolButton()
-            down_btn.setObjectName("CodecRowReorderBtn")
-            down_btn.setText("▼")
-            down_btn.setFixedSize(28, 28)
-            down_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            down_btn.setToolTip("Lower priority by 5")
-            down_btn.clicked.connect(
-                lambda _checked=False, s=spin: s.setValue(max(0, s.value() - 5))
-            )
-            reorder_wrap = QFrame()
-            reorder_l = QHBoxLayout(reorder_wrap)
-            reorder_l.setContentsMargins(0, 0, 0, 0)
-            reorder_l.setSpacing(4)
-            reorder_l.addWidget(up_btn)
-            reorder_l.addWidget(down_btn)
-            reorder_wrap.setFixedWidth(70)
+        enabled_sorted = sorted(
+            [d for d in decorated if d[0] > 0], key=lambda t: -t[0]
+        )
+        disabled_sorted = sorted(
+            [d for d in decorated if d[0] <= 0], key=lambda t: t[2].lower()
+        )
 
-            row_l.addWidget(name_col, 1)
-            row_l.addWidget(spin)
-            row_l.addWidget(reorder_wrap)
-            card_l.addWidget(row)
+        def _make_item(codec_id: str, display: str) -> QListWidgetItem:
+            short = codec_id.split("/", 1)[0]
+            item = QListWidgetItem(f"{short}    {display}")
+            item.setData(_Qt.ItemDataRole.UserRole, codec_id)
+            item.setToolTip(codec_id)
+            return item
 
-        outer.addWidget(card)
-        outer.addStretch(1)
-        # Legacy compat shim: apply_to in older revisions iterated
-        # codec_table.rowCount() / cellWidget. We now read from
-        # _codec_priority_spins directly; keep a None-valued table
-        # alias to avoid AttributeError from any external caller.
+        for _pri, cid, disp in enabled_sorted:
+            self._codec_enabled_list.addItem(_make_item(cid, disp))
+        for _pri, cid, disp in disabled_sorted:
+            self._codec_disabled_list.addItem(_make_item(cid, disp))
+
+        # Compat shim: apply_to reads _codec_priority_spins. Leave as
+        # empty dict; the new accessor below is what apply_to calls.
+        self._codec_priority_spins: dict[str, QSpinBox] = {}
         self.codec_table = None
         return w
+
+    def _read_codec_priorities(self) -> dict[str, int]:
+        """Walk the two QListWidgets and assign priorities top-down on
+        the ENABLED side (250, 245, 240, ...). DISABLED items get 0.
+        Returns codec_id -> priority dict for apply_to to consume.
+        """
+        from PySide6.QtCore import Qt as _Qt
+        out: dict[str, int] = {}
+        enabled = getattr(self, "_codec_enabled_list", None)
+        disabled = getattr(self, "_codec_disabled_list", None)
+        if enabled is None or disabled is None:
+            return out
+        # Start at 250, decrement by 5; floor at 5 so we never collide
+        # with 0 (which means disabled).
+        cur = 250
+        for i in range(enabled.count()):
+            item = enabled.item(i)
+            cid = item.data(_Qt.ItemDataRole.UserRole)
+            if cid:
+                out[cid] = max(5, cur)
+            cur -= 5
+        for i in range(disabled.count()):
+            item = disabled.item(i)
+            cid = item.data(_Qt.ItemDataRole.UserRole)
+            if cid:
+                out[cid] = 0
+        return out
 
     def _build_appearance_pane(self) -> QWidget:
         w = QWidget()
@@ -894,26 +1095,47 @@ class SettingsDialog(QDialog):
         except Exception:
             pass
 
+        # Persist FAS detection settings (Chunk 5 pane). Mirror the
+        # Startup defensive pattern so an upgrade path from older
+        # settings.json without a `fas` section can't crash apply().
+        try:
+            from noc_beam.config.store import FasSettings
+            if not hasattr(settings, "fas") or settings.fas is None:
+                settings.fas = FasSettings()
+            if hasattr(self, "_fas_enabled"):
+                settings.fas.enabled = self._fas_enabled.isChecked()
+                settings.fas.sensitivity = self._fas_sensitivity.currentText()
+                settings.fas.record_clips = self._fas_record_clips.isChecked()
+                settings.fas.clip_retention_count = int(self._fas_clip_count.value())
+                settings.fas.clip_retention_mb = int(self._fas_clip_mb.value())
+                settings.fas.auto_pause_on_fas_count = int(self._fas_auto_pause.value())
+        except Exception:
+            pass
+
         new_priorities: dict[str, int] = {}
         codec_map: dict[str, int] = {}
-        # Read from the codec_id -> QSpinBox dict built by the new
-        # _build_codec_pane. Falls back to {} if PJSIP wasn't loaded
-        # when Settings opened (empty dict = don't overwrite).
-        spins = getattr(self, "_codec_priority_spins", {})
-        for codec_id, spin in spins.items():
-            try:
-                prio = int(spin.value())
-            except Exception:
-                continue
-            codec_map[codec_id] = prio
-            new_priorities[codec_id] = prio
+        # Read from the new drag-drop columns first (the modern UI).
+        # Fall back to the legacy spinbox dict if a custom build used
+        # _codec_priority_spins instead.
+        if hasattr(self, "_codec_enabled_list") and hasattr(self, "_codec_disabled_list"):
+            codec_map = self._read_codec_priorities()
+            new_priorities = dict(codec_map)
+        else:
+            spins = getattr(self, "_codec_priority_spins", {})
+            for codec_id, spin in spins.items():
+                try:
+                    prio = int(spin.value())
+                except Exception:
+                    continue
+                codec_map[codec_id] = prio
+                new_priorities[codec_id] = prio
         # Merge instead of replace: PJSIP may load a SUBSET of installed
-        # codecs (e.g. opus disabled in this build) and the spins dict
-        # only contains the loaded ones. Replacing wholesale would wipe
-        # priorities for codecs the user configured before but that
+        # codecs (e.g. opus disabled in this build) and the priorities
+        # dict only contains the loaded ones. Replacing wholesale would
+        # wipe priorities for codecs the user configured before but that
         # aren't currently visible -- a silent data loss every time a
         # PJSIP build dropped a codec for any reason.
-        if spins:
+        if new_priorities:
             merged = dict(settings.codecs.priorities)
             merged.update(new_priorities)
             settings.codecs.priorities = merged

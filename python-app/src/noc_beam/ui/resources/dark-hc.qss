@@ -903,34 +903,39 @@ QWidget:focus {
 QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus, QToolButton:focus, QPushButton:focus {
     border: 2px solid #FFFF00;
 }
-QLabel#StatusPill, QLabel#SipCodeBadge, QLabel#MetricChip {
+QLabel#StatusPill, QLabel#SipCodeBadge, QLabel#MetricChip, QLabel#FasBadge {
     border-radius: 4px;
     padding: 2px 8px;
     min-height: 18px;
     font-size: 11px;
     font-weight: 700;
 }
-QLabel#StatusPill[level="ok"], QLabel#SipCodeBadge[level="ok"], QLabel#MetricChip[level="ok"] {
+QLabel#StatusPill[level="ok"], QLabel#SipCodeBadge[level="ok"], QLabel#MetricChip[level="ok"], QLabel#FasBadge[level="ok"] {
     color: #00FF66;
     background-color: #000000;
     border: 1px solid #00FF66;
 }
-QLabel#StatusPill[level="progress"], QLabel#SipCodeBadge[level="progress"], QLabel#MetricChip[level="progress"] {
+QLabel#StatusPill[level="progress"], QLabel#SipCodeBadge[level="progress"], QLabel#MetricChip[level="progress"], QLabel#FasBadge[level="progress"] {
     color: #FFFF00;
     background-color: #000000;
     border: 1px solid #FFFF00;
 }
-QLabel#StatusPill[level="danger"], QLabel#SipCodeBadge[level="danger"], QLabel#MetricChip[level="danger"] {
+QLabel#StatusPill[level="warn"], QLabel#SipCodeBadge[level="warn"], QLabel#MetricChip[level="warn"], QLabel#FasBadge[level="warn"] {
+    color: #FFA500;
+    background-color: #000000;
+    border: 1px solid #FFA500;
+}
+QLabel#StatusPill[level="danger"], QLabel#SipCodeBadge[level="danger"], QLabel#MetricChip[level="danger"], QLabel#FasBadge[level="danger"] {
     color: #FF4D4D;
     background-color: #000000;
     border: 1px solid #FF4D4D;
 }
-QLabel#StatusPill[level="info"], QLabel#SipCodeBadge[level="info"], QLabel#MetricChip[level="info"] {
+QLabel#StatusPill[level="info"], QLabel#SipCodeBadge[level="info"], QLabel#MetricChip[level="info"], QLabel#FasBadge[level="info"] {
     color: #00E5FF;
     background-color: #000000;
     border: 1px solid #00E5FF;
 }
-QLabel#StatusPill[level="muted"], QLabel#SipCodeBadge[level="muted"], QLabel#MetricChip[level="muted"] {
+QLabel#StatusPill[level="muted"], QLabel#SipCodeBadge[level="muted"], QLabel#MetricChip[level="muted"], QLabel#FasBadge[level="muted"] {
     color: #FFFFFF;
     background-color: #000000;
     border: 1px solid #FFFFFF;

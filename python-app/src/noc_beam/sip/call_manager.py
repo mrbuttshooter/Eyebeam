@@ -71,6 +71,14 @@ class CallRecord:
     started_at: float = field(default_factory=time.time)
     connected_at: float | None = None
     ended_at: float | None = None
+    # FAS (False Answer Supervision) detection. Updated by FasInferenceWorker
+    # via sip_events().call_fas_verdict.
+    # verdict: "" before first analysis, then one of
+    #   ANALYZING, INCONCLUSIVE, LIKELY_REAL, SUSPICIOUS, LIKELY_FAS
+    fas_verdict: str = ""
+    fas_confidence: float = 0.0      # 0.0..1.0
+    fas_reasons: str = ""
+    fas_updated_at: float | None = None
 
     @property
     def duration_s(self) -> float:
@@ -157,6 +165,16 @@ class CallManager(QObject):
         if rec is None:
             return
         rec.muted = muted
+        self.call_updated.emit(call_id)
+
+    def update_fas(self, call_id: int, verdict: str, confidence: float, reasons: str) -> None:
+        rec = self._calls.get(call_id)
+        if rec is None:
+            return
+        rec.fas_verdict = verdict
+        rec.fas_confidence = float(confidence)
+        rec.fas_reasons = reasons
+        rec.fas_updated_at = time.time()
         self.call_updated.emit(call_id)
 
     # ------------------------------------------------------------------

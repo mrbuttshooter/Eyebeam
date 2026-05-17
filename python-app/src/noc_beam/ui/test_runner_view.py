@@ -5,9 +5,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
+    QCompleter,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -23,6 +25,52 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+
+class _SupplierComboFocusFilter(QObject):
+    """Select-all-on-focus for the Test Runner SUPPLIER combo's line edit.
+
+    Same mechanic as the dial-bar combo in phone_shell: click or tab
+    in -> existing supplier name is wiped, so typing immediately starts
+    a fresh search. Without this the user has to clear the field by
+    hand before each query, which slows the batch-setup workflow.
+    """
+
+    def __init__(self, combo):
+        super().__init__(combo)
+        self._combo = combo
+
+    def eventFilter(self, obj, event):
+        et = event.type()
+        if et in (QEvent.Type.FocusIn, QEvent.Type.MouseButtonPress):
+            QTimer.singleShot(0, obj.selectAll)
+        return False
+
+
+class _PasteAtEndTextEdit(QTextEdit):
+    """QTextEdit that always pastes at the end of the document, with a
+    trailing newline appended if the pasted chunk wasn't already
+    terminated.
+
+    Rationale: in the Test Runner, engineers paste phone numbers one
+    at a time from chat / spreadsheet / notes. With a standard textarea
+    a misclick can paste mid-line and split an existing number. This
+    subclass guarantees every paste lands at the bottom as its own
+    line, regardless of where the cursor was.
+    """
+
+    def insertFromMimeData(self, source) -> None:  # noqa: ANN001, N802
+        text = source.text() if source is not None else ""
+        if not text:
+            return
+        if not text.endswith("\n"):
+            text += "\n"
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text)
+        self.setTextCursor(cursor)
+        # Ensure visible focus stays on the new bottom line.
+        self.ensureCursorVisible()
 
 from noc_beam.config.store import AccountConfig
 from noc_beam.testing.plan import TestCall as PlanCall
@@ -43,6 +91,9 @@ CSV_HEADER = [
     "rtt_ms",
     "duration_s",
     "notes",
+    "fas_verdict",
+    "fas_confidence",
+    "fas_reasons",
 ]
 
 __test__ = False
@@ -57,9 +108,12 @@ class TestRunnerView(QMainWindow):
         self._row_by_call_index: dict[int, int] = {}
 
         self.setWindowTitle("NOC_Beam test runner")
-        self.resize(900, 620)
+        # Wider default so toolbar fits horizontally + results table
+        # has room for all columns without horizontal scroll.
+        self.resize(960, 600)
+        self.setMinimumSize(820, 480)
 
-        self.callers_edit = QTextEdit()
+        self.callers_edit = _PasteAtEndTextEdit()
         self.callers_edit.setObjectName("TestRunnerPasteBox")
         self.callers_edit.setAcceptRichText(False)
         # Leaving the callers field blank dispatches via the first
@@ -70,7 +124,7 @@ class TestRunnerView(QMainWindow):
         self.callers_edit.setPlaceholderText(
             "Account usernames (one per line) — leave blank to use the active account"
         )
-        self.targets_edit = QTextEdit()
+        self.targets_edit = _PasteAtEndTextEdit()
         self.targets_edit.setObjectName("TestRunnerPasteBox")
         self.targets_edit.setAcceptRichText(False)
         self.targets_edit.setPlaceholderText(
@@ -78,13 +132,26 @@ class TestRunnerView(QMainWindow):
         )
 
         self.mode_combo = QComboBox()
-        for label, value in (
-            ("Matrix", "matrix"),
-            ("Paired", "paired"),
-            ("Fan-out", "fan-out"),
-            ("Fan-in", "fan-in"),
+        # Fan-out first = default. Matches the most common wholesale
+        # workflow: leave Callers blank (active account), paste 30
+        # targets, hit Run. Tooltips explain each mode for new users.
+        for label, value, tooltip in (
+            ("Fan-out — 1 account dials all targets",  "fan-out",
+             "Default. The first caller (or active account if blank) dials every target in the list."),
+            ("Matrix — every caller × every target",   "matrix",
+             "Each caller dials every target. Use for full coverage testing."),
+            ("Paired — caller 1↔target 1, line by line", "paired",
+             "Pairs callers and targets one-to-one by line number. Cuts off at the shorter list."),
+            ("Fan-in — all callers dial 1 target",     "fan-in",
+             "Every caller dials the first target. Use to stress one destination from multiple sources."),
         ):
             self.mode_combo.addItem(label, value)
+            idx = self.mode_combo.count() - 1
+            self.mode_combo.setItemData(idx, tooltip, Qt.ItemDataRole.ToolTipRole)
+        self.mode_combo.setToolTip(
+            "Test plan mode. Fan-out is the default (leave Callers blank "
+            "to dial every target from the active account)."
+        )
 
         self.pass_combo = QComboBox()
         for label, value in (
@@ -114,10 +181,10 @@ class TestRunnerView(QMainWindow):
         self.stop_btn.setEnabled(False)
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.setObjectName("TestRunnerClearBtn")
-        self.table = QTableWidget(0, 8)
+        self.table = QTableWidget(0, 9)
         self.table.setObjectName("TestRunnerResults")
         self.table.setHorizontalHeaderLabels(
-            ["#", "FROM", "TO", "RESULT", "CODE", "RTT", "TIME", "NOTES"]
+            ["#", "FROM", "TO", "RESULT", "FAS", "CODE", "RTT", "TIME", "NOTES"]
         )
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -126,8 +193,15 @@ class TestRunnerView(QMainWindow):
             QHeaderView.ResizeMode.ResizeToContents
         )
         self.table.horizontalHeader().setSectionResizeMode(
-            7, QHeaderView.ResizeMode.Stretch
+            8, QHeaderView.ResizeMode.Stretch
         )
+        # FAS column needs a fixed-min width so the pill badge text
+        # ("Suspicious", "Likely FAS") doesn't get truncated to
+        # "Suspici…" by ResizeToContents on the underlying QLabel.
+        self.table.horizontalHeader().setSectionResizeMode(
+            4, QHeaderView.ResizeMode.Fixed
+        )
+        self.table.setColumnWidth(4, 110)
 
         # Footer counter pills (mockup panel 8: "12 passed · 3 failed
         # · 1 running · 0 pending"). Each is a coloured chip.
@@ -162,7 +236,22 @@ class TestRunnerView(QMainWindow):
         self._refresh_summary()
 
     def _build_ui(self) -> None:
-        from PySide6.QtWidgets import QSplitter, QScrollArea
+        """Modern Test Runner layout.
+
+        Top:    horizontal toolbar with supplier + mode + pass + parallel
+                + hold + timeout (replaces the tall CONFIGURATION card).
+        Strip:  one-line pre-flight summary -- "Will run N calls via X
+                @ parallel=Y ≈ ETA" + counter chips. Catches the classic
+                "I meant parallel=4 not 14" mistake before a 100-call
+                batch hits a real carrier.
+        Body:   35/65 split. Left: tabbed Targets/Callers textarea.
+                Right: live-streaming Results table.
+        Footer: sticky -- ghost actions on left, primary Run + Stop on right.
+        """
+        from PySide6.QtWidgets import (
+            QButtonGroup, QComboBox as _QComboBox, QSplitter, QStackedWidget,
+            QToolButton, QWidget as _QWidget,
+        )
         central = QWidget(self)
         central.setObjectName("TestRunnerRoot")
         outer = QVBoxLayout(central)
@@ -181,156 +270,286 @@ class TestRunnerView(QMainWindow):
         outer.addWidget(title)
         outer.addWidget(subtitle)
 
-        # 2-pane split: left = setup cards stack; right = results
+        # ===== Toolbar: supplier + config (all in one row) ============
+        toolbar = QFrame()
+        toolbar.setObjectName("TestRunnerToolbar")
+        # Legacy marker for backwards-compat tests
+        _legacy_toolbar = QFrame(toolbar)
+        _legacy_toolbar.setObjectName("OperatorToolbar")
+        _legacy_toolbar.setFixedSize(0, 0)
+        _legacy_toolbar.setVisible(False)
+        # Use a grid layout so labels + widgets can wrap cleanly when
+        # the window is narrow. Each field is a fixed unit; the supplier
+        # picker gets its own full row when visible (its content is the
+        # longest -- carrier names won't fit inline with config).
+        from PySide6.QtWidgets import QGridLayout, QSizePolicy as _SP
+        tb_l = QGridLayout(toolbar)
+        tb_l.setContentsMargins(14, 10, 14, 10)
+        tb_l.setHorizontalSpacing(14)
+        tb_l.setVerticalSpacing(10)
+
+        # SUPPLIER picker -- top row, full width, only shown when
+        # active account is teles/genband.
+        self.supplier_row = _QWidget()
+        _supp_l = QHBoxLayout(self.supplier_row)
+        _supp_l.setContentsMargins(0, 0, 0, 0)
+        _supp_l.setSpacing(8)
+        self.supplier_label = QLabel("SUPPLIER")
+        self.supplier_label.setObjectName("TestRunnerToolbarLabel")
+        self.supplier_label.setMinimumWidth(80)
+        self.supplier_combo = _QComboBox()
+        self.supplier_combo.setObjectName("TestRunnerSupplier")
+        self.supplier_combo.setEditable(True)
+        self.supplier_combo.setInsertPolicy(_QComboBox.InsertPolicy.NoInsert)
+        self.supplier_combo.setMinimumWidth(280)
+        self.supplier_combo.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Fixed)
+        # MatchContains + CaseInsensitive so partial-name search works,
+        # plus PopupCompletion so a filtered dropdown actually appears
+        # (Qt's default for editable combos can fall through to inline-
+        # only when there's a single match -- operators want to *see*
+        # the candidate row even when there's only one).
+        _comp = self.supplier_combo.completer()
+        if _comp is not None:
+            _comp.setFilterMode(Qt.MatchFlag.MatchContains)
+            _comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            _comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        # Select-all on focus/click + pop the filtered dropdown on the
+        # first keystroke. Mirrors the dial-bar supplier combo in
+        # phone_shell so muscle memory carries over.
+        _le = self.supplier_combo.lineEdit()
+        if _le is not None:
+            self._supplier_combo_filter = _SupplierComboFocusFilter(self.supplier_combo)
+            _le.installEventFilter(self._supplier_combo_filter)
+            _le.textEdited.connect(self._on_supplier_text_edited)
+        self.supplier_combo.currentIndexChanged.connect(self._on_supplier_changed)
+        _supp_l.addWidget(self.supplier_label)
+        _supp_l.addWidget(self.supplier_combo, 1)
+        self.supplier_row.setVisible(False)
+        tb_l.addWidget(self.supplier_row, 0, 0, 1, 6)
+        self._batch_supplier_id: str = ""
+
+        # Separator no longer needed in a grid layout; keep a hidden
+        # widget so _refresh_supplier_picker() still finds the attr.
+        self._supplier_sep = QLabel("")
+        self._supplier_sep.setVisible(False)
+
+        # Bottom row: 5 config fields evenly spaced. Each field is a
+        # tiny QWidget (label-on-top-of-widget) so labels and inputs
+        # stay associated when widths change.
+        def _config_field(label_text: str, widget: QWidget, min_width: int) -> _QWidget:
+            f = _QWidget()
+            fl = QVBoxLayout(f)
+            fl.setContentsMargins(0, 0, 0, 0)
+            fl.setSpacing(4)
+            lbl = QLabel(label_text)
+            lbl.setObjectName("TestRunnerToolbarLabel")
+            widget.setMinimumWidth(min_width)
+            widget.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Fixed)
+            fl.addWidget(lbl)
+            fl.addWidget(widget)
+            return f
+
+        config_fields = [
+            _config_field("Mode", self.mode_combo, 120),
+            _config_field("Pass criteria", self.pass_combo, 140),
+            _config_field("Parallel", self.parallel_spin, 80),
+            _config_field("Hold (s)", self.hold_spin, 80),
+            _config_field("Timeout (s)", self.timeout_spin, 80),
+        ]
+        for col, widget in enumerate(config_fields):
+            tb_l.addWidget(widget, 1, col)
+            tb_l.setColumnStretch(col, 1)
+        outer.addWidget(toolbar)
+
+        # ===== Pre-flight strip ======================================
+        # Shows what's ABOUT to run + live counters. Replaces the
+        # bottom STATUS card.
+        preflight = QFrame()
+        preflight.setObjectName("TestRunnerPreflight")
+        pf_l = QHBoxLayout(preflight)
+        pf_l.setContentsMargins(12, 8, 12, 8)
+        pf_l.setSpacing(10)
+        self._preflight_label = QLabel("Configure targets to preview the run")
+        self._preflight_label.setObjectName("TestRunnerPreflightLabel")
+        pf_l.addWidget(self._preflight_label, 1)
+        # Counter chips inline (replace the old STATUS card grid).
+        pf_l.addWidget(self.summary_passed)
+        pf_l.addWidget(self.summary_failed)
+        pf_l.addWidget(self.summary_running)
+        pf_l.addWidget(self.summary_pending)
+        outer.addWidget(preflight)
+
+        # ===== Body: split 35/65 (Targets | Results) =================
         split = QSplitter(Qt.Orientation.Horizontal, central)
         split.setObjectName("TestRunnerSplit")
         split.setChildrenCollapsible(False)
         split.setHandleWidth(8)
 
-        # ---- LEFT pane: scrollable card stack -----------------------
-        left_holder = QWidget()
-        left_holder.setObjectName("TestRunnerLeft")
-        left = QVBoxLayout(left_holder)
-        left.setContentsMargins(0, 0, 0, 0)
-        left.setSpacing(12)
-
-        # TARGETS card (callers + targets stacked vertically). Also
-        # carries the legacy `TestRunnerPasteGrid` objectName for test
-        # backwards-compat (sub-frames now hold the actual widgets).
-        targets_card = QFrame()
-        targets_card.setObjectName("SettingsCard")
-        # Keep a hidden marker child for the legacy test selector.
-        _legacy_paste_grid = QFrame(targets_card)
+        # ---- LEFT: tabbed Targets/Callers ----
+        left_card = QFrame()
+        left_card.setObjectName("SettingsCard")
+        # Hidden legacy marker for back-compat selectors
+        _legacy_paste_grid = QFrame(left_card)
         _legacy_paste_grid.setObjectName("TestRunnerPasteGrid")
         _legacy_paste_grid.setFixedSize(0, 0)
         _legacy_paste_grid.setVisible(False)
-        t_l = QVBoxLayout(targets_card)
-        t_l.setContentsMargins(18, 16, 18, 16)
-        t_l.setSpacing(8)
-        t_header_row = QHBoxLayout()
-        t_label = QLabel("TARGETS")
-        t_label.setObjectName("SettingsCardLabel")
+        lc_l = QVBoxLayout(left_card)
+        lc_l.setContentsMargins(0, 0, 0, 0)
+        lc_l.setSpacing(0)
+
+        # Tab strip
+        tabs_row = QHBoxLayout()
+        tabs_row.setContentsMargins(10, 8, 10, 0)
+        tabs_row.setSpacing(4)
+        self._tab_targets_btn = QToolButton()
+        self._tab_targets_btn.setObjectName("TestRunnerTab")
+        self._tab_targets_btn.setText("Targets (0)")
+        self._tab_targets_btn.setCheckable(True)
+        self._tab_targets_btn.setChecked(True)
+        self._tab_targets_btn.setAutoRaise(True)
+        self._tab_targets_btn.setProperty("active", True)
+        self._tab_callers_btn = QToolButton()
+        self._tab_callers_btn.setObjectName("TestRunnerTab")
+        self._tab_callers_btn.setText("Callers (auto)")
+        self._tab_callers_btn.setCheckable(True)
+        self._tab_callers_btn.setAutoRaise(True)
+        _grp = QButtonGroup(left_card)
+        _grp.setExclusive(True)
+        _grp.addButton(self._tab_targets_btn)
+        _grp.addButton(self._tab_callers_btn)
+        tabs_row.addWidget(self._tab_targets_btn)
+        tabs_row.addWidget(self._tab_callers_btn)
+        tabs_row.addStretch(1)
+        # Run count badge here (it's the legacy name)
         self._run_count_badge = QLabel("0 calls")
         self._run_count_badge.setObjectName("TestRunnerCountBadge")
-        t_header_row.addWidget(t_label)
-        t_header_row.addStretch(1)
-        t_header_row.addWidget(self._run_count_badge)
-        t_l.addLayout(t_header_row)
-        cl = QLabel("Callers (one per line)")
-        cl.setObjectName("SettingsRowLabel")
-        t_l.addWidget(cl)
-        t_l.addWidget(self.callers_edit)
-        tl = QLabel("Targets (one per line)")
-        tl.setObjectName("SettingsRowLabel")
-        t_l.addWidget(tl)
-        t_l.addWidget(self.targets_edit)
-        left.addWidget(targets_card)
+        self._run_count_badge.setVisible(False)  # info now in preflight
+        tabs_row.addWidget(self._run_count_badge)
+        lc_l.addLayout(tabs_row)
 
-        # CONFIGURATION card (legacy OperatorToolbar object name lives
-        # on a hidden marker child to satisfy backwards-compat selectors).
-        config_card = QFrame()
-        config_card.setObjectName("SettingsCard")
-        _legacy_toolbar = QFrame(config_card)
-        _legacy_toolbar.setObjectName("OperatorToolbar")
-        _legacy_toolbar.setFixedSize(0, 0)
-        _legacy_toolbar.setVisible(False)
-        c_l = QVBoxLayout(config_card)
-        c_l.setContentsMargins(18, 16, 18, 16)
-        c_l.setSpacing(10)
-        c_label = QLabel("CONFIGURATION")
-        c_label.setObjectName("SettingsCardLabel")
-        c_l.addWidget(c_label)
-        for label, widget in (
-            ("Mode", self.mode_combo),
-            ("Pass criteria", self.pass_combo),
-            ("Parallel", self.parallel_spin),
-            ("Hold (per call)", self.hold_spin),
-            ("Timeout (per call)", self.timeout_spin),
-        ):
-            row = QHBoxLayout()
-            row.setContentsMargins(0, 0, 0, 0)
-            lbl = QLabel(label)
-            lbl.setObjectName("SettingsRowLabel")
-            lbl.setMinimumWidth(140)
-            row.addWidget(lbl)
-            row.addWidget(widget, 1)
-            c_l.addLayout(row)
-        left.addWidget(config_card)
+        # Stacked widget for tab content
+        self._target_stack = QStackedWidget()
+        self._target_stack.addWidget(self.targets_edit)
+        self._target_stack.addWidget(self.callers_edit)
+        lc_l.addWidget(self._target_stack, 1)
+        self._tab_targets_btn.toggled.connect(
+            lambda checked: checked and self._target_stack.setCurrentIndex(0)
+        )
+        self._tab_callers_btn.toggled.connect(
+            lambda checked: checked and self._target_stack.setCurrentIndex(1)
+        )
+        split.addWidget(left_card)
 
-        # STATUS card (counter chips arranged in a 2x2)
-        status_card = QFrame()
-        status_card.setObjectName("SettingsCard")
-        st_l = QVBoxLayout(status_card)
-        st_l.setContentsMargins(18, 16, 18, 16)
-        st_l.setSpacing(8)
-        st_label = QLabel("STATUS")
-        st_label.setObjectName("SettingsCardLabel")
-        st_l.addWidget(st_label)
-        grid = QGridLayout()
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(6)
-        grid.addWidget(self.summary_passed, 0, 0)
-        grid.addWidget(self.summary_failed, 0, 1)
-        grid.addWidget(self.summary_running, 1, 0)
-        grid.addWidget(self.summary_pending, 1, 1)
-        st_l.addLayout(grid)
-        left.addWidget(status_card)
-
-        # Run / Stop / Clear sticky at bottom of left column
-        run_row = QHBoxLayout()
-        run_row.setSpacing(8)
-        run_row.addWidget(self.run_btn, 1)
-        run_row.addWidget(self.stop_btn)
-        run_row.addWidget(self.clear_btn)
-        left.addLayout(run_row)
-        left.addStretch(1)
-
-        # Scroll-wrap the left card stack
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        left_scroll.setWidget(left_holder)
-        split.addWidget(left_scroll)
-
-        # ---- RIGHT pane: results table card -------------------------
-        right_holder = QFrame()
-        right_holder.setObjectName("SettingsCard")
-        right = QVBoxLayout(right_holder)
-        right.setContentsMargins(0, 0, 0, 0)
-        right.setSpacing(0)
+        # ---- RIGHT: results table ----
+        right_card = QFrame()
+        right_card.setObjectName("SettingsCard")
+        right_l = QVBoxLayout(right_card)
+        right_l.setContentsMargins(0, 0, 0, 0)
+        right_l.setSpacing(0)
         results_header = QHBoxLayout()
-        results_header.setContentsMargins(18, 14, 18, 10)
+        results_header.setContentsMargins(14, 10, 14, 8)
         results_label = QLabel("RESULTS")
         results_label.setObjectName("SettingsCardLabel")
         results_header.addWidget(results_label)
         results_header.addStretch(1)
-        right.addLayout(results_header)
-        # Make the table look at-home inside the card.
+        right_l.addLayout(results_header)
         self.table.setObjectName("TestRunnerResults")
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setDefaultSectionSize(36)
-        right.addWidget(self.table, 1)
-        split.addWidget(right_holder)
+        right_l.addWidget(self.table, 1)
+        split.addWidget(right_card)
 
         split.setStretchFactor(0, 35)
         split.setStretchFactor(1, 65)
-        split.setSizes([350, 650])
+        split.setSizes([320, 600])
         outer.addWidget(split, 1)
 
-        # Footer: Close + Export CSV
+        # ===== Sticky footer ==========================================
+        # Layout: ghost-secondary actions on left, Cancel + destructive
+        # + primary on right. Run button label shows the call count so
+        # the operator sees what they're about to fire.
         footer = QFrame(central)
         footer.setObjectName("TestRunnerFooter")
         f_l = QHBoxLayout(footer)
         f_l.setContentsMargins(0, 4, 0, 0)
+        f_l.setSpacing(8)
+        f_l.addWidget(self.clear_btn)
+        f_l.addWidget(self.export_btn)
         f_l.addStretch(1)
         f_l.addWidget(self.cancel_btn)
-        f_l.addWidget(self.export_btn)
+        f_l.addWidget(self.stop_btn)
+        f_l.addWidget(self.run_btn)
         outer.addWidget(footer)
 
         self.setCentralWidget(central)
+
+        # Populate supplier picker now that all widgets exist.
+        self._refresh_supplier_picker()
+
+    def _refresh_supplier_picker(self) -> None:
+        """Show/hide + populate the supplier picker based on the first
+        enabled account's switch_type. Also toggles the toolbar
+        separator that follows the supplier row in the new layout.
+        Test Runner uses the first enabled account by default; if none
+        has teles/genband the picker stays hidden and the runner
+        behaves as before."""
+        acc = next((a for a in self.accounts if getattr(a, "enabled", True)), None)
+        # Match separator visibility to the supplier row's visibility.
+        sep = getattr(self, "_supplier_sep", None)
+        kind = (getattr(acc, "switch_type", "other") or "other").lower() if acc else "other"
+        if not acc or kind not in ("teles", "genband"):
+            self.supplier_row.setVisible(False)
+            if sep is not None:
+                sep.setVisible(False)
+            self._batch_supplier_id = ""
+            return
+        try:
+            from noc_beam.config.suppliers import load_suppliers
+            suppliers = load_suppliers()
+        except Exception:
+            self.supplier_row.setVisible(False)
+            return
+        self.supplier_combo.blockSignals(True)
+        self.supplier_combo.clear()
+        for s in suppliers:
+            self.supplier_combo.addItem(s.display(), s.id)
+        if self.supplier_combo.count():
+            self.supplier_combo.setCurrentIndex(0)
+            self._batch_supplier_id = self.supplier_combo.itemData(0) or ""
+        self.supplier_combo.blockSignals(False)
+        self.supplier_label.setText(
+            "SUPPLIER (auth)" if kind == "teles" else "SUPPLIER (prefix)"
+        )
+        self.supplier_row.setVisible(True)
+        if sep is not None:
+            sep.setVisible(True)
+
+    def _on_supplier_text_edited(self, _text: str) -> None:
+        """First keystroke pops the completer's filtered dropdown.
+
+        See phone_shell._on_supplier_text_edited for the rationale --
+        showing the combo's *own* popup would list every supplier
+        unfiltered, but the completer's popup respects the
+        MatchContains rule, so typing "eg" surfaces only "Telecom
+        Egypt -- C303".
+        """
+        try:
+            comp = self.supplier_combo.completer()
+            if comp is not None:
+                comp.complete()
+        except Exception:
+            pass
+
+    def _on_supplier_changed(self, index: int) -> None:
+        if index < 0:
+            return
+        self._batch_supplier_id = self.supplier_combo.itemData(index) or ""
+        # Reflect new supplier in the preflight line.
+        try:
+            self._refresh_plan_preview()
+        except Exception:
+            pass
 
     @staticmethod
     def _add_labeled_control(layout: QHBoxLayout, label: str, widget: QWidget) -> None:
@@ -364,14 +583,61 @@ class TestRunnerView(QMainWindow):
         )
 
     def _refresh_plan_preview(self) -> None:
-        count = len(expand(self._spec_from_ui()))
-        self.run_btn.setText(f"Run {count} calls")
+        spec = self._spec_from_ui()
+        count = len(expand(spec))
+        self.run_btn.setText(
+            "▶ Run 1 call" if count == 1 else f"▶ Run {count} calls"
+        )
         self.run_btn.setEnabled(count > 0 and self.runner is None)
-        # Also update the count badge in the TARGETS card header.
+        # Update the targets-tab badge with the live count.
+        if hasattr(self, "_tab_targets_btn"):
+            self._tab_targets_btn.setText(
+                "Targets (1)" if count == 1 else f"Targets ({count})"
+            )
+        # Update Callers tab badge -- "(auto)" when blank, otherwise count.
+        if hasattr(self, "_tab_callers_btn"):
+            caller_lines = [
+                l for l in (self.callers_edit.toPlainText() or "").splitlines() if l.strip()
+            ]
+            self._tab_callers_btn.setText(
+                "Callers (auto)" if not caller_lines else f"Callers ({len(caller_lines)})"
+            )
+        # Legacy count badge (kept hidden but updated for any consumer).
         if hasattr(self, "_run_count_badge"):
             self._run_count_badge.setText(
                 "1 call" if count == 1 else f"{count} calls"
             )
+        # Pre-flight summary -- the headline.
+        if hasattr(self, "_preflight_label"):
+            self._preflight_label.setText(self._preflight_text(count, spec))
+
+    def _preflight_text(self, count: int, spec) -> str:
+        if count == 0:
+            return "Paste destinations into Targets to preview the run"
+        parallel = max(1, int(spec.parallel))
+        hold = max(0, int(spec.hold_seconds))
+        timeout = max(0, int(spec.timeout_seconds))
+        # Reachability tests run roughly until ringing; full-call adds hold.
+        per_call_s = (hold if spec.pass_criterion == "full-call" else 0) + 4
+        per_call_s = max(per_call_s, 2)
+        per_call_s = min(per_call_s, timeout + 2)
+        # Total wall time = ceil(count / parallel) * per_call duration
+        import math
+        eta_s = max(per_call_s, math.ceil(count / parallel) * per_call_s)
+        m, s = divmod(int(eta_s), 60)
+        eta_str = f"{m}m {s:02d}s" if m else f"{s}s"
+        # Active supplier label (if any)
+        supplier_part = ""
+        try:
+            if self._batch_supplier_id and self.supplier_combo.count():
+                supplier_part = " via " + (self.supplier_combo.currentText() or "")
+        except Exception:
+            pass
+        plural = "call" if count == 1 else "calls"
+        return (
+            f"Will run {count} {plural}{supplier_part} @ "
+            f"parallel={parallel}, hold={hold}s  ≈  {eta_str}"
+        )
 
     def _refresh_hold_enabled(self) -> None:
         self.hold_spin.setEnabled(self.pass_combo.currentData() == "full-call")
@@ -400,6 +666,14 @@ class TestRunnerView(QMainWindow):
         self.export_btn.setEnabled(False)
         # Stop (header) toggles with run state; Close (footer) stays
         self._refresh_summary()
+
+        # Stash the picked supplier id on the relevant accounts so the
+        # runner's _apply_routing_to_target() picks it up. Only meaningful
+        # for teles/genband accounts; "other" accounts ignore it.
+        for acc in self.accounts:
+            kind = (getattr(acc, "switch_type", "other") or "other").lower()
+            if kind in ("teles", "genband"):
+                setattr(acc, "_active_supplier_id", self._batch_supplier_id)
 
         # Construct the runner BEFORE enabling Stop. If Runner.__init__
         # raises (e.g. endpoint=None resolution path) the Stop button
@@ -526,6 +800,10 @@ class TestRunnerView(QMainWindow):
                         "" if result.rtt_ms is None else int(result.rtt_ms),
                         f"{result.duration_s:.1f}",
                         safe(result.notes),
+                        safe(getattr(result, "fas_verdict", "") or ""),
+                        f"{getattr(result, 'fas_confidence', 0.0):.2f}"
+                            if getattr(result, "fas_verdict", "") else "",
+                        safe(getattr(result, "fas_reasons", "") or ""),
                     ]
                 )
 
@@ -539,6 +817,7 @@ class TestRunnerView(QMainWindow):
                 call.caller_number,
                 call.target_number,
                 "queued",
+                "",      # FAS (column 4)
                 "",
                 "",
                 "",
@@ -554,19 +833,52 @@ class TestRunnerView(QMainWindow):
         if result.sip_reason:
             code = f"{code} {result.sip_reason}".strip()
         rtt = "" if result.rtt_ms is None else f"{int(result.rtt_ms)} ms"
-        # Columns: # / FROM / TO / RESULT (badge) / CODE / RTT / TIME / NOTES
+        # Columns: # / FROM / TO / RESULT(3) / FAS(4) / CODE(5) / RTT(6) / TIME(7) / NOTES(8)
         text_columns = {
             0: str(result.call.index),
             1: result.from_account,
             2: result.to_uri,
-            4: code,
-            5: rtt,
-            6: f"{result.duration_s:.1f} s",
-            7: result.notes,
+            5: code,
+            6: rtt,
+            7: f"{result.duration_s:.1f} s",
+            8: result.notes,
         }
         for column, value in text_columns.items():
             self._set_text(row, column, value)
         self._set_result_badge(row, result.result)
+        self._set_fas_badge(
+            row,
+            getattr(result, "fas_verdict", "") or "",
+            float(getattr(result, "fas_confidence", 0.0) or 0.0),
+            getattr(result, "fas_reasons", "") or "",
+        )
+
+    def _set_fas_badge(self, row: int, verdict: str, confidence: float, reasons: str) -> None:
+        """Render FAS column as a coloured pill, mirroring the FasBadge in
+        the call card. Empty verdict renders an em-dash so the column
+        doesn't look broken on calls that never reached CONFIRMED."""
+        from noc_beam.ui.components import FasBadge
+
+        self.table.takeItem(row, 4)
+        if not verdict:
+            placeholder = QLabel("—")
+            placeholder.setObjectName("TestRunnerFasPlaceholder")
+            placeholder.setAlignment(
+                __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.AlignmentFlag.AlignCenter
+            )
+            wrapper = QWidget()
+            wl = QHBoxLayout(wrapper)
+            wl.setContentsMargins(6, 2, 6, 2)
+            wl.addWidget(placeholder)
+            self.table.setCellWidget(row, 4, wrapper)
+            return
+        badge = FasBadge(verdict)
+        badge.update_verdict(verdict, confidence, reasons)
+        wrapper = QWidget()
+        wl = QHBoxLayout(wrapper)
+        wl.setContentsMargins(6, 2, 6, 2)
+        wl.addWidget(badge)
+        self.table.setCellWidget(row, 4, wrapper)
 
     def _set_result_badge(self, row: int, result: str) -> None:
         """Render the RESULT column as a coloured pill badge."""

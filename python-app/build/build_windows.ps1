@@ -11,6 +11,8 @@
 param(
     [switch]$SkipNativeBuild,
     [switch]$SkipPackagedSmoke,
+    [switch]$SkipFasFetch,
+    [switch]$SkipDistZip,
     [switch]$PreflightOnly,
     [switch]$Clean,
     [string]$PythonExe = "python",
@@ -392,7 +394,28 @@ Invoke-External "Upgrade pip in $VenvDir" { & $Py -m pip install --upgrade pip }
 Invoke-External "Install project dependencies from $RepoRoot[dev]" { & $Py -m pip install -e "$RepoRoot[dev]" }
 
 # ------------------------------------------------------------------
-# 3. PyInstaller
+# 3. FAS detection assets (ONNX models + Chromaprint fpcalc)
+# ------------------------------------------------------------------
+if (-not $SkipFasFetch) {
+    Write-Header "Fetching FAS detection models + binaries"
+    Push-Location $RepoRoot
+    try {
+        # Non-fatal: a missing AASIST/PANNs model only means the resulting
+        # bundle won't include FAS assets. --fas-smoke on the built exe will
+        # report which ones are missing.
+        & $Py "build\fetch_fas_models.py"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "FAS asset fetch reported missing items (exit $LASTEXITCODE). Continuing build." -ForegroundColor Yellow
+        }
+    } finally {
+        Pop-Location
+    }
+} else {
+    Write-Host "FAS asset fetch skipped (-SkipFasFetch)." -ForegroundColor Yellow
+}
+
+# ------------------------------------------------------------------
+# 4. PyInstaller (--onedir)
 # ------------------------------------------------------------------
 Write-Header "Running PyInstaller"
 Push-Location $RepoRoot
@@ -402,9 +425,10 @@ try {
     Pop-Location
 }
 
-$ExePath = Join-Path $RepoRoot "dist\NOC_Beam.exe"
+$DistDir = Join-Path $RepoRoot "dist\NOC_Beam"
+$ExePath = Join-Path $DistDir "NOC_Beam.exe"
 if (-not (Test-Path $ExePath)) {
-    throw "PyInstaller did not produce dist\NOC_Beam.exe"
+    throw "PyInstaller did not produce $ExePath"
 }
 
 if (-not $SkipPackagedSmoke -and -not $SkipNativeBuild) {
@@ -479,6 +503,47 @@ $ExeHash = Get-FileHash -LiteralPath $ExePath -Algorithm SHA256
 "$($ExeHash.Hash)  NOC_Beam.exe" | Set-Content -Encoding ASCII -Path $ChecksumPath
 Write-Host "SHA256: $($ExeHash.Hash)" -ForegroundColor Green
 
+# ------------------------------------------------------------------
+# 5. Packaged FAS smoke
+# ------------------------------------------------------------------
+if (-not $SkipPackagedSmoke) {
+    Write-Header "Running packaged FAS smoke"
+    $FasSmokeOut = Join-Path $RepoRoot "build\fas-smoke.json"
+    Remove-Item -Force $FasSmokeOut -ErrorAction SilentlyContinue
+
+    $FasProc = Start-Process `
+        -FilePath $ExePath `
+        -ArgumentList @("--fas-smoke", "--fas-smoke-output", $FasSmokeOut) `
+        -PassThru `
+        -WindowStyle Hidden
+
+    if (-not $FasProc.WaitForExit($PackagedSmokeTimeoutSeconds * 1000)) {
+        try { Stop-Process -Id $FasProc.Id -Force -ErrorAction SilentlyContinue } catch {}
+        Write-Host "FAS smoke timed out after $PackagedSmokeTimeoutSeconds seconds (continuing build)." -ForegroundColor Yellow
+    } elseif (Test-Path $FasSmokeOut) {
+        Get-Content -Raw -Path $FasSmokeOut | Write-Host
+        if ($FasProc.ExitCode -ne 0) {
+            Write-Host "FAS smoke exit $($FasProc.ExitCode) -- assets missing or failed to load. Continuing build." -ForegroundColor Yellow
+        }
+    }
+}
+
+# ------------------------------------------------------------------
+# 6. Distribution zip
+# ------------------------------------------------------------------
+if (-not $SkipDistZip) {
+    Write-Header "Zipping dist\NOC_Beam for distribution"
+    $ZipPath = Join-Path $RepoRoot "dist\NOC_Beam.zip"
+    Remove-Item -Force $ZipPath -ErrorAction SilentlyContinue
+    Compress-Archive -Path "$DistDir\*" -DestinationPath $ZipPath -CompressionLevel Optimal
+    $ZipHash = Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256
+    "$($ZipHash.Hash)  NOC_Beam.zip" | Set-Content -Encoding ASCII -Path "$ZipPath.sha256"
+    $ZipSizeMB = [math]::Round((Get-Item $ZipPath).Length / 1MB, 1)
+    Write-Host "Distribution zip: $ZipPath ($ZipSizeMB MB)" -ForegroundColor Green
+    Write-Host "Zip SHA256: $($ZipHash.Hash)" -ForegroundColor Green
+}
+
 Write-Header "SUCCESS"
 Write-Host "Built: $ExePath" -ForegroundColor Green
+Write-Host "Dist folder: $DistDir" -ForegroundColor Green
 Write-Host "Checksum: $ChecksumPath" -ForegroundColor Green

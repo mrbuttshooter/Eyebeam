@@ -25,6 +25,12 @@ class TestResult:
     started_at: float
     from_account: str
     to_uri: str
+    # FAS verdict captured at end of call (empty if call never reached
+    # CONFIRMED -- e.g. 408 / 4xx where no audio flowed). Populated from
+    # CallRecord.fas_verdict at result-finalisation time.
+    fas_verdict: str = ""
+    fas_confidence: float = 0.0
+    fas_reasons: str = ""
 
 
 @dataclass
@@ -44,6 +50,39 @@ class _ActiveCall:
 
 
 CLEANUP_FALLBACK_SECONDS = 1.0
+
+
+def _apply_routing_to_target(target: str, account: AccountConfig) -> str:
+    """Mirror PhoneShell._rewrite_dial_target for batch dispatch.
+
+    Prepends:
+      1. supplier prefix (Genband only, when active_supplier_id is set
+         on the account at runtime via the runner's supplier picker)
+      2. account dial_prefix
+
+    SIP URIs and anything containing '@' are short-circuited above.
+    """
+    if not target:
+        return target
+    out = target
+    kind = (getattr(account, "switch_type", "other") or "other").lower()
+    if kind == "genband":
+        sid = getattr(account, "_active_supplier_id", "") or ""
+        if sid:
+            try:
+                from noc_beam.config.suppliers import load_suppliers
+                suppliers = {s.id: s for s in load_suppliers()}
+                s = suppliers.get(sid)
+                if s is not None:
+                    prefix = s.routed(getattr(account, "routing_format", "") or "")
+                    if prefix:
+                        out = f"{prefix}{out}"
+            except Exception:
+                pass
+    dial_prefix = (getattr(account, "dial_prefix", "") or "").strip()
+    if dial_prefix:
+        out = f"{dial_prefix}{out}"
+    return out
 
 
 class TestRunner(QObject):
@@ -79,8 +118,21 @@ class TestRunner(QObject):
         # correctly. Was previously created lazily via getattr.
         self._dispatching = False
         self._run_complete_emitted = False
+        # Cache of the last FAS verdict seen per call_id, so we can write
+        # the verdict into TestResult at completion time (CallManager
+        # record is dropped on DISCONNECTED before we finalise).
+        self._fas_by_call_id: dict[int, tuple[str, float, str]] = {}
 
         self.events.call_state_changed.connect(self._on_call_state_changed)
+        try:
+            self.events.call_fas_verdict.connect(self._on_fas_verdict)
+        except Exception:
+            pass  # older SipEvents builds without the signal
+
+    def _on_fas_verdict(self, call_id: int, verdict: str, confidence: float, reasons: str) -> None:
+        """Cache the latest FAS verdict per call so completion-time
+        TestResult records it even after the CallRecord is gone."""
+        self._fas_by_call_id[call_id] = (verdict, float(confidence), reasons or "")
 
     def start(self) -> None:
         if self._started:
@@ -373,6 +425,7 @@ class TestRunner(QObject):
             started_at=active.started_at_wall,
             from_account=active.account.id,
             to_uri=active.target_uri,
+            sip_call_id=active.call_id,
         )
 
         if hangup:
@@ -438,7 +491,18 @@ class TestRunner(QObject):
         started_at: float,
         from_account: str,
         to_uri: str,
+        sip_call_id: int = -1,
     ) -> None:
+        # Look up the last FAS verdict seen for this call_id (cached by
+        # _on_fas_verdict). If the call never reached CONFIRMED no verdict
+        # was emitted; fields stay empty and the runner UI renders "—".
+        fas_verdict = ""
+        fas_confidence = 0.0
+        fas_reasons = ""
+        cached = self._fas_by_call_id.pop(sip_call_id, None)
+        if cached:
+            fas_verdict, fas_confidence, fas_reasons = cached
+
         test_result = TestResult(
             call=call,
             result=result,
@@ -450,6 +514,9 @@ class TestRunner(QObject):
             started_at=started_at,
             from_account=from_account,
             to_uri=to_uri,
+            fas_verdict=fas_verdict,
+            fas_confidence=fas_confidence,
+            fas_reasons=fas_reasons,
         )
         self._results.append(test_result)
         self.call_completed.emit(test_result)
@@ -517,6 +584,10 @@ class TestRunner(QObject):
             return target
         if "@" in target:
             return f"sip:{target}"
+        # Apply account-level dial prefix and (for Genband) the active
+        # supplier's routed prefix. The active supplier id is set on the
+        # account-bound runner -- if absent we just prepend dial_prefix.
+        target = _apply_routing_to_target(target, account)
         return f"sip:{target}@{account.domain}"
 
     def _hangup(self, call: object) -> None:

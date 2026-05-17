@@ -55,6 +55,54 @@ class SipCodeBadge(QLabel):
             self.setAccessibleName(f"SIP code {label}")
 
 
+class FasBadge(QLabel):
+    """Compact verdict badge for False Answer Supervision detection.
+
+    Maps the FAS engine's verdict enum to colour levels that pick up the
+    same QSS palette as StatusPill (ok/warn/danger/muted/progress). The
+    widget is hidden when verdict is empty so non-FAS rows render flush.
+
+    Use ``update_verdict(verdict, confidence, reasons)`` to refresh. Empty
+    string verdict hides the badge.
+    """
+
+    # Map FAS verdict -> (display text, QSS level)
+    _LEVELS = {
+        "":              ("",            "muted"),
+        "ANALYZING":     ("Analyzing",   "progress"),
+        "INCONCLUSIVE":  ("Inconclusive", "muted"),
+        "LIKELY_REAL":   ("Real",        "ok"),
+        "SUSPICIOUS":    ("Suspicious",  "warn"),
+        "LIKELY_FAS":    ("Likely FAS",  "danger"),
+    }
+
+    def __init__(self, verdict: str = "", parent: QWidget | None = None) -> None:
+        super().__init__("", parent)
+        self.setObjectName("FasBadge")
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.update_verdict(verdict)
+
+    def update_verdict(self, verdict: str, confidence: float = 0.0, reasons: str = "") -> None:
+        text, level = self._LEVELS.get(verdict, ("", "muted"))
+        if not text:
+            self.setVisible(False)
+            self.setText("")
+            return
+        self.setVisible(True)
+        self.setText(text)
+        self.setProperty("level", level)
+        # Re-evaluate the QSS so the new level paints immediately.
+        self.style().unpolish(self)
+        self.style().polish(self)
+        tip = f"FAS: {text}"
+        if confidence > 0:
+            tip += f" ({confidence:.0%} confidence)"
+        if reasons:
+            tip += f"\n{reasons}"
+        self.setToolTip(tip)
+        self.setAccessibleName(tip)
+
+
 class MetricChip(QLabel):
     def __init__(self, text: str, level: str = "muted", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)

@@ -60,6 +60,19 @@ def run(argv: list[str]) -> int:
     theme = getattr(settings.appearance, "theme", "light")
     apply_theme(app, settings.appearance.high_contrast, theme=theme)
 
+    # FAS detection engine. The audio tap is wired per-call in
+    # sip/call.py:onCallMediaState; this just spins up the worker
+    # thread so it's ready when the first call confirms. Honours
+    # FasSettings.enabled -- when False, attach_fas_to_call becomes
+    # a no-op throughout the process lifetime.
+    try:
+        from noc_beam.audio.fas_engine import start_fas_engine
+
+        fas_cfg = getattr(settings, "fas", None)
+        start_fas_engine(enabled=bool(fas_cfg.enabled) if fas_cfg else True)
+    except Exception:
+        log.exception("FAS engine failed to start; continuing without FAS detection")
+
     window = PhoneShell()
     # Honour StartupSettings persisted from Settings -> General.
     # start_minimized launches into the tray (or minimized to taskbar

@@ -1046,34 +1046,39 @@ QWidget:focus {
 QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus, QToolButton:focus, QPushButton:focus {
     border: 1px solid #FF8A3D;
 }
-QLabel#StatusPill, QLabel#SipCodeBadge, QLabel#MetricChip {
+QLabel#StatusPill, QLabel#SipCodeBadge, QLabel#MetricChip, QLabel#FasBadge, QLabel#FasSessionChip {
     border-radius: 4px;
     padding: 2px 8px;
     min-height: 18px;
     font-size: 11px;
     font-weight: 600;
 }
-QLabel#StatusPill[level="ok"], QLabel#SipCodeBadge[level="ok"], QLabel#MetricChip[level="ok"] {
+QLabel#StatusPill[level="ok"], QLabel#SipCodeBadge[level="ok"], QLabel#MetricChip[level="ok"], QLabel#FasBadge[level="ok"], QLabel#FasSessionChip[level="ok"] {
     color: #8DDBA6;
     background-color: #102B1A;
     border: 1px solid #66D19E;
 }
-QLabel#StatusPill[level="progress"], QLabel#SipCodeBadge[level="progress"], QLabel#MetricChip[level="progress"] {
+QLabel#StatusPill[level="progress"], QLabel#SipCodeBadge[level="progress"], QLabel#MetricChip[level="progress"], QLabel#FasBadge[level="progress"] {
     color: #F2CC60;
     background-color: #332700;
     border: 1px solid #B88700;
 }
-QLabel#StatusPill[level="danger"], QLabel#SipCodeBadge[level="danger"], QLabel#MetricChip[level="danger"] {
+QLabel#StatusPill[level="warn"], QLabel#SipCodeBadge[level="warn"], QLabel#MetricChip[level="warn"], QLabel#FasBadge[level="warn"], QLabel#FasSessionChip[level="warn"] {
+    color: #F5B968;
+    background-color: #2E1F08;
+    border: 1px solid #E0931F;
+}
+QLabel#StatusPill[level="danger"], QLabel#SipCodeBadge[level="danger"], QLabel#MetricChip[level="danger"], QLabel#FasBadge[level="danger"], QLabel#FasSessionChip[level="danger"] {
     color: #FFB3BA;
     background-color: #351014;
     border: 1px solid #D33841;
 }
-QLabel#StatusPill[level="info"], QLabel#SipCodeBadge[level="info"], QLabel#MetricChip[level="info"] {
+QLabel#StatusPill[level="info"], QLabel#SipCodeBadge[level="info"], QLabel#MetricChip[level="info"], QLabel#FasBadge[level="info"] {
     color: #9DDCFF;
     background-color: #0D2535;
     border: 1px solid #2A8DC4;
 }
-QLabel#StatusPill[level="muted"], QLabel#SipCodeBadge[level="muted"], QLabel#MetricChip[level="muted"] {
+QLabel#StatusPill[level="muted"], QLabel#SipCodeBadge[level="muted"], QLabel#MetricChip[level="muted"], QLabel#FasBadge[level="muted"], QLabel#FasSessionChip[level="muted"] {
     color: #B7C0CC;
     background-color: #1F252E;
     border: 1px solid #3B4654;
@@ -1616,4 +1621,215 @@ QLabel#RecentsTime {
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 10px;
     min-width: 56px;
+}
+
+/* =====================================================================
+   Modern flat dark styling for Settings panes + input widgets
+   Mirrors the light.qss block; tuned to the dark palette.
+   ===================================================================== */
+QWidget#SettingsPane {
+    background-color: #161B22;
+}
+QWidget#SettingsPane QLabel,
+QGroupBox QLabel,
+QGroupBox QCheckBox {
+    background-color: transparent;
+}
+QLabel#SettingsTitle {
+    color: #E5E9F0;
+    font-size: 22px;
+    font-weight: 600;
+    background-color: transparent;
+}
+QLabel#SettingsSubtitle,
+QLabel#SettingsBlurb {
+    color: #8B95A5;
+    font-size: 12px;
+    background-color: transparent;
+}
+
+QCheckBox {
+    background-color: transparent;
+    color: #E5E9F0;
+    font-size: 13px;
+    spacing: 8px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid #3B4654;
+    border-radius: 4px;
+    background-color: #0E1116;
+}
+QCheckBox::indicator:hover {
+    border-color: #2A8DC4;
+}
+QCheckBox::indicator:checked {
+    background-color: #2A8DC4;
+    border-color: #2A8DC4;
+}
+
+QComboBox {
+    background-color: #0E1116;
+    border: 1px solid #2B323D;
+    border-radius: 6px;
+    padding: 5px 30px 5px 10px;
+    font-size: 13px;
+    color: #E5E9F0;
+    min-height: 20px;
+    selection-background-color: #0D2535;
+    selection-color: #E5E9F0;
+}
+QComboBox:hover { border-color: #3B4654; }
+QComboBox:focus, QComboBox:on { border-color: #2A8DC4; }
+QComboBox:disabled { background-color: #161B22; color: #5B6373; }
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 26px;
+    border: none;
+    background: transparent;
+}
+QComboBox::down-arrow {
+    image: url(__ARROW_DOWN_LIGHT__);
+    width: 12px;
+    height: 12px;
+}
+QComboBox QAbstractItemView {
+    background-color: #161B22;
+    border: 1px solid #2B323D;
+    border-radius: 6px;
+    selection-background-color: #0D2535;
+    selection-color: #E5E9F0;
+    color: #E5E9F0;
+    padding: 4px 0;
+    outline: 0;
+}
+QComboBox QAbstractItemView::item {
+    padding: 6px 12px;
+    min-height: 22px;
+    color: #E5E9F0;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: #1F252E;
+}
+QComboBox QAbstractItemView::item:selected {
+    background-color: #0D2535;
+}
+
+QSpinBox, QDoubleSpinBox {
+    background-color: #0E1116;
+    border: 1px solid #2B323D;
+    border-radius: 6px;
+    padding: 5px 28px 5px 10px;
+    font-size: 13px;
+    color: #E5E9F0;
+    min-height: 20px;
+}
+QSpinBox:hover, QDoubleSpinBox:hover { border-color: #3B4654; }
+QSpinBox:focus, QDoubleSpinBox:focus { border-color: #2A8DC4; }
+QSpinBox:disabled, QDoubleSpinBox:disabled {
+    background-color: #161B22;
+    color: #5B6373;
+}
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 22px;
+    height: 14px;
+    border: none;
+    border-top-right-radius: 6px;
+    background: transparent;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 22px;
+    height: 14px;
+    border: none;
+    border-bottom-right-radius: 6px;
+    background: transparent;
+}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: #1F252E;
+}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(__ARROW_UP_LIGHT__);
+    width: 10px;
+    height: 10px;
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(__ARROW_DOWN_LIGHT__);
+    width: 10px;
+    height: 10px;
+}
+
+QLineEdit {
+    background-color: #0E1116;
+    border: 1px solid #2B323D;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 13px;
+    color: #E5E9F0;
+    selection-background-color: #0D2535;
+    selection-color: #E5E9F0;
+}
+QLineEdit:hover { border-color: #3B4654; }
+QLineEdit:focus { border-color: #2A8DC4; }
+QLineEdit:disabled {
+    background-color: #161B22;
+    color: #5B6373;
+}
+
+QGroupBox {
+    background-color: transparent;
+    border: 1px solid #2B323D;
+    border-radius: 8px;
+    margin-top: 14px;
+    padding: 14px 12px 10px;
+    color: #E5E9F0;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 8px;
+    left: 8px;
+    color: #8B95A5;
+    background-color: #161B22;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+QFrame#CodecDnDColumn { background-color: transparent; }
+QLabel#CodecDnDColumnLabel {
+    color: #8B95A5;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 0 4px 2px;
+    background-color: transparent;
+}
+QListWidget#CodecDnDList {
+    background-color: #0E1116;
+    border: 1px solid #2B323D;
+    border-radius: 8px;
+    padding: 4px;
+    color: #E5E9F0;
+    font-size: 13px;
+    outline: 0;
+}
+QListWidget#CodecDnDList::item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin: 2px 0;
+    color: #E5E9F0;
+}
+QListWidget#CodecDnDList::item:hover { background-color: #1F252E; }
+QListWidget#CodecDnDList::item:selected {
+    background-color: #0D2535;
+    color: #E5E9F0;
 }

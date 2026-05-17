@@ -10,6 +10,10 @@ def _parse_smoke_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--sip-smoke", action="store_true")
     parser.add_argument("--sip-smoke-output")
+    parser.add_argument("--fas-smoke", action="store_true")
+    parser.add_argument("--fas-smoke-output")
+    parser.add_argument("--fas-demo", action="store_true",
+                        help="Score 7 synthetic FAS scenarios using bundled models")
     args, _remaining = parser.parse_known_args(argv[1:])
     return args
 
@@ -26,6 +30,21 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(json.dumps(report, indent=2, sort_keys=True))
         return exit_code
+
+    if smoke_args.fas_smoke:
+        from noc_beam.audio.fas_smoke import run_fas_smoke, write_smoke_report
+
+        exit_code, report = run_fas_smoke()
+        if smoke_args.fas_smoke_output:
+            write_smoke_report(smoke_args.fas_smoke_output, report)
+        else:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        return exit_code
+
+    if smoke_args.fas_demo:
+        from noc_beam.audio.fas_demo import run_fas_demo
+
+        return run_fas_demo()
 
     from noc_beam.app import run
 

@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 import time
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu,
@@ -90,6 +90,34 @@ def _open_modal(dlg) -> bool:
 
 def _ask_yes_no(parent, title, body):
     return QMessageBox.question(parent, title, body) == QMessageBox.Yes
+
+
+class _SupplierComboFocusFilter(QObject):
+    """Select-all-on-focus for the SUPPLIER combo's line edit.
+
+    Without this, focusing or clicking the combo lands a cursor in the
+    middle of the existing supplier name -- so typing inserts instead of
+    replacing. Operators dialing under time pressure expect "click and
+    type" to act like a fresh search field.
+
+    Owns no state; the combo is passed in so we can also pop its
+    dropdown after a delayed selectAll (the QTimer fires after Qt has
+    finished its own focus / mouse handling).
+    """
+
+    def __init__(self, combo):
+        super().__init__(combo)
+        self._combo = combo
+
+    def eventFilter(self, obj, event):
+        et = event.type()
+        if et in (QEvent.Type.FocusIn, QEvent.Type.MouseButtonPress):
+            # Defer selectAll() -- if we call it inline, Qt's own focus /
+            # click handler runs *after* us and immediately clears the
+            # selection. QTimer.singleShot(0, ...) puts us at the back of
+            # the event queue, after Qt's handlers.
+            QTimer.singleShot(0, obj.selectAll)
+        return False
 
 
 class PhoneShell(QMainWindow):
@@ -288,6 +316,62 @@ class PhoneShell(QMainWindow):
         self.account_chip.setAccessibleDescription("Choose the SIP account used for outgoing calls")
         acct_row.addWidget(kicker); acct_row.addWidget(self.account_chip, 1)
         top_l.addLayout(acct_row)
+
+        # SUPPLIER picker -- shown only when active account has
+        # switch_type in {teles, genband}. Editable combo so the user
+        # can type to filter the 400+ supplier list. Hidden by default;
+        # _refresh_supplier_picker() shows / populates it when an account
+        # is selected (and on app boot if an account is already saved).
+        from PySide6.QtWidgets import QComboBox as _QComboBox
+        supp_row = QHBoxLayout(); supp_row.setContentsMargins(0, 4, 0, 0); supp_row.setSpacing(8)
+        self.supplier_kicker = QLabel("SUPPLIER", top)
+        self.supplier_kicker.setObjectName("AccountKicker")
+        self.supplier_combo = _QComboBox(top)
+        self.supplier_combo.setObjectName("SupplierCombo")
+        self.supplier_combo.setEditable(True)
+        self.supplier_combo.setInsertPolicy(_QComboBox.InsertPolicy.NoInsert)
+        self.supplier_combo.setAccessibleName("Active supplier")
+        self.supplier_combo.setAccessibleDescription(
+            "Pick a supplier from the active account's switch. "
+            "Type any part of the name to filter the list."
+        )
+        # Qt's default completer is prefix-match + case-sensitive --
+        # useless for searching by country or partial name. Promote to
+        # MatchContains + CaseInsensitive so typing "egypt" or "C303"
+        # filters as expected.
+        _comp = self.supplier_combo.completer()
+        if _comp is not None:
+            from PySide6.QtCore import Qt as _Qt
+            from PySide6.QtWidgets import QCompleter as _QCompleter
+            _comp.setFilterMode(_Qt.MatchFlag.MatchContains)
+            _comp.setCaseSensitivity(_Qt.CaseSensitivity.CaseInsensitive)
+            # Force the popup mode so typing surfaces a real dropdown of
+            # filtered matches, not just an inline suggestion. Qt's
+            # default for editable QComboBox skips the popup when a
+            # single inline match is enough -- but operators expect to
+            # *see* the candidate list, even if it's one row.
+            _comp.setCompletionMode(_QCompleter.CompletionMode.PopupCompletion)
+        # UX: clicking or focusing the supplier combo selects the existing
+        # text so typing instantly replaces it (otherwise the user has to
+        # manually clear "Telecom Egypt -- C303" before searching). On the
+        # first keystroke after focus we also pop the dropdown so the live
+        # filtered match list is visible without an extra click.
+        _le = self.supplier_combo.lineEdit()
+        if _le is not None:
+            self._supplier_combo_filter = _SupplierComboFocusFilter(self.supplier_combo)
+            _le.installEventFilter(self._supplier_combo_filter)
+            _le.textEdited.connect(self._on_supplier_text_edited)
+        self.supplier_combo.currentIndexChanged.connect(self._on_supplier_changed)
+        supp_row.addWidget(self.supplier_kicker)
+        supp_row.addWidget(self.supplier_combo, 1)
+        # Wrap in a QWidget so we can hide the whole row including the label.
+        from PySide6.QtWidgets import QWidget as _QWidget
+        self.supplier_row_widget = _QWidget(top)
+        self.supplier_row_widget.setLayout(supp_row)
+        self.supplier_row_widget.setVisible(False)
+        top_l.addWidget(self.supplier_row_widget)
+        # Active supplier id for the current account (str or "").
+        self._active_supplier_id: str = ""
 
         self.audio = AudioStrip(top)
         # Top-strip mic icon mutes the microphone on the active call.
@@ -531,6 +615,7 @@ class PhoneShell(QMainWindow):
             (ev.call_state_changed,    self._on_call_state),
             (ev.call_media_active,     self._on_call_media),
             (ev.call_quality,          self._on_call_quality),
+            (ev.call_fas_verdict,      self._on_call_fas_verdict),
             (ev.call_ended,            self._on_call_ended),
             (self.calls.call_added,    self._on_call_record_added),
             (self.calls.call_updated,  self._on_call_record_updated),
@@ -661,6 +746,103 @@ class PhoneShell(QMainWindow):
         self.account_chip.setProperty("health", health)
         self.account_chip.style().unpolish(self.account_chip)
         self.account_chip.style().polish(self.account_chip)
+        # Refresh supplier picker for this account's switch type.
+        try:
+            self._refresh_supplier_picker()
+        except Exception:
+            log.exception("Supplier picker refresh failed for account %s", account_id)
+
+    # ------------------------------------------------------------------
+    # Supplier picker (drives dial routing)
+    # ------------------------------------------------------------------
+    def _refresh_supplier_picker(self) -> None:
+        """Show or hide the supplier picker based on active account's
+        switch_type, and populate the dropdown with the shared
+        suppliers list. Called on account selection + on boot."""
+        acc = self._selected_account()
+        kind = (getattr(acc, "switch_type", "other") or "other").lower()
+        if not acc or kind == "other":
+            self.supplier_row_widget.setVisible(False)
+            self._active_supplier_id = ""
+            return
+        from noc_beam.config.suppliers import load_suppliers
+
+        suppliers = load_suppliers()
+        # Block signals so populating doesn't fire _on_supplier_changed
+        # repeatedly during fill.
+        self.supplier_combo.blockSignals(True)
+        self.supplier_combo.clear()
+        for s in suppliers:
+            self.supplier_combo.addItem(s.display(), s.id)
+        # Restore last-selected supplier if it's still in the list.
+        idx = self.supplier_combo.findData(self._active_supplier_id)
+        if idx >= 0:
+            self.supplier_combo.setCurrentIndex(idx)
+        elif self.supplier_combo.count():
+            self.supplier_combo.setCurrentIndex(0)
+            self._active_supplier_id = self.supplier_combo.itemData(0) or ""
+        self.supplier_combo.blockSignals(False)
+        self.supplier_row_widget.setVisible(True)
+        # Refresh kicker label to show which kind of routing applies.
+        self.supplier_kicker.setText(
+            "SUPPLIER (auth)" if kind == "teles" else "SUPPLIER (prefix)"
+        )
+
+    def _on_supplier_text_edited(self, _text: str) -> None:
+        """First keystroke after focus pops the filtered dropdown.
+
+        Calling `combo.showPopup()` would open the combo's own popup --
+        but that popup is *unfiltered*, so every supplier is shown
+        regardless of what the user typed. The QCompleter's popup, by
+        contrast, respects MatchContains + CaseInsensitive, so calling
+        `completer.complete()` surfaces only the matching rows. That
+        matches the operator expectation: "type 303, see Telecom Egypt
+        and nothing else, pick it."
+        """
+        try:
+            comp = self.supplier_combo.completer()
+            if comp is not None:
+                comp.complete()
+        except Exception:
+            # Never crash the dial bar over a popup glitch.
+            pass
+
+    def _on_supplier_changed(self, index: int) -> None:
+        if index < 0:
+            return
+        sid = self.supplier_combo.itemData(index) or ""
+        self._active_supplier_id = str(sid)
+        log.info("Active supplier changed -> id=%s", self._active_supplier_id)
+        # For Teles, swap auth username on the active account and re-register.
+        # For Genband, no re-register; the prefix is applied at dial time.
+        acc = self._selected_account()
+        if acc is None:
+            return
+        kind = (getattr(acc, "switch_type", "other") or "other").lower()
+        if kind != "teles":
+            return
+        try:
+            from noc_beam.config.suppliers import load_suppliers
+            from noc_beam.sip.endpoint import SipEndpoint
+
+            suppliers = {s.id: s for s in load_suppliers()}
+            s = suppliers.get(self._active_supplier_id)
+            if s is None:
+                return
+            new_auth = s.routed(getattr(acc, "routing_format", "") or "")
+            if not new_auth or new_auth == acc.auth_user:
+                return
+            log.info("Teles supplier swap: auth_user %r -> %r",
+                     acc.auth_user, new_auth)
+            acc.auth_user = new_auth
+            # Re-register with new credentials. SipEndpoint.update_account
+            # handles the modify+register cycle.
+            try:
+                SipEndpoint.instance().update_account(acc)
+            except Exception:
+                log.exception("Failed to re-register account %s with new auth_user", acc.id)
+        except Exception:
+            log.exception("Teles auth swap failed for supplier %s", self._active_supplier_id)
 
     def _add_account_to_endpoint(self, cfg):
         try: SipEndpoint.instance().add_account(cfg)
@@ -898,6 +1080,16 @@ class PhoneShell(QMainWindow):
         if call_id == self._selected_call_id:
             self.call_widget.update_quality(mos, loss)
 
+    def _on_call_fas_verdict(self, call_id, verdict, confidence, reasons):
+        # FAS engine fires this from a worker thread; Qt queues it onto
+        # the main thread before delivery. Push to the call_manager so
+        # any widget bound to call_updated re-renders with the new badge.
+        try:
+            self.calls.update_fas(call_id, verdict, confidence, reasons)
+        except Exception:
+            pass
+
+
     def _on_call_ended(self, call_id):
         self._maybe_write_cdr(call_id); self.ringer.stop()
 
@@ -988,6 +1180,9 @@ class PhoneShell(QMainWindow):
                 started_at=rec.started_at, connected_at=rec.connected_at,
                 ended_at=rec.ended_at or rec.started_at,
                 end_code=rec.last_code, end_reason=rec.last_reason, codec=rec.codec,
+                fas_verdict=getattr(rec, "fas_verdict", "") or "",
+                fas_confidence=float(getattr(rec, "fas_confidence", 0.0) or 0.0),
+                fas_reasons=getattr(rec, "fas_reasons", "") or "",
             )
         if call_id == self._selected_call_id:
             # Stale-peer fix: when remote_uri lands AFTER show_outgoing
@@ -1017,6 +1212,16 @@ class PhoneShell(QMainWindow):
             self.call_widget.update_state(rec.state.value, rec.last_code, rec.last_reason)
             if rec.codec:
                 self.call_widget.update_media(rec.codec, rec.clock_rate, rec.channels)
+            # FAS verdict badge: hidden until the engine fires, then
+            # tinted by verdict severity. Empty string hides it.
+            try:
+                self.call_widget.update_fas(
+                    getattr(rec, "fas_verdict", "") or "",
+                    float(getattr(rec, "fas_confidence", 0.0) or 0.0),
+                    getattr(rec, "fas_reasons", "") or "",
+                )
+            except Exception:
+                pass
             # Re-apply per-call mute on resume (re-INVITE creates a new
             # audio media slot at default 1.0; without re-applying our
             # mute state silently un-mutes).
@@ -1060,9 +1265,45 @@ class PhoneShell(QMainWindow):
         if not target: return
         self._on_call_requested(target); self.dial_input.clear()
 
+    def _rewrite_dial_target(self, target: str) -> str:
+        """Apply account dial_prefix + supplier prefix (Genband only)
+        to the user-typed target. SIP URIs (sip:user@host) and any
+        target that already contains '@' are passed through unchanged.
+        """
+        if not target or "@" in target or target.startswith("sip:") or target.startswith("sips:"):
+            return target
+        acc = self._selected_account()
+        if acc is None:
+            return target
+        out = target
+        # Genband supplier prefix layered FIRST (innermost), then the
+        # account-level dial prefix (outermost) so the wire sees
+        # <dial_prefix><supplier_prefix><number>.
+        kind = (getattr(acc, "switch_type", "other") or "other").lower()
+        if kind == "genband" and self._active_supplier_id:
+            try:
+                from noc_beam.config.suppliers import load_suppliers
+
+                suppliers = {s.id: s for s in load_suppliers()}
+                s = suppliers.get(self._active_supplier_id)
+                if s is not None:
+                    prefix = s.routed(getattr(acc, "routing_format", "") or "")
+                    if prefix:
+                        out = f"{prefix}{out}"
+            except Exception:
+                log.exception("Genband prefix application failed")
+        dial_prefix = (getattr(acc, "dial_prefix", "") or "").strip()
+        if dial_prefix:
+            out = f"{dial_prefix}{out}"
+        if out != target:
+            log.info("Dial rewrite: %r -> %r (account=%s kind=%s)",
+                     target, out, acc.id, kind)
+        return out
+
     def _on_call_requested(self, target):
         if not self._active_account_id:
             QMessageBox.information(self, "No account", "Add a SIP account first."); return
+        target = self._rewrite_dial_target(target)
         try:
             call = SipEndpoint.instance().make_call(self._active_account_id, target)
             cid = call.getInfo().id

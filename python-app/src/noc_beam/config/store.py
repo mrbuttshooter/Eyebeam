@@ -81,6 +81,27 @@ class AccountConfig:
     # (UDP/TCP 5060, TLS 5061). When set, overrides PJSIP's resolution.
     port: int = 0
 
+    # ---- Switch type & supplier routing -------------------------------
+    # switch_type: which switch this account talks to. Drives whether
+    # the supplier picker is shown and which routing field (username
+    # vs prefix) gets the supplier substitution.
+    #   "teles"   -- supplier substitutes into auth_user (re-register)
+    #   "genband" -- supplier becomes a dial prefix (no re-register)
+    #   "other"   -- supplier picker hidden; account works as before
+    switch_type: str = "other"
+
+    # Optional auto-prepended dial prefix. Applied BEFORE the supplier
+    # prefix (if any). Common case: Teles needs "00" before every number.
+    dial_prefix: str = ""
+
+    # Routing format template used with the active supplier's id.
+    # Examples:
+    #   Teles UK: "U{id}"   (id="303" -> auth username "U303")
+    #   Teles NY: "N{id}"   (id="303" -> auth username "N303")
+    #   Genband:  "000{id}" (id="303" -> dial prefix "000303")
+    # If empty, falls back to the supplier id verbatim.
+    routing_format: str = ""
+
     def to_storable(self) -> dict[str, Any]:
         d = asdict(self)
         d["password"] = _protect(self.password)
@@ -183,12 +204,39 @@ class ComplianceSettings:
 
 
 @dataclass
+class FasSettings:
+    """False-Answer Supervision (FAS) detection.
+
+    FAS = supplier returns SIP 200 OK but the audio is fake (silence,
+    ringback, looped recording, music-on-hold). NOC_Beam taps each call's
+    downlink, runs offline ONNX classifiers + a rules engine, and
+    classifies the answer as LIKELY_REAL / SUSPICIOUS / LIKELY_FAS.
+
+    Sensitivity preset adjusts the score thresholds:
+        conservative -- fewer false alarms, may miss subtle FAS
+        balanced     -- default; matches per-signal weights in fas_rules.py
+        aggressive   -- catches more FAS, expect occasional false alarms
+    """
+    enabled: bool = True
+    sensitivity: str = "balanced"   # conservative | balanced | aggressive
+    # When True, drop a short rolling WAV clip per analysed call into
+    # %APPDATA%/NOC_Beam/fas_clips/ for later review. Capped retention.
+    record_clips: bool = True
+    clip_retention_count: int = 200
+    clip_retention_mb: int = 500
+    # Block runs of N consecutive automated test calls when a supplier
+    # crosses LIKELY_FAS. 0 = never auto-pause.
+    auto_pause_on_fas_count: int = 0
+
+
+@dataclass
 class GlobalSettings:
     audio: AudioSettings = field(default_factory=AudioSettings)
     codecs: CodecSettings = field(default_factory=CodecSettings)
     appearance: AppearanceSettings = field(default_factory=AppearanceSettings)
     startup: StartupSettings = field(default_factory=StartupSettings)
     compliance: ComplianceSettings = field(default_factory=ComplianceSettings)
+    fas: FasSettings = field(default_factory=FasSettings)
     sip_port: int = 0               # 0 = ephemeral
     log_level: int = 4              # PJSIP log level 0..6
     user_agent: str = "NOC_Beam/0.1"
@@ -252,12 +300,14 @@ def load_settings() -> GlobalSettings:
         # but resetting every launch.
         startup = _filter(StartupSettings, raw.get("startup", {}))
         compliance = _filter(ComplianceSettings, raw.get("compliance", {}))
+        fas = _filter(FasSettings, raw.get("fas", {}))
         return GlobalSettings(
             audio=audio,
             codecs=codecs,
             appearance=appearance,
             startup=startup,
             compliance=compliance,
+            fas=fas,
             sip_port=raw.get("sip_port", 0),
             log_level=raw.get("log_level", 4),
             user_agent=raw.get("user_agent", "NOC_Beam/0.1"),
@@ -279,6 +329,7 @@ def save_settings(settings: GlobalSettings) -> None:
         # dropped on save; UI looked functional, behavior was nil.
         "startup": asdict(settings.startup),
         "compliance": asdict(settings.compliance),
+        "fas": asdict(settings.fas),
         "sip_port": settings.sip_port,
         "log_level": settings.log_level,
         "user_agent": settings.user_agent,

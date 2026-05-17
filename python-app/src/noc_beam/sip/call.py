@@ -60,6 +60,14 @@ if PJSUA2_AVAILABLE:
                     info.lastReason,
                 )
                 if info.state == 6:  # PJSIP_INV_STATE_DISCONNECTED
+                    # Detach FAS first so the worker stops scoring before
+                    # the buffer goes away. No-op if not attached.
+                    try:
+                        from noc_beam.audio.fas_engine import detach_fas_from_call
+
+                        detach_fas_from_call(info.id)
+                    except Exception:
+                        log.exception("FAS detach raised on call %s", info.id)
                     sip_events().call_ended.emit(info.id)
                     # Drop from the account's calls list so find_call
                     # doesn't return this stale instance when PJSIP
@@ -102,6 +110,23 @@ if PJSUA2_AVAILABLE:
                         except Exception:
                             pass
                         sip_events().call_media_active.emit(info.id, codec, clock, chans)
+
+                        # FAS tap: pipe the call's downlink audio into the
+                        # detection engine. No-op if FAS is disabled. Wrap
+                        # tight -- the engine must NEVER prevent the
+                        # capture/playback wiring above from completing.
+                        try:
+                            from noc_beam.audio.fas_engine import attach_fas_to_call
+
+                            attach_fas_to_call(
+                                info.id,
+                                aud,
+                                account_id=self._account_id,
+                                remote_uri=self.remote_uri,
+                                codec=codec,
+                            )
+                        except Exception:
+                            log.exception("FAS attach raised on call %s", info.id)
             except Exception:
                 log.exception("onCallMediaState error")
 

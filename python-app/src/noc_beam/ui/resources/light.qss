@@ -2093,17 +2093,39 @@ QLabel#TraceMsgDelta {
 QWidget#SettingsPane {
     background-color: #F6F7F9;
 }
+/* Free-standing labels inside a SettingsPane must NOT get their default
+   widget background -- on Windows that defaults to white, producing a
+   visible white block behind every title/blurb against the F6F7F9 pane.
+   Qt's QLabel inherits the parent palette but only with an explicit
+   transparent background. */
+QWidget#SettingsPane > QLabel,
+QWidget#SettingsPane QLabel#SettingsTitle,
+QWidget#SettingsPane QLabel#SettingsSubtitle,
+QWidget#SettingsPane QLabel#SettingsBlurb,
+QWidget#SettingsPane QLabel#SettingsRowLabel,
+QWidget#SettingsPane QLabel#SettingsRowHint {
+    background-color: transparent;
+}
 QLabel#SettingsTitle {
     color: #1F2328;
     font-size: 22px;
     font-weight: 600;
     padding-bottom: 2px;
+    background-color: transparent;
 }
 QLabel#SettingsSubtitle {
     color: #57606A;
     font-size: 12px;
     line-height: 1.4em;
     padding-bottom: 4px;
+    background-color: transparent;
+}
+QLabel#SettingsBlurb {
+    color: #57606A;
+    font-size: 12px;
+    line-height: 1.4em;
+    padding-bottom: 8px;
+    background-color: transparent;
 }
 QFrame#SettingsCard {
     background-color: #FFFFFF;
@@ -2285,4 +2307,318 @@ QToolButton#CodecRowReorderBtn:hover {
 }
 QToolButton#CodecRowReorderBtn:pressed {
     background-color: #DDE3E8;
+}
+
+/* =====================================================================
+   Redesigned Test Runner toolbar + preflight + tabs
+   ===================================================================== */
+QFrame#TestRunnerToolbar {
+    background-color: #FFFFFF;
+    border: 1px solid #ECEEF1;
+    border-radius: 8px;
+}
+QLabel#TestRunnerToolbarLabel {
+    color: #57606A;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    background: transparent;
+}
+QLabel#TestRunnerToolbarSep {
+    color: #D1D5DB;
+    font-size: 13px;
+    padding: 0 2px;
+    background: transparent;
+}
+QFrame#TestRunnerPreflight {
+    background-color: #FFF5ED;
+    border: 1px solid #FFD7BD;
+    border-radius: 6px;
+}
+QLabel#TestRunnerPreflightLabel {
+    color: #1F2328;
+    font-size: 12px;
+    background: transparent;
+}
+QToolButton#TestRunnerTab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 12px;
+    color: #57606A;
+    font-size: 12px;
+    font-weight: 600;
+}
+QToolButton#TestRunnerTab:hover { color: #1F2328; }
+QToolButton#TestRunnerTab:checked {
+    color: #E85D04;
+    border-bottom-color: #E85D04;
+}
+
+/* Account dialog Advanced disclosure */
+QToolButton#AccountAdvancedToggle {
+    background: transparent;
+    border: none;
+    color: #57606A;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 2px 4px;
+}
+QToolButton#AccountAdvancedToggle:hover { color: #1F2328; }
+QLabel#AccountAdvancedSummary {
+    color: #8C959F;
+    font-size: 11px;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    background: transparent;
+}
+QFrame#AccountAdvancedBody {
+    background-color: transparent;
+    border: none;
+}
+QPushButton#AccountTestGhostBtn {
+    background: transparent;
+    border: 1px solid #ECEEF1;
+    color: #57606A;
+    padding: 6px 12px;
+    border-radius: 6px;
+}
+QPushButton#AccountTestGhostBtn:hover {
+    background-color: #F5F6F8;
+    border-color: #D1D5DB;
+    color: #1F2328;
+}
+
+/* =====================================================================
+   Modern flat styling for input widgets (combos, spinboxes, line edits)
+   Replaces the native Windows look with a consistent flat aesthetic.
+   Named overrides earlier in the file still win by selector specificity.
+   ===================================================================== */
+QComboBox {
+    background-color: #FFFFFF;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    padding: 5px 30px 5px 10px;
+    font-size: 13px;
+    color: #1F2328;
+    min-height: 20px;
+    selection-background-color: #FFF5ED;
+    selection-color: #1F2328;
+}
+QComboBox:hover { border-color: #94A0AD; }
+QComboBox:focus, QComboBox:on { border-color: #FF7A1A; }
+QComboBox:disabled {
+    background-color: #F6F7F9;
+    color: #8C959F;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 26px;
+    border: none;
+    background: transparent;
+}
+QComboBox::down-arrow {
+    image: url(__ARROW_DOWN__);
+    width: 12px;
+    height: 12px;
+}
+QComboBox::down-arrow:disabled {
+    image: url(__ARROW_DOWN_LIGHT__);
+}
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    selection-background-color: #FFF5ED;
+    selection-color: #1F2328;
+    padding: 4px 0;
+    outline: 0;
+}
+QComboBox QAbstractItemView::item {
+    padding: 6px 12px;
+    min-height: 22px;
+    border: none;
+    color: #1F2328;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: #F6F7F9;
+}
+QComboBox QAbstractItemView::item:selected {
+    background-color: #FFF5ED;
+    color: #1F2328;
+}
+
+/* ------ Spinboxes ----- */
+QSpinBox, QDoubleSpinBox {
+    background-color: #FFFFFF;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    padding: 5px 28px 5px 10px;
+    font-size: 13px;
+    color: #1F2328;
+    min-height: 20px;
+}
+QSpinBox:hover, QDoubleSpinBox:hover { border-color: #94A0AD; }
+QSpinBox:focus, QDoubleSpinBox:focus { border-color: #FF7A1A; }
+QSpinBox:disabled, QDoubleSpinBox:disabled {
+    background-color: #F6F7F9;
+    color: #8C959F;
+}
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 22px;
+    height: 14px;
+    border: none;
+    border-top-right-radius: 6px;
+    background: transparent;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 22px;
+    height: 14px;
+    border: none;
+    border-bottom-right-radius: 6px;
+    background: transparent;
+}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: #F6F7F9;
+}
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {
+    background-color: #EDEFF2;
+}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    image: url(__ARROW_UP__);
+    width: 10px;
+    height: 10px;
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    image: url(__ARROW_DOWN__);
+    width: 10px;
+    height: 10px;
+}
+QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled {
+    image: url(__ARROW_UP_LIGHT__);
+}
+QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled {
+    image: url(__ARROW_DOWN_LIGHT__);
+}
+
+/* ------ QLineEdit baseline (any QLineEdit without a named selector) -- */
+QLineEdit {
+    background-color: #FFFFFF;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 13px;
+    color: #1F2328;
+    selection-background-color: #FFE2C9;
+    selection-color: #1F2328;
+}
+QLineEdit:hover { border-color: #94A0AD; }
+QLineEdit:focus { border-color: #FF7A1A; }
+QLineEdit:disabled {
+    background-color: #F6F7F9;
+    color: #8C959F;
+}
+
+/* ------ QCheckBox -- transparent so it doesn't paint a white block
+   over the panel/group background. Modern flat indicator. -------- */
+QCheckBox {
+    background-color: transparent;
+    color: #1F2328;
+    font-size: 13px;
+    spacing: 8px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid #C2C9D2;
+    border-radius: 4px;
+    background-color: #FFFFFF;
+}
+QCheckBox::indicator:hover {
+    border-color: #FF7A1A;
+}
+QCheckBox::indicator:checked {
+    background-color: #FF7A1A;
+    border-color: #FF7A1A;
+}
+QCheckBox::indicator:disabled {
+    border-color: #E1E4E8;
+    background-color: #F6F7F9;
+}
+
+/* Any QLabel nested inside a SettingsPane should be transparent.
+   Without this, labels inside QGroupBox / QFormLayout get the Windows
+   default white widget background. */
+QWidget#SettingsPane QLabel,
+QGroupBox QLabel,
+QGroupBox QCheckBox {
+    background-color: transparent;
+}
+
+/* ------ QGroupBox (used by FAS pane sections) -- flat section look -- */
+/* No card background -- the section is delineated only by a subtle
+   border + uppercase title. Removing the white fill stops the panes
+   from looking like patches of stuck-on rectangles. */
+QGroupBox {
+    background-color: transparent;
+    border: 1px solid #ECEEF1;
+    border-radius: 8px;
+    margin-top: 14px;
+    padding: 14px 12px 10px;
+    color: #1F2328;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 8px;
+    left: 8px;
+    color: #57606A;
+    background-color: #F6F7F9;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+/* ------ Codec drag-drop columns ------------------------------------- */
+QFrame#CodecDnDColumn {
+    background-color: transparent;
+}
+QLabel#CodecDnDColumnLabel {
+    color: #57606A;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 0 4px 2px;
+    background-color: transparent;
+}
+QListWidget#CodecDnDList {
+    background-color: #FFFFFF;
+    border: 1px solid #E1E4E8;
+    border-radius: 8px;
+    padding: 4px;
+    color: #1F2328;
+    font-size: 13px;
+    outline: 0;
+}
+QListWidget#CodecDnDList::item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin: 2px 0;
+    color: #1F2328;
+}
+QListWidget#CodecDnDList::item:hover {
+    background-color: #F6F7F9;
+}
+QListWidget#CodecDnDList::item:selected {
+    background-color: #FFF5ED;
+    color: #1F2328;
 }

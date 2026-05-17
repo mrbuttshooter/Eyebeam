@@ -96,6 +96,39 @@ class CdrDetailDialog(QDialog):
             v.setWordWrap(True)
             form.addRow(label, v)
 
+        # FAS analysis (shown only when a verdict was captured at end-of-call).
+        self._fas_section_widgets: list = []
+        fas_verdict = getattr(entry, "fas_verdict", "") or ""
+        if fas_verdict:
+            from noc_beam.ui.components import FasBadge
+
+            fas_header = QLabel("FAS Analysis")
+            fas_header.setObjectName("CdrDetailSectionHeader")
+            self._fas_section_widgets.append(fas_header)
+
+            fas_badge = FasBadge(fas_verdict, self)
+            fas_badge.update_verdict(
+                fas_verdict,
+                float(getattr(entry, "fas_confidence", 0.0) or 0.0),
+                getattr(entry, "fas_reasons", "") or "",
+            )
+
+            fas_form = QFormLayout()
+            fas_form.setSpacing(6)
+            fas_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+            fas_form.addRow("Verdict:", fas_badge)
+            conf = float(getattr(entry, "fas_confidence", 0.0) or 0.0)
+            conf_lbl = QLabel(f"{conf:.0%}")
+            conf_lbl.setObjectName("CdrDetailValue")
+            fas_form.addRow("Confidence:", conf_lbl)
+            reasons = getattr(entry, "fas_reasons", "") or "—"
+            reasons_lbl = QLabel(reasons)
+            reasons_lbl.setObjectName("CdrDetailValue")
+            reasons_lbl.setWordWrap(True)
+            reasons_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            fas_form.addRow("Signals:", reasons_lbl)
+            self._fas_section_widgets.append(fas_form)
+
         # Action row: Redial (left) + Export CSV (right) + Close
         self.redial_btn = QPushButton("Redial")
         self.redial_btn.setObjectName("PrimaryAction")
@@ -118,6 +151,13 @@ class CdrDetailDialog(QDialog):
         layout.addWidget(direction_lbl)
         layout.addSpacing(8)
         layout.addLayout(form)
+        # Inject FAS Analysis section below the field grid when present.
+        for item in self._fas_section_widgets:
+            layout.addSpacing(8)
+            if hasattr(item, "addRow"):
+                layout.addLayout(item)
+            else:
+                layout.addWidget(item)
         layout.addSpacing(8)
         layout.addLayout(actions)
         layout.addWidget(buttons)

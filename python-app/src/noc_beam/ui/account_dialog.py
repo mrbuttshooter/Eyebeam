@@ -37,7 +37,12 @@ class AccountDialog(QDialog):
     def __init__(self, account: AccountConfig | None = None, parent=None) -> None:  # noqa: ANN001
         super().__init__(parent)
         self.setWindowTitle("Edit SIP account" if account is not None else "Add SIP account")
-        self.setMinimumWidth(420)
+        # 720px wide -- 2-column grid (Identity | Connection) keeps the
+        # 80% case visible without scroll. Bottom row carries Switch +
+        # routing as a single full-width card. Advanced/rare fields
+        # collapse into a per-card disclosure.
+        self.setMinimumWidth(720)
+        self.resize(720, 540)
 
         self._editing = account is not None
         if account is None:
@@ -75,6 +80,34 @@ class AccountDialog(QDialog):
         self.enabled = QCheckBox("Enabled")
         self.enabled.setChecked(account.enabled)
 
+        # ---- Switch type + per-account routing -----------------------
+        # Determines whether the dial view's Supplier dropdown shows up
+        # and which routing field gets the supplier substitution.
+        self.switch_type = QComboBox()
+        self.switch_type.addItems(["other", "teles", "genband"])
+        self.switch_type.setCurrentText(getattr(account, "switch_type", "other"))
+        self.switch_type.setToolTip(
+            "Teles: supplier id becomes the auth username (re-register).\n"
+            "Genband: supplier id becomes a dial prefix (no re-register).\n"
+            "Other: no supplier picker; dial works as today."
+        )
+        self.dial_prefix = QLineEdit(getattr(account, "dial_prefix", ""))
+        self.dial_prefix.setPlaceholderText("e.g. 00")
+        self.dial_prefix.setToolTip(
+            "Prefix auto-prepended to every dialled number on this "
+            "account. Common case: Teles needs '00' before every number."
+        )
+        self.routing_format = QLineEdit(getattr(account, "routing_format", ""))
+        self.routing_format.setPlaceholderText("e.g. U{id} or 000{id}")
+        self.routing_format.setToolTip(
+            "How a supplier's id is turned into the actual routing string.\n"
+            "Use {id} as the placeholder.\n"
+            "  Teles UK example: U{id}   -- supplier 303 becomes auth U303\n"
+            "  Teles NY example: N{id}   -- supplier 303 becomes auth N303\n"
+            "  Genband example:  000{id} -- supplier 303 becomes prefix 000303"
+        )
+
+        # ===== Identity card =====
         identity = FormSection("Identity", self)
         identity_form = QFormLayout()
         identity_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -83,25 +116,112 @@ class AccountDialog(QDialog):
         identity_form.addRow("Auth user", self.auth_user)
         identity.body.addLayout(identity_form)
 
+        # ===== Connection card (main fields + Advanced disclosure) =====
         connection = FormSection("Connection", self)
         connection_form = QFormLayout()
         connection_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         connection_form.addRow("Domain *", self.domain)
-        connection_form.addRow("Port", self.port)
+        # Port + Transport inline (single visual row) -- saves a slot.
+        from PySide6.QtWidgets import QHBoxLayout as _HBox, QWidget as _W
+        port_transport_row = _W()
+        ptr_l = _HBox(port_transport_row)
+        ptr_l.setContentsMargins(0, 0, 0, 0)
+        ptr_l.setSpacing(6)
+        ptr_l.addWidget(self.port)
+        ptr_l.addWidget(QLabel("Transport"))
+        ptr_l.addWidget(self.transport, 1)
+        connection_form.addRow("Port", port_transport_row)
         connection_form.addRow("Password", self.password)
-        connection_form.addRow("Outbound proxy", self.proxy)
-        connection_form.addRow("STUN server", self.stun_server)
         connection.body.addLayout(connection_form)
 
-        options = FormSection("Options", self)
-        options_form = QFormLayout()
-        options_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        options_form.addRow("Transport", self.transport)
-        options_form.addRow("SRTP", self.srtp)
-        options_form.addRow("DTMF method", self.dtmf_method)
-        options_form.addRow(self.register)
-        options_form.addRow(self.enabled)
-        options.body.addLayout(options_form)
+        # --- Advanced disclosure inside Connection card -------------
+        # Hides the 80%-never-touched fields by default. Click to expand.
+        # Summary chip shows the current values so even when collapsed
+        # you can see what's set.
+        from PySide6.QtWidgets import QFrame as _Frame, QToolButton as _TBtn
+        self._adv_toggle = _TBtn()
+        self._adv_toggle.setText("▸ Advanced")
+        self._adv_toggle.setObjectName("AccountAdvancedToggle")
+        self._adv_toggle.setCheckable(True)
+        self._adv_toggle.setChecked(False)
+        self._adv_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._adv_toggle.setAutoRaise(True)
+        self._adv_summary = QLabel("")
+        self._adv_summary.setObjectName("AccountAdvancedSummary")
+        adv_header_row = QHBoxLayout()
+        adv_header_row.setContentsMargins(0, 6, 0, 0)
+        adv_header_row.addWidget(self._adv_toggle)
+        adv_header_row.addWidget(self._adv_summary, 1)
+
+        self._advanced_body = _Frame()
+        self._advanced_body.setObjectName("AccountAdvancedBody")
+        adv_body_form = QFormLayout(self._advanced_body)
+        adv_body_form.setContentsMargins(0, 6, 0, 0)
+        adv_body_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        adv_body_form.addRow("SRTP", self.srtp)
+        adv_body_form.addRow("DTMF method", self.dtmf_method)
+        adv_body_form.addRow("Outbound proxy", self.proxy)
+        adv_body_form.addRow("STUN server", self.stun_server)
+        adv_body_form.addRow(self.register)
+        adv_body_form.addRow(self.enabled)
+        self._advanced_body.setVisible(False)
+
+        def _refresh_adv_summary():
+            parts = [
+                f"SRTP: {self.srtp.currentText()}",
+                f"DTMF: {self.dtmf_method.currentText()}",
+            ]
+            if self.stun_server.text().strip():
+                parts.append(f"STUN: {self.stun_server.text().strip()[:20]}")
+            else:
+                parts.append("STUN: —")
+            if not self.register.isChecked():
+                parts.append("no register")
+            if not self.enabled.isChecked():
+                parts.append("disabled")
+            self._adv_summary.setText(" · ".join(parts))
+
+        def _toggle_adv(*_a):
+            on = self._adv_toggle.isChecked()
+            self._advanced_body.setVisible(on)
+            self._adv_toggle.setText("▾ Advanced" if on else "▸ Advanced")
+            self._adv_summary.setVisible(not on)
+        self._adv_toggle.toggled.connect(_toggle_adv)
+        # Wire summary refresh so it always reflects current state.
+        self.srtp.currentTextChanged.connect(_refresh_adv_summary)
+        self.dtmf_method.currentTextChanged.connect(_refresh_adv_summary)
+        self.stun_server.textChanged.connect(_refresh_adv_summary)
+        self.register.toggled.connect(_refresh_adv_summary)
+        self.enabled.toggled.connect(_refresh_adv_summary)
+        _refresh_adv_summary()
+        _toggle_adv()
+
+        connection.body.addLayout(adv_header_row)
+        connection.body.addWidget(self._advanced_body)
+
+        # ===== Switch & supplier routing (full-width below) =====
+        routing = FormSection("Switch & supplier routing", self)
+        routing_form = QFormLayout()
+        routing_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        routing_form.addRow("Switch type", self.switch_type)
+        routing_form.addRow("Dial prefix", self.dial_prefix)
+        routing_form.addRow("Routing format", self.routing_format)
+        routing.body.addLayout(routing_form)
+
+        # Hide routing_format when switch_type is "other" since suppliers
+        # don't apply there. Re-show when user picks teles/genband.
+        def _toggle_routing(*_a):
+            kind = self.switch_type.currentText()
+            show = kind in ("teles", "genband")
+            self.routing_format.setEnabled(show)
+            if not show:
+                self.routing_format.setPlaceholderText("(not used for 'other' accounts)")
+            elif kind == "teles":
+                self.routing_format.setPlaceholderText("e.g. U{id} or N{id}")
+            else:
+                self.routing_format.setPlaceholderText("e.g. 000{id}")
+        self.switch_type.currentTextChanged.connect(_toggle_routing)
+        _toggle_routing()
 
         self.error = QLabel("", self)
         self.error.setObjectName("DialogError")
@@ -121,15 +241,38 @@ class AccountDialog(QDialog):
         self.footer.primary_button.clicked.connect(self.accept)
         self.footer.secondary_button.clicked.connect(self.reject)
 
+        # ===== Layout: 2-col grid for Identity + Connection,
+        #               full-width Switch routing, sticky footer  =====
+        from PySide6.QtWidgets import QGridLayout
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(14)
+        grid.addWidget(identity, 0, 0)
+        grid.addWidget(connection, 0, 1)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
-        root.addWidget(identity)
-        root.addWidget(connection)
-        root.addWidget(options)
+        root.addLayout(grid)
+        root.addWidget(routing)
         root.addWidget(self.error)
-        root.addLayout(test_row)
-        root.addWidget(self.footer)
+        # Test registration row collapses into the footer rather than
+        # taking its own line. Footer order: ghost-secondary (test) on
+        # left, Cancel + primary on right.
+        footer_row = QHBoxLayout()
+        footer_row.setContentsMargins(0, 0, 0, 0)
+        footer_row.addWidget(self.test_btn)
+        footer_row.addWidget(self.test_status, 1, Qt.AlignVCenter)
+        footer_row.addWidget(self.footer.secondary_button)
+        footer_row.addWidget(self.footer.primary_button)
+        # Re-style Test reg as a ghost button so it doesn't compete with
+        # the orange primary visually.
+        self.test_btn.setObjectName("AccountTestGhostBtn")
+        root.addLayout(footer_row)
+        # Hide the FooterActionBar -- we re-mounted its buttons above.
+        self.footer.setVisible(False)
 
         self._account_id = account.id
 
@@ -159,6 +302,9 @@ class AccountDialog(QDialog):
             stun_server=self.stun_server.text().strip(),
             enabled=self.enabled.isChecked(),
             port=port_val,
+            switch_type=self.switch_type.currentText(),
+            dial_prefix=self.dial_prefix.text().strip(),
+            routing_format=self.routing_format.text().strip(),
         )
 
     def accept(self) -> None:
