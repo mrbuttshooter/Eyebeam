@@ -28,12 +28,10 @@ from PySide6.QtWidgets import (
 
 
 class _SupplierComboFocusFilter(QObject):
-    """Select-all-on-focus for the Test Runner SUPPLIER combo's line edit.
+    """Select-all-on-focus + clear-proxy-filter for the SUPPLIER combo.
 
-    Same mechanic as the dial-bar combo in phone_shell: click or tab
-    in -> existing supplier name is wiped, so typing immediately starts
-    a fresh search. Without this the user has to clear the field by
-    hand before each query, which slows the batch-setup workflow.
+    Mirrors the dial-bar combo in phone_shell: click or tab in ->
+    existing supplier name is wiped, leftover proxy filter is reset.
     """
 
     def __init__(self, combo):
@@ -44,6 +42,13 @@ class _SupplierComboFocusFilter(QObject):
         et = event.type()
         if et in (QEvent.Type.FocusIn, QEvent.Type.MouseButtonPress):
             QTimer.singleShot(0, obj.selectAll)
+            try:
+                from PySide6.QtCore import QSortFilterProxyModel as _QSFPM
+                model = self._combo.model()
+                if isinstance(model, _QSFPM):
+                    QTimer.singleShot(0, lambda m=model: m.setFilterFixedString(""))
+            except Exception:
+                pass
         return False
 
 
@@ -152,6 +157,11 @@ class TestRunnerView(QMainWindow):
             "Test plan mode. Fan-out is the default (leave Callers blank "
             "to dial every target from the active account)."
         )
+        # The combo lives in a narrow toolbar grid cell, but the labels
+        # ("Fan-out -- 1 account dials all targets") are long. Force the
+        # *popup* (which is independent of the combo's own width) to be
+        # wide enough that no item shows ellipsis on drop-down.
+        self.mode_combo.view().setMinimumWidth(360)
 
         self.pass_combo = QComboBox()
         for label, value in (
@@ -303,24 +313,26 @@ class TestRunnerView(QMainWindow):
         self.supplier_combo.setInsertPolicy(_QComboBox.InsertPolicy.NoInsert)
         self.supplier_combo.setMinimumWidth(280)
         self.supplier_combo.setSizePolicy(_SP.Policy.Expanding, _SP.Policy.Fixed)
-        # MatchContains + CaseInsensitive so partial-name search works,
-        # plus PopupCompletion so a filtered dropdown actually appears
-        # (Qt's default for editable combos can fall through to inline-
-        # only when there's a single match -- operators want to *see*
-        # the candidate row even when there's only one).
-        _comp = self.supplier_combo.completer()
-        if _comp is not None:
-            _comp.setFilterMode(Qt.MatchFlag.MatchContains)
-            _comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            _comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        # Select-all on focus/click + pop the filtered dropdown on the
-        # first keystroke. Mirrors the dial-bar supplier combo in
-        # phone_shell so muscle memory carries over.
+        # ARCHITECTURE: ditch QCompleter, use QSortFilterProxyModel +
+        # the combo's OWN popup. The QCompleter popup is impossible to
+        # dismiss programmatically after a commit; the combo's popup
+        # obeys hidePopup() reliably. See phone_shell for full notes.
+        from PySide6.QtCore import QSortFilterProxyModel as _QSFPM
+        from PySide6.QtGui import QStandardItemModel as _QSIM
+        self._supplier_source_model = _QSIM(self.supplier_combo)
+        self._supplier_proxy = _QSFPM(self.supplier_combo)
+        self._supplier_proxy.setSourceModel(self._supplier_source_model)
+        self._supplier_proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.supplier_combo.setModel(self._supplier_proxy)
+        self.supplier_combo.setCompleter(None)
+        self._all_suppliers: list[tuple[str, str]] = []
         _le = self.supplier_combo.lineEdit()
         if _le is not None:
+            _le.setCompleter(None)
             self._supplier_combo_filter = _SupplierComboFocusFilter(self.supplier_combo)
             _le.installEventFilter(self._supplier_combo_filter)
             _le.textEdited.connect(self._on_supplier_text_edited)
+            _le.returnPressed.connect(self._on_supplier_return_pressed)
         self.supplier_combo.currentIndexChanged.connect(self._on_supplier_changed)
         _supp_l.addWidget(self.supplier_label)
         _supp_l.addWidget(self.supplier_combo, 1)
@@ -510,10 +522,16 @@ class TestRunnerView(QMainWindow):
         except Exception:
             self.supplier_row.setVisible(False)
             return
+        from PySide6.QtGui import QStandardItem
         self.supplier_combo.blockSignals(True)
-        self.supplier_combo.clear()
+        self._supplier_source_model.clear()
+        self._all_suppliers.clear()
         for s in suppliers:
-            self.supplier_combo.addItem(s.display(), s.id)
+            item = QStandardItem(s.display())
+            item.setData(s.id, Qt.ItemDataRole.UserRole)
+            self._supplier_source_model.appendRow(item)
+            self._all_suppliers.append((s.display(), s.id))
+        self._supplier_proxy.setFilterFixedString("")
         if self.supplier_combo.count():
             self.supplier_combo.setCurrentIndex(0)
             self._batch_supplier_id = self.supplier_combo.itemData(0) or ""
@@ -525,21 +543,131 @@ class TestRunnerView(QMainWindow):
         if sep is not None:
             sep.setVisible(True)
 
-    def _on_supplier_text_edited(self, _text: str) -> None:
-        """First keystroke pops the completer's filtered dropdown.
+    def _on_supplier_return_pressed(self) -> None:
+        """Enter commits the visible supplier match.
 
-        See phone_shell._on_supplier_text_edited for the rationale --
-        showing the combo's *own* popup would list every supplier
-        unfiltered, but the completer's popup respects the
-        MatchContains rule, so typing "eg" surfaces only "Telecom
-        Egypt -- C303".
+        Resolves via _all_suppliers cache (the combo's model is the
+        filtered proxy view, so iterating it would miss rows the
+        current filter hides). See phone_shell version for full notes.
         """
         try:
-            comp = self.supplier_combo.completer()
-            if comp is not None:
-                comp.complete()
+            text = self.supplier_combo.lineEdit().text().strip()
+        except Exception:
+            return
+        if not text:
+            return
+        text_lower = text.lower()
+        target_id = None
+        for display, sid in self._all_suppliers:
+            if display.lower() == text_lower:
+                target_id = sid
+                break
+        if target_id is None:
+            for display, sid in self._all_suppliers:
+                if text_lower in display.lower():
+                    target_id = sid
+                    break
+        if target_id is None:
+            return
+        try:
+            self._supplier_proxy.setFilterFixedString("")
         except Exception:
             pass
+        resolved_idx = self.supplier_combo.findData(target_id)
+        if resolved_idx >= 0:
+            self.supplier_combo.setCurrentIndex(resolved_idx)
+        try:
+            self.supplier_combo.hidePopup()
+        except Exception:
+            pass
+        try:
+            self.targets_edit.setFocus(Qt.FocusReason.TabFocusReason)
+        except Exception:
+            pass
+        self._supplier_last_fill = ""
+        self._supplier_typed_len = 0
+
+    def _on_supplier_text_edited(self, text: str) -> None:
+        """UNIQUE-match autofill + filter combo's own popup.
+
+        Uses _all_suppliers cache for unique-match detection (proxy-
+        filter-independent). Filter mutation is wrapped in line-edit
+        signal blocking + state-restore so the line edit doesn't get
+        cleared when the currently-selected row gets filtered out.
+        """
+        if not text:
+            self._supplier_last_fill = ""
+            self._supplier_typed_len = 0
+            self._supplier_proxy.setFilterFixedString("")
+            try:
+                self.supplier_combo.hidePopup()
+            except Exception:
+                pass
+            return
+        last_fill = getattr(self, "_supplier_last_fill", "")
+        typed_len = getattr(self, "_supplier_typed_len", 0)
+        text_lower = text.lower()
+        is_backspace_collapse = (
+            last_fill and len(text) == typed_len
+            and text.lower() == last_fill.lower()[:typed_len]
+        )
+        if is_backspace_collapse:
+            self._supplier_last_fill = ""
+            self._supplier_typed_len = len(text)
+        else:
+            unique_match = None
+            for display, _sid in self._all_suppliers:
+                if text_lower in display.lower():
+                    if unique_match is not None:
+                        unique_match = None
+                        break
+                    unique_match = display
+            if unique_match is not None and unique_match != text:
+                le = self.supplier_combo.lineEdit()
+                if le is not None:
+                    idx = unique_match.lower().find(text_lower)
+                    cursor_at = idx + len(text)
+                    le.blockSignals(True)
+                    try:
+                        le.setText(unique_match)
+                        le.setCursorPosition(cursor_at)
+                        if cursor_at < len(unique_match):
+                            le.setSelection(cursor_at, len(unique_match) - cursor_at)
+                    finally:
+                        le.blockSignals(False)
+                    self._supplier_last_fill = unique_match
+                    self._supplier_typed_len = cursor_at
+            elif unique_match is None:
+                self._supplier_last_fill = ""
+                self._supplier_typed_len = len(text)
+        # Filter combo's popup, preserving line edit state across the swap.
+        le = self.supplier_combo.lineEdit()
+        if le is not None:
+            saved_text = le.text()
+            saved_cursor = le.cursorPosition()
+            saved_sel_start = le.selectionStart()
+            saved_sel_len = len(le.selectedText())
+            try:
+                self.supplier_combo.blockSignals(True)
+                le.blockSignals(True)
+                self._supplier_proxy.setFilterFixedString(text)
+                if le.text() != saved_text:
+                    le.setText(saved_text)
+                    le.setCursorPosition(saved_cursor)
+                    if saved_sel_start >= 0 and saved_sel_len > 0:
+                        le.setSelection(saved_sel_start, saved_sel_len)
+            finally:
+                le.blockSignals(False)
+                self.supplier_combo.blockSignals(False)
+            try:
+                if self._supplier_proxy.rowCount() > 0:
+                    self.supplier_combo.hidePopup()
+                    self.supplier_combo.showPopup()
+                    le.setFocus(Qt.FocusReason.OtherFocusReason)
+                else:
+                    self.supplier_combo.hidePopup()
+            except Exception:
+                pass
 
     def _on_supplier_changed(self, index: int) -> None:
         if index < 0:
