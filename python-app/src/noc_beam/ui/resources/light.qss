@@ -1127,10 +1127,14 @@ QToolButton#ContactsActionBtn:hover {
 
 QFrame#ContactGroupRow {
     background-color: transparent;
-    border: none;
+    border: 0;
     border-bottom: 1px solid #ECEEF1;
+    /* Padding moved off the layout's contentsMargins so the hover
+       bg paints full width. */
+    padding: 8px 12px;
+    margin: 0;
 }
-QFrame#ContactGroupRow:hover { background-color: #F5F6F8; }
+QFrame#ContactGroupRow:hover { background-color: #E8ECF1; }
 QLabel#GroupName {
     color: #1F2933;
     font-size: 13px;
@@ -1153,8 +1157,19 @@ QFrame#ContactRow, QFrame#FavoriteRow {
     border: none;
     border-bottom: 1px solid #ECEEF1;
 }
-QFrame#ContactRow:hover, QFrame#FavoriteRow:hover {
-    background-color: #F5F6F8;
+/* See ContactGroupRow:hover comment -- full-row tint dropped.
+   Also covers focus/pressed/selected so a clicked row doesn't
+   paint a slightly-different bg either. */
+QFrame#ContactRow,
+QFrame#ContactRow:hover,
+QFrame#ContactRow:focus,
+QFrame#ContactRow:pressed,
+QFrame#FavoriteRow,
+QFrame#FavoriteRow:hover,
+QFrame#FavoriteRow:focus,
+QFrame#FavoriteRow:pressed {
+    background-color: transparent;
+    outline: none;
 }
 QLabel#ContactFavorite {
     color: #E85D04;
@@ -1200,16 +1215,29 @@ QScrollArea#HistoryScroll { background-color: #FFFFFF; border: none; }
 
 QFrame#HistoryRow {
     background-color: transparent;
-    border: none;
+    border: 0;
     border-bottom: 1px solid #ECEEF1;
+    /* Padding moved off the layout's contentsMargins so the hover
+       bg paints full width. */
+    padding: 6px;
+    margin: 0;
 }
-QFrame#HistoryRow:hover { background-color: #F5F6F8; }
-/* Missed-call rows: tinted background at idle (not just hover) so they
-   pop in the list without the user having to mouseover. */
-QFrame#HistoryRow[result="missed"] { background-color: #FDF6F6; }
-QFrame#HistoryRow[result="missed"]:hover { background-color: #FDEDED; }
-QFrame#HistoryRow[result="failed"] { background-color: #FFFBF5; }
-QFrame#HistoryRow[result="failed"]:hover { background-color: #FFF3E1; }
+/* Full-row gray hover. The arrow + SipCodeBadge carry the
+   missed/failed signal already, so the idle state stays transparent;
+   only hover paints. */
+QFrame#HistoryRow,
+QFrame#HistoryRow[result="missed"],
+QFrame#HistoryRow[result="failed"] {
+    background-color: transparent;
+}
+QFrame#HistoryRow:hover,
+QFrame#HistoryRow:focus,
+QFrame#HistoryRow:pressed,
+QFrame#HistoryRow[result="missed"]:hover,
+QFrame#HistoryRow[result="failed"]:hover {
+    background-color: #E8ECF1;
+    outline: none;
+}
 
 QLabel#HistoryRowArrow {
     color: #2DA44E;   /* answered = green */
@@ -1771,11 +1799,23 @@ QPushButton#CallControlButton:hover {
     background-color: #F5F6F8;
 }
 QFrame#DenseListRow {
+    border: 0;
     border-bottom: 1px solid #D8DEE4;
     background-color: transparent;
+    /* Visual inner padding lives here (NOT on the layout's contents
+       margin) so the QSS hover background paints the full widget
+       rect including this padding area. */
+    padding: 7px 8px 7px 24px;
+    margin: 0;
 }
-QFrame#DenseListRow:hover {
-    background-color: #F5F6F8;
+/* Full-row gray hover. Light mode -> #E8ECF1 (definitely gray, not
+   the near-white #F5F6F8 that read as 'still white'). Focus +
+   pressed echo the same shade so a clicked row stays consistent. */
+QFrame#DenseListRow:hover,
+QFrame#DenseListRow:focus,
+QFrame#DenseListRow:pressed {
+    background-color: #E8ECF1;
+    outline: none;
 }
 QLabel#DenseRowMarker {
     font-size: 13px;
@@ -1793,8 +1833,10 @@ QFrame#DenseRowActions {
     background-color: transparent;
     border: none;
 }
+/* Neutralised -- see earlier rule. Was a pale red wash that the
+   operator found noisy across the whole row list. */
 QFrame#HistoryRow[result="missed"], QFrame#HistoryRow[result="failed"] {
-    background-color: #FEF6F6;
+    background-color: transparent;
 }
 QFrame#TraceDialogRow, QFrame#TraceMsgRow {
     border-bottom: 1px solid #D8DEE4;
@@ -2215,15 +2257,27 @@ QTableWidget#TestRunnerResults {
     border: none;
     gridline-color: transparent;
     alternate-background-color: #FAFBFC;
-    selection-background-color: #FEEEE3;
+    /* Selection: muted cyan instead of the peach orange that read as
+     * a second "fail" colour next to the FAIL badges. Selection-colour
+     * stays dark for readability. */
+    selection-background-color: #E5F4FB;
     selection-color: #1F2328;
 }
 QTableWidget#TestRunnerResults::item {
     padding: 8px 12px;
     border-bottom: 1px solid #F1F3F5;
+    background-color: transparent;
 }
 QTableWidget#TestRunnerResults::item:hover {
-    background-color: #F9FAFB;
+    background-color: #F2F4F7;
+}
+/* Explicit selected-cell rule so the per-cell rendering picks up the
+   table's selection colour even when the cell hosts a setCellWidget()
+   badge or empty placeholder ("-"). Without this, empty cells were
+   painting their default Qt-palette white inside the selected row. */
+QTableWidget#TestRunnerResults::item:selected {
+    background-color: #E5F4FB;
+    color: #1F2328;
 }
 QTableWidget#TestRunnerResults QHeaderView::section {
     background-color: #F6F8FA;
@@ -2616,4 +2670,26 @@ QListWidget#CodecDnDList::item:hover {
 QListWidget#CodecDnDList::item:selected {
     background-color: #FFF5ED;
     color: #1F2328;
+}
+
+/* ------------------------------------------------------------------
+   Row-child transparency override
+   ------------------------------------------------------------------
+   QFrame#HistoryRow / DenseListRow / ContactGroupRow paint their
+   own QSS background on hover. Some of their CHILD widgets (labels,
+   the arrow, the marker) inherit an opaque background via Qt's
+   palette propagation -- that paints a WHITE inset over the row's
+   gray hover, making it look like the gray has a hole punched in
+   the middle. Force every child widget to transparent so the row's
+   hover bg shows through everywhere.
+   ------------------------------------------------------------------ */
+QLabel#HistoryRowArrow,
+QLabel#HistoryRowPeer,
+QLabel#HistoryRowMeta,
+QLabel#DenseRowMarker,
+QLabel#DenseRowTitle,
+QLabel#DenseRowSubtitle,
+QLabel#GroupName,
+QLabel#GroupCount {
+    background-color: transparent;
 }

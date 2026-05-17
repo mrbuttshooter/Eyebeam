@@ -883,27 +883,37 @@ class TestRunnerView(QMainWindow):
         super().closeEvent(event)
 
     def _on_export_clicked(self) -> None:
-        """Auto-name the file as noc_beam_testrun_YYYYMMDD_HHMM.csv and
-        drop it on the user's Desktop. No save-as dialog, no success
-        popup (per operator request -- they're running multiple test
-        batches per minute and the confirmation noise was noise)."""
+        """Save-As dialog defaulting to Documents/NOC_BEAM/ with an
+        auto-named filename. After save, show a non-blocking floating
+        toast with a click-to-open-folder action.
+        """
         from datetime import datetime as _dt
-        name = f"noc_beam_testrun_{_dt.now():%Y%m%d_%H%M}.csv"
-        desktop = Path.home() / "Desktop"
-        out_dir = desktop if desktop.exists() else Path.home()
-        path = out_dir / name
+        from PySide6.QtWidgets import QFileDialog as _QFD
+        from noc_beam.ui.history_view import default_export_dir, _show_export_toast
+        default_name = f"noc_beam_testrun_{_dt.now():%Y%m%d_%H%M}.csv"
+        default_path = str(default_export_dir() / default_name)
+        chosen, _selected_filter = _QFD.getSaveFileName(
+            self,
+            "Export test run to CSV",
+            default_path,
+            "CSV files (*.csv);;All files (*)",
+        )
+        if not chosen:
+            return
+        path = Path(chosen)
         try:
             self.export_csv(path)
-            # Log only; no QMessageBox -- the file just appears.
             import logging as _logging
             _logging.getLogger(__name__).info(
                 "Test Runner CSV exported: %s (%d rows)", path, len(self.results)
             )
+            _show_export_toast(self, path, len(self.results))
         except Exception:
             import logging as _logging
             _logging.getLogger(__name__).exception(
                 "Failed to export test-run CSV to %s", path
             )
+            _show_export_toast(self, path, 0, failed=True)
 
     @staticmethod
     def _csv_safe(value):
@@ -928,16 +938,20 @@ class TestRunnerView(QMainWindow):
         A number is the originating account (from_account), B number
         is the dialled URI (to_uri).
         """
+        from noc_beam.ui.history_view import _peer_userpart
         safe = self._csv_safe
         with path.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle, lineterminator="\n")
             writer.writerow(CSV_HEADER)
             for result in self.results:
                 started = self._started_at_datetime(result.started_at)
+                # B Number: strip sip:/sips:/tel:, ;params, and @domain
+                # so the CSV shows '96109901' not 'sip:96109901@host'.
+                b_num = _peer_userpart(result.to_uri) or result.to_uri
                 writer.writerow(
                     [
                         safe(result.from_account),
-                        safe(result.to_uri),
+                        safe(b_num),
                         self._format_started_at(started),
                         f"{result.duration_s:.1f}",
                         safe(getattr(result, "fas_verdict", "") or ""),
@@ -1069,4 +1083,14 @@ class TestRunnerView(QMainWindow):
 
     @staticmethod
     def _format_started_at(value: datetime) -> str:
-        return value.isoformat().replace("+00:00", "Z")
+        # CSV-friendly readable format. Was isoformat() with the Z
+        # timezone marker + microseconds (2026-05-17T21:27:36.550777Z)
+        # which the operator pointed out is too tight to read in
+        # Excel. Use the same `YYYY-MM-DD HH:MM:SS` shape as the
+        # History CSV for consistency. We render in LOCAL time so
+        # the operator sees the timestamp matching their wall clock.
+        try:
+            local = value.astimezone()  # convert UTC -> local
+        except Exception:
+            local = value
+        return local.strftime("%Y-%m-%d %H:%M:%S")

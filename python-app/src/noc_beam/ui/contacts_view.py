@@ -141,6 +141,9 @@ class GroupRow(QFrame):
         super().__init__(parent)
         self.setObjectName("ContactGroupRow")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # See ContactRow comment -- needed so QSS hover bg paints the
+        # full row, not just an inner rectangle.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.name = name
 
         avatar = QLabel(self)
@@ -164,7 +167,9 @@ class GroupRow(QFrame):
         chev.clicked.connect(lambda: self.clicked.emit(self.name))
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
+        # See ContactRow note -- contentsMargins=0 lets QSS bg paint
+        # the full widget rect on hover. Visual padding moved to QSS.
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         layout.addWidget(avatar)
         layout.addWidget(name_lbl, 1)
@@ -188,6 +193,13 @@ class ContactRow(QFrame):
         self.setObjectName("DenseListRow")
         self.contact = contact
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # QFrame does NOT paint its QSS background across the whole
+        # frame by default -- it only paints the "frame" region. With
+        # WA_StyledBackground the stylesheet background-color covers
+        # the full widget rect, including the layout's contents-margin
+        # area. Without this the hover paints only an inner rectangle
+        # and leaves the left/right padding showing the parent's bg.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         marker = QLabel("*" if contact.favorite else "", self)
         marker.setObjectName("DenseRowMarker")
@@ -238,7 +250,11 @@ class ContactRow(QFrame):
         more_btn.setMenu(menu)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(24, 7, 8, 7)
+        # contentsMargins 0,0,0,0 so the QFrame's QSS background paints
+        # the FULL widget rect (Qt bg paint follows the layout's content
+        # region). Move the visual padding into QSS `padding` on
+        # #DenseListRow, which Qt treats as part of the bg paint area.
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         layout.addWidget(marker)
         layout.addLayout(text_col, 1)

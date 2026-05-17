@@ -965,8 +965,10 @@ QTextEdit#DiagResults {
 QScrollArea#HistoryScroll { background-color: #161B22; border: none; }
 QFrame#HistoryRow {
     background-color: transparent;
-    border: none;
+    border: 0;
     border-bottom: 1px solid #1B2129;
+    padding: 6px;
+    margin: 0;
 }
 QFrame#HistoryRow:hover { background-color: #1F252E; }
 QLabel#HistoryRowArrow {
@@ -1167,11 +1169,20 @@ QPushButton#CallControlButton:hover {
     background-color: #1F252E;
 }
 QFrame#DenseListRow {
+    border: 0;
     border-bottom: 1px solid #3B4654;
     background-color: transparent;
+    padding: 7px 8px 7px 24px;
+    margin: 0;
 }
-QFrame#DenseListRow:hover {
-    background-color: #1F252E;
+/* Full-row cyan-tinted dark hover. Distinct from the canvas
+   (#0F151D) AND from the lighter strip-bg (#111923) so it reads
+   as 'this is the row you'd click'. */
+QFrame#DenseListRow:hover,
+QFrame#DenseListRow:focus,
+QFrame#DenseListRow:pressed {
+    background-color: #1A2B40;
+    outline: none;
 }
 QLabel#DenseRowMarker {
     font-size: 13px;
@@ -1189,13 +1200,17 @@ QFrame#DenseRowActions {
     background-color: transparent;
     border: none;
 }
-/* Dropped the red wash on missed/failed history rows -- the arrow
-   colour + the SipCodeBadge pill already carry the failure signal,
-   the row-wide tint just made the list noisy. Leaving the rule in
-   place but neutralised so any future selector ordering doesn't
-   re-introduce a red bg by accident. */
+/* Idle state stays transparent (arrow + badge carry the signal);
+   hover paints the cyan-tinted dark to match DenseListRow. */
 QFrame#HistoryRow[result="missed"], QFrame#HistoryRow[result="failed"] {
     background-color: transparent;
+}
+QFrame#HistoryRow:hover,
+QFrame#HistoryRow:focus,
+QFrame#HistoryRow[result="missed"]:hover,
+QFrame#HistoryRow[result="failed"]:hover {
+    background-color: #1A2B40;
+    outline: none;
 }
 QFrame#TraceDialogRow, QFrame#TraceMsgRow {
     border-bottom: 1px solid #3B4654;
@@ -1883,10 +1898,12 @@ QToolButton#ContactsActionBtn[active="true"] {
 
 QFrame#ContactGroupRow {
     background-color: transparent;
-    border: none;
+    border: 0;
     border-bottom: 1px solid #1B2129;
+    padding: 8px 12px;
+    margin: 0;
 }
-QFrame#ContactGroupRow:hover { background-color: transparent; }
+QFrame#ContactGroupRow:hover { background-color: #1A2B40; }
 QLabel#GroupName { color: #EAF1F8; font-size: 13px; font-weight: 500; }
 QLabel#GroupCount {
     color: #7C8696;
@@ -1965,4 +1982,17 @@ QMenu#ContactRowMenu::separator, QMenu#ContactsFilterMenu::separator {
    to 3px so the button has 1px breathing room below the border. */
 QToolButton#AudioBtn {
     padding: 3px 6px;
+}
+
+/* See light.qss tail: force row child labels transparent so the
+   parent row's hover bg paints through everywhere. */
+QLabel#HistoryRowArrow,
+QLabel#HistoryRowPeer,
+QLabel#HistoryRowMeta,
+QLabel#DenseRowMarker,
+QLabel#DenseRowTitle,
+QLabel#DenseRowSubtitle,
+QLabel#GroupName,
+QLabel#GroupCount {
+    background-color: transparent;
 }

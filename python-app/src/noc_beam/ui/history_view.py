@@ -48,15 +48,150 @@ def _csv_safe(value) -> str:
     return s
 
 
+def _show_export_toast(parent: QWidget, path: Path, count: int, failed: bool = False) -> None:
+    """Non-blocking floating notification after a CSV export.
+
+    Sits at the bottom of the parent view for ~3.5s, then fades out.
+    Click anywhere on it to open Windows Explorer at the file's
+    location (selected). Avoids QMessageBox -- the operator runs many
+    exports per session and a modal popup is friction.
+    """
+    if failed:
+        text = f"✗ Failed to export to {path.name}"
+    elif count == 0:
+        text = f"Exported (empty) to {path.name}"
+    else:
+        text = f"✓ Exported {count} {'row' if count == 1 else 'rows'} to {path.name}\nClick to open folder"
+    toast = QLabel(text, parent)
+    toast.setObjectName("ExportToast")
+    toast.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    toast.setWordWrap(True)
+    toast.setCursor(Qt.CursorShape.PointingHandCursor)
+    # Inline style so the toast looks reasonable in either theme even
+    # if global QSS hasn't been updated for #ExportToast yet.
+    toast.setStyleSheet(
+        "background-color: rgba(20,28,40,0.95); color: #E5F4FB; "
+        "border: 1px solid #2E4259; border-radius: 8px; padding: 12px 18px; "
+        "font-size: 12px; font-weight: 500;"
+    )
+    # Size + position: bottom-centre of parent, fixed width.
+    toast.adjustSize()
+    pw = parent.width()
+    ph = parent.height()
+    tw = min(360, max(toast.width(), 280))
+    th = toast.height() + 4
+    toast.setFixedSize(tw, th)
+    toast.move((pw - tw) // 2, ph - th - 24)
+    toast.show()
+    toast.raise_()
+    # Click to open the containing folder in Explorer with the new
+    # file pre-selected (Windows: explorer /select,"path").
+    def _open_in_explorer(_ev) -> None:
+        if not failed:
+            try:
+                import subprocess
+                subprocess.Popen(["explorer", "/select,", str(path)])
+            except Exception:
+                pass
+        toast.hide()
+        toast.deleteLater()
+    toast.mousePressEvent = _open_in_explorer  # type: ignore[assignment]
+    # Auto-dismiss after 3.5s if user doesn't click.
+    from PySide6.QtCore import QTimer as _QT
+    _QT.singleShot(3500, toast.deleteLater)
+
+
+def default_export_dir() -> Path:
+    """Resolve (and create) the default folder for CSV exports.
+
+    Lands under the user's Documents folder as a 'NOC_BEAM' subdir.
+    Handles OneDrive Documents redirect by reading the Windows
+    'Personal' shell folder (= Documents) from the registry; falls
+    back to home/Documents otherwise. The user can still navigate to
+    any other folder via the Save-As dialog this seeds.
+    """
+    docs: Path | None = None
+    try:
+        import winreg
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders",
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "Personal")
+            cand = Path(value)
+            if cand.exists():
+                docs = cand
+    except Exception:
+        pass
+    if docs is None:
+        # Try the common OneDrive Documents path before plain home.
+        od = Path.home() / "OneDrive" / "Documents"
+        docs = od if od.exists() else (Path.home() / "Documents")
+    target = docs / "NOC_BEAM"
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # If we can't create the subdir, fall back to Documents root.
+        return docs
+    return target
+
+
+def _peer_userpart(uri: str) -> str:
+    """Strip sip:/sips:/tel: scheme and @domain from a URI so the CSV
+    shows '33415835' instead of 'sip:33415835@iptel.org'. Operator
+    reviewing the CSV cares about the number, not the routing detail.
+    Falls back to the original string if it doesn't look like a URI.
+    """
+    if not uri:
+        return ""
+    s = uri.strip()
+    for scheme in ("sip:", "sips:", "tel:"):
+        if s.lower().startswith(scheme):
+            s = s[len(scheme):]
+            break
+    # Strip URI params like ;transport=udp
+    if ";" in s:
+        s = s.split(";", 1)[0]
+    # Strip @domain part
+    if "@" in s:
+        s = s.split("@", 1)[0]
+    return s
+
+
+def _resolve_account_label(account_id: str) -> str:
+    """Resolve a CDR's stored account_id (an internal UUID) to the
+    A-number to show in CSV exports.
+
+    Operator convention (lifted from their Eyebeam setup): the
+    Display Name field carries the A-number (e.g. "33415835"), while
+    Username holds the per-supplier Uid (e.g. "U080"). For CSV the
+    operator wants A-number, so prefer display_name; fall back to
+    username; fall back to the UUID if neither is set.
+    """
+    if not account_id:
+        return ""
+    try:
+        from noc_beam.config.store import load_settings
+        for acc in load_settings().accounts:
+            if acc.id == account_id:
+                return acc.display_name or acc.username or account_id
+    except Exception:
+        pass
+    return account_id
+
+
 def _ab_numbers(entry: CdrEntry) -> tuple[str, str]:
     """Return (A-number, B-number) for a CDR.
 
-    For OUTGOING calls: A = our account_id, B = the peer URI (called party).
-    For INCOMING calls: A = peer URI (caller), B = our account_id (called).
+    For OUTGOING calls: A = our account's username (resolved from id),
+    B = the peer userpart (called party).
+    For INCOMING calls: A = peer userpart (caller), B = our username.
     """
+    own = _resolve_account_label(entry.account_id or "")
+    peer = _peer_userpart(entry.peer_uri or "")
     if entry.direction == "out":
-        return (entry.account_id or "", entry.peer_uri or "")
-    return (entry.peer_uri or "", entry.account_id or "")
+        return (own, peer)
+    return (peer, own)
 
 from noc_beam.config.history import (
     CdrEntry,
@@ -148,6 +283,12 @@ class HistoryRow(QFrame):
         self.setObjectName("HistoryRow")
         self.setProperty("result", _result_class(entry))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Required so QSS background-color paints the full row
+        # (including the layout's contents-margin area). Without
+        # WA_StyledBackground, QFrame's stylesheet bg only paints
+        # an inner rect, leaving the row's edges showing the
+        # parent's bg through the hover.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
         # Selection checkbox: lets the user pick N rows for the bulk
         # CSV export. When 0 are checked the export button falls back
@@ -218,10 +359,11 @@ class HistoryRow(QFrame):
         badge = SipCodeBadge(code, entry.end_reason, self)
 
         outer = QHBoxLayout(self)
-        # Tighter margins + spacing so the row fits in the compact
-        # softphone width even with the badge + info + call buttons
-        # all visible. The text column shrinks to fill what's left.
-        outer.setContentsMargins(6, 6, 6, 6)
+        # contentsMargins=0 so the QFrame's QSS background paints the
+        # FULL widget rect on hover (Qt bg paint follows the layout's
+        # content region). Visual padding moved to QSS `padding` on
+        # #HistoryRow.
+        outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(4)
         outer.addWidget(self._select_cb, 0, Qt.AlignmentFlag.AlignVCenter)
         outer.addWidget(arrow_lbl, 0, Qt.AlignmentFlag.AlignTop)
@@ -528,16 +670,15 @@ class HistoryView(QWidget):
             cb.setText(uri)
 
     def _on_export(self) -> None:
-        """Write the chosen CDR entries to a CSV in ~/Desktop.
+        """Export selected (or all visible) CDR rows to a CSV.
 
         Selection rules:
         - If any rows have their checkbox ticked -> export only those.
         - Otherwise export all currently-visible (filtered) rows.
 
-        Columns are deliberately lean per operator request: A number,
-        B number, Date, Duration, FAS verdict. No save-as dialog, no
-        success alert -- the file just appears in Desktop. Failures
-        log to the file log only.
+        Save-As dialog opens at Documents/NOC_BEAM/ with an auto-named
+        filename; the user can navigate elsewhere or rename. Schema:
+        A Number, B Number, Date, Duration (s), FAS Verdict.
         """
         chosen = [r._entry for r in self._rows if r.is_checked()]
         if not chosen:
@@ -545,10 +686,18 @@ class HistoryView(QWidget):
         if not chosen:
             return  # nothing visible to export
         from datetime import datetime as _dt
-        name = f"noc_beam_history_{_dt.now():%Y%m%d_%H%M}.csv"
-        desktop = Path.home() / "Desktop"
-        out_dir = desktop if desktop.exists() else Path.home()
-        out_path = out_dir / name
+        from PySide6.QtWidgets import QFileDialog as _QFD
+        default_name = f"noc_beam_history_{_dt.now():%Y%m%d_%H%M}.csv"
+        default_path = str(default_export_dir() / default_name)
+        chosen_path, _selected_filter = _QFD.getSaveFileName(
+            self,
+            "Export call history to CSV",
+            default_path,
+            "CSV files (*.csv);;All files (*)",
+        )
+        if not chosen_path:
+            return  # user cancelled
+        out_path = Path(chosen_path)
         try:
             with out_path.open("w", encoding="utf-8", newline="") as fh:
                 writer = csv.writer(fh, lineterminator="\n")
@@ -565,8 +714,10 @@ class HistoryView(QWidget):
                         _csv_safe(e.fas_verdict or ""),
                     ])
             log.info("History CSV exported: %s (%d rows)", out_path, len(chosen))
+            _show_export_toast(self, out_path, len(chosen))
         except Exception:
             log.exception("Failed to export history CSV to %s", out_path)
+            _show_export_toast(self, out_path, 0, failed=True)
 
     def _on_clear(self) -> None:
         # Confirm before nuking everything.
