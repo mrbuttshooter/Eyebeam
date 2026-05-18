@@ -1410,7 +1410,12 @@ class PhoneShell(QMainWindow):
 
     def _on_registration_changed(self, account_id, code, reason):
         acc = next((a for a in self.accounts if a.id == account_id), None)
-        label = acc.display_name if acc and acc.display_name else (acc.username if acc else account_id)
+        # Use the unified _account_label helper — prefers the operator's
+        # `label` nickname (e.g. "Teles UK") over the raw display_name
+        # (e.g. "96171488860"). Without this, every SIP 408 / 5xx retry
+        # would rebuild the chip from display_name, overwriting whatever
+        # nickname the user had picked.
+        label = self._account_label(account_id)
         self._reg_state[account_id] = code
         # If the changed account is the one currently shown in the chip,
         # refresh the chip so the health dot tracks the new code.
