@@ -56,6 +56,15 @@ class TrayController(QObject):
         if self._tray.supportsMessages():
             self._tray.showMessage(title, body, QSystemTrayIcon.MessageIcon.Information, 4000)
 
+    def shutdown(self) -> None:
+        """Tear down the tray icon so Windows reclaims the slot and the
+        QSystemTrayIcon doesn't keep the QApplication alive past the
+        main window close. Idempotent — safe to call multiple times."""
+        try:
+            self._tray.hide()
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------
     # Menu construction
     # ------------------------------------------------------------------

@@ -2595,7 +2595,37 @@ class PhoneShell(QMainWindow):
         self.showNormal(); self.raise_(); self.activateWindow()
 
     def _on_quit(self):
-        self._really_quitting = True; self.close()
+        # 1. Flag so closeEvent runs the full teardown path instead of
+        #    minimizing to tray.
+        # 2. close() triggers closeEvent which drops sip_events
+        #    subscribers + stops timers + tells embedded views to
+        #    shutdown.
+        # 3. Hide the tray icon so QSystemTrayIcon (a QObject that owns
+        #    the native tray slot) stops holding the process open AND
+        #    Windows reclaims the icon immediately instead of showing
+        #    a ghost slot until next mouse-over.
+        # 4. Explicitly QApplication.quit() so the event loop exits
+        #    even if any background dialog / QMenu / pop-out window is
+        #    still parented to a child of this shell. Closing the main
+        #    window alone was leaving the process alive in some cases
+        #    (tray icon + child QMenu kept Qt counting refs).
+        self._really_quitting = True
+        try:
+            self.close()
+        except Exception:
+            log.exception("close() raised during _on_quit")
+        try:
+            if self.tray is not None:
+                self.tray.shutdown()
+        except Exception:
+            log.exception("tray shutdown raised during _on_quit")
+        try:
+            from PySide6.QtWidgets import QApplication
+            app = QApplication.instance()
+            if app is not None:
+                app.quit()
+        except Exception:
+            log.exception("QApplication.quit() raised during _on_quit")
 
     def closeEvent(self, event):
         if not self._really_quitting and self.tray.available:
