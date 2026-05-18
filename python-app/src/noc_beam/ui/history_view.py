@@ -246,11 +246,24 @@ def _fmt_duration(seconds: float) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
-def _arrow(entry: CdrEntry) -> str:
-    """Single-glyph direction marker."""
+def _arrow(entry: CdrEntry) -> tuple[str, str]:
+    """Return (icon_name, hex_color) for the per-row direction marker.
+
+    iOS-style convention: keep the direction arrow even on failed/missed
+    so the user still sees in/out at a glance — color carries the
+    success signal (green ok, red bad). Missed-incoming gets the
+    dedicated `call-missed` icon (phone + X) because that's the most
+    semantically loaded state and deserves a distinct glyph.
+    """
+    OK = "#2EBD5C"       # answered
+    BAD = "#D33841"      # failed / missed
     if entry.direction == "in":
-        return "▼" if entry.was_answered else "✕"   # in / missed
-    return "▲" if entry.was_answered else "✕"       # out / failed
+        if entry.was_answered:
+            return ("call-incoming", OK)
+        return ("call-missed", BAD)
+    if entry.was_answered:
+        return ("call-outgoing", OK)
+    return ("call-outgoing", BAD)
 
 
 def _result_class(entry: CdrEntry) -> str:
@@ -298,11 +311,16 @@ class HistoryRow(QFrame):
         self._select_cb.setToolTip("Select for CSV export")
         self._select_cb.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        arrow_lbl = QLabel(_arrow(entry))
+        from noc_beam.ui.rail_icons import rail_icon as _rail_icon
+        icon_name, icon_color = _arrow(entry)
+        arrow_lbl = QLabel(self)
         arrow_lbl.setObjectName("HistoryRowArrow")
         arrow_lbl.setProperty("result", _result_class(entry))
-        arrow_lbl.setFixedWidth(20)
+        arrow_lbl.setFixedSize(20, 20)
         arrow_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        arrow_lbl.setPixmap(
+            _rail_icon(icon_name, color=icon_color, px=18).pixmap(18, 18)
+        )
 
         # Peer + meta labels get Ignored horizontal size policy so the
         # text column can shrink when the window is narrow. Without
@@ -327,7 +345,13 @@ class HistoryRow(QFrame):
         if dur:
             bits.append(dur)
         if entry.end_code and not entry.was_answered:
-            bits.append(f"{entry.end_code} {entry.end_reason}".strip())
+            # Operator preference: human label only ("Busy" /
+            # "Cancelled" / "Declined") -- the raw code stays in the
+            # SipCodeBadge tooltip on the same row.
+            from noc_beam.ui.components import sip_label as _sip_label
+            label = _sip_label(entry.end_code) or entry.end_reason
+            if label:
+                bits.append(label)
         meta_lbl = QLabel(" · ".join(b for b in bits if b))
         meta_lbl.setObjectName("HistoryRowMeta")
         meta_lbl.setSizePolicy(_SP.Policy.Ignored, _SP.Policy.Preferred)

@@ -114,3 +114,168 @@ class Ringer:
             return
         if self._effect.isPlaying():
             self._effect.stop()
+
+
+# ---------------------------------------------------------------------------
+# Failure tones -- play once when a call ends with a SIP failure code so the
+# operator knows by ear without watching the screen. Three canonical PSTN
+# patterns cover all SIP failure classes:
+#
+#   BUSY     -- 480 + 620 Hz, 0.5 s on / 0.5 s off, 2 cycles (~2 s)
+#               -> 486 Busy Here, 600 Busy Everywhere
+#   REORDER  -- 480 + 620 Hz, 0.25 s on / 0.25 s off, 4 cycles (~2 s)
+#               (a.k.a. fast busy / congestion)
+#               -> 408 Timeout, 500/502/503/504 server errors
+#   REJECT   -- descending 660 -> 440 Hz sweep, ~0.8 s
+#               -> 487 Cancelled, 603 Declined, 480 Unavailable
+#
+# Auth-required codes (401 / 407) play NO tone -- they're a setup error,
+# not a real call failure, and the busy-tone would be misleading.
+#
+# WAVs are generated on first run with the same stdlib `wave` module as
+# the ringtone; each ~30-50 KB.
+# ---------------------------------------------------------------------------
+
+BUSY_TONE_FILENAME = "tone_busy.wav"
+REORDER_TONE_FILENAME = "tone_reorder.wav"
+REJECT_TONE_FILENAME = "tone_reject.wav"
+
+
+def _busy_wave_samples(on_s: float, off_s: float, cycles: int) -> bytearray:
+    """Two-tone PSTN busy/reorder pattern (480 + 620 Hz)."""
+    amp = 0.30
+    samples = bytearray()
+    period = on_s + off_s
+    total_s = period * cycles
+    n_samples = int(SAMPLE_RATE * total_s)
+    for i in range(n_samples):
+        t = i / SAMPLE_RATE
+        phase = t % period
+        if phase < on_s:
+            # 5 ms attack/release envelope per burst -> no clicks
+            edge = min(1.0, phase / 0.005, (on_s - phase) / 0.005)
+            edge = max(0.0, edge)
+            value = amp * edge * (
+                math.sin(2 * math.pi * 480 * t)
+                + math.sin(2 * math.pi * 620 * t)
+            ) / 2.0
+        else:
+            value = 0.0
+        samples += struct.pack("<h", int(value * 32767))
+    return samples
+
+
+def _reject_wave_samples() -> bytearray:
+    """Descending 660 -> 440 Hz sweep, ~0.8 s. Short 'nope' sound."""
+    amp = 0.30
+    duration_s = 0.8
+    n_samples = int(SAMPLE_RATE * duration_s)
+    samples = bytearray()
+    for i in range(n_samples):
+        t = i / SAMPLE_RATE
+        progress = t / duration_s
+        freq = 660 - 220 * progress
+        edge = min(1.0, t / 0.01, (duration_s - t) / 0.05)
+        edge = max(0.0, edge)
+        value = amp * edge * math.sin(2 * math.pi * freq * t)
+        samples += struct.pack("<h", int(value * 32767))
+    # 200 ms of silence so the QSoundEffect's loop=1 doesn't blip-end.
+    samples += struct.pack("<h", 0) * int(SAMPLE_RATE * 0.2)
+    return samples
+
+
+def _write_wav(path: Path, samples: bytearray) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SAMPLE_RATE)
+        w.writeframes(bytes(samples))
+
+
+def ensure_failure_tones() -> tuple[Path, Path, Path]:
+    """Generate the three failure tone WAVs on first run; return paths."""
+    base = data_dir()
+    busy_path = base / BUSY_TONE_FILENAME
+    reorder_path = base / REORDER_TONE_FILENAME
+    reject_path = base / REJECT_TONE_FILENAME
+    if not busy_path.exists():
+        _write_wav(busy_path, _busy_wave_samples(0.5, 0.5, 2))
+        log.info("Generated busy tone at %s", busy_path)
+    if not reorder_path.exists():
+        _write_wav(reorder_path, _busy_wave_samples(0.25, 0.25, 4))
+        log.info("Generated reorder tone at %s", reorder_path)
+    if not reject_path.exists():
+        _write_wav(reject_path, _reject_wave_samples())
+        log.info("Generated reject tone at %s", reject_path)
+    return busy_path, reorder_path, reject_path
+
+
+def _tone_for_code(code: int | None) -> str | None:
+    """Return 'busy' / 'reorder' / 'reject' / None for a SIP final code."""
+    if code is None or code < 400:
+        return None
+    if code in (401, 407):           # auth -- silent (setup issue)
+        return None
+    if code in (486, 600):            # busy
+        return "busy"
+    if code in (487, 603, 480, 488, 604, 606):
+        return "reject"
+    # Everything else 4xx/5xx -> reorder (fast busy / congestion).
+    return "reorder"
+
+
+class FailureTone:
+    """Plays the right PSTN-style tone once when a call ends in failure.
+
+    Three pre-generated WAVs are loaded into separate QSoundEffect
+    instances at construction so the tone fires with zero load latency
+    when a call ends. Safe to construct in headless / no-QtMultimedia
+    environments (becomes a no-op).
+    """
+
+    def __init__(self) -> None:
+        self._effects: dict[str, object] = {}
+        self._available = False
+        try:
+            from PySide6.QtCore import QUrl
+            from PySide6.QtMultimedia import QSoundEffect
+
+            busy, reorder, reject = ensure_failure_tones()
+            for name, path in (
+                ("busy", busy), ("reorder", reorder), ("reject", reject),
+            ):
+                fx = QSoundEffect()
+                fx.setSource(QUrl.fromLocalFile(str(path)))
+                fx.setLoopCount(1)
+                fx.setVolume(0.55)
+                self._effects[name] = fx
+            self._available = True
+        except Exception:
+            log.warning(
+                "Failure tones unavailable (QtMultimedia missing?); failed "
+                "calls will be silent",
+                exc_info=True,
+            )
+
+    @property
+    def available(self) -> bool:
+        return self._available
+
+    def play_for_code(self, code: int | None) -> None:
+        """Play the appropriate tone for `code`. No-op if no tone maps
+        to this code (e.g. 200 success, 401/407 auth, or unknown)."""
+        if not self._available:
+            return
+        name = _tone_for_code(code)
+        if name is None:
+            return
+        fx = self._effects.get(name)
+        if fx is None:
+            return
+        try:
+            if fx.isPlaying():
+                fx.stop()
+            fx.play()
+        except Exception:
+            log.exception("FailureTone.play_for_code(%s) failed", code)

@@ -60,8 +60,11 @@ def _split_peer(remote: str) -> tuple[str, str]:
         uri = uri[5:]
     user, _, host = uri.partition("@")
     headline = user or uri
-    if not name:
-        name = host or ""
+    # Operator preference: never use @host as the subtitle fallback.
+    # If the peer URI doesn't carry an actual display-name (RFC 3261
+    # `"Friendly Name" <sip:foo@bar>` form), the call card stays as
+    # just the headline -- `iptel.org` etc under the number was
+    # judged useless. `name` stays empty unless explicitly parsed.
     return (headline.strip(), name.strip())
 
 
@@ -303,7 +306,11 @@ class CallWidget(QWidget):
     def show_outgoing(self, call_id: int, target: str) -> None:
         self.call_id = call_id
         headline, sub = _split_peer(target)
-        self._set_peer(headline or target, sub or "Outgoing call")
+        # Don't fall back to "Outgoing call" -- the state label
+        # ("Calling.../In call/Ended") already carries that signal.
+        # The peer subtitle is now only used when the URI carries a
+        # real display-name; otherwise it stays empty and hidden.
+        self._set_peer(headline or target, sub)
         self.state_label.setText("Calling…")
         self.state_label.setProperty("level", "progress")
         self.duration_label.setText("00:00")
@@ -317,7 +324,9 @@ class CallWidget(QWidget):
     def show_incoming(self, call_id: int, remote: str) -> None:
         self.call_id = call_id
         headline, sub = _split_peer(remote)
-        self._set_peer(headline or remote, sub or "Incoming call")
+        # Same rationale as show_outgoing -- subtitle only carries a
+        # real display-name; state label handles RINGING/Calling/etc.
+        self._set_peer(headline or remote, sub)
         self.state_label.setText("RINGING")
         self.state_label.setProperty("level", "progress")
         self.duration_label.setText("")
@@ -406,19 +415,19 @@ class CallWidget(QWidget):
                 pass
 
     def update_quality(self, mos: float, packet_loss_pct: float) -> None:
-        # MOS shown inline in the peer-sub line, not a separate row.
-        # Keep the existing peer-sub text (codec) and append MOS.
-        existing = self.peer_sub_label.text()
-        # Strip any prior MOS suffix.
-        base = existing.split("  ·  MOS", 1)[0]
-        loss = f", loss {packet_loss_pct:.1f}%" if packet_loss_pct > 0 else ""
-        self.peer_sub_label.setText(f"{base}  ·  MOS {mos:.1f}{loss}")
+        # Operator dropped the codec @ rate line per "useless info"
+        # feedback. MOS / packet-loss also dropped from the call card
+        # -- the live audio meters + RX/TX bars in the top strip
+        # already cover audio-quality at-a-glance, and full numeric
+        # detail is one click away in CdrDetailDialog.
+        return
 
     def update_media(self, codec: str, clock: int, channels: int) -> None:
-        if not codec:
-            return
-        chan = f", {channels}ch" if channels and channels > 1 else ""
-        self.peer_sub_label.setText(f"{codec} @ {clock} Hz{chan}")
+        # Codec display removed (was rendered as "PCMA @ 8000 Hz"
+        # under the dialled number) -- the operator flagged it as
+        # noise; the codec is set per-account in Settings, so
+        # showing it on every active call adds nothing.
+        return
 
     def update_fas(self, verdict: str, confidence: float = 0.0, reasons: str = "") -> None:
         """Update the FAS badge for this call.

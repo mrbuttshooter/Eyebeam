@@ -28,6 +28,75 @@ def sip_level(code: int | None) -> str:
     return "muted"
 
 
+# Map raw SIP final-response codes to a single-word operator label.
+# Used in History rows, Recent Calls chips, and the SipCodeBadge --
+# the operator preference is "just type busy or reject" instead of
+# "486" / "603" etc. The number stays in the tooltip for power
+# users who want the exact code.
+_SIP_CODE_LABEL = {
+    # 2xx success
+    200: "Answered",
+    202: "Accepted",
+    # 4xx client errors -- common SIP rejection paths
+    400: "Bad Request",
+    401: "Auth",
+    402: "Payment Req",
+    403: "Forbidden",
+    404: "Not Found",
+    405: "Not Allowed",
+    406: "Not Acceptable",
+    407: "Auth",
+    408: "Timeout",
+    410: "Gone",
+    413: "Too Large",
+    415: "Bad Media",
+    416: "Bad URI",
+    420: "Bad Extension",
+    421: "Extension Req",
+    423: "Too Brief",
+    480: "Unavailable",
+    481: "No Dialog",
+    482: "Loop Detected",
+    483: "Too Many Hops",
+    484: "Bad Address",
+    485: "Ambiguous",
+    486: "Busy",
+    487: "Cancelled",
+    488: "Not Acceptable",
+    491: "Pending",
+    493: "Undecipherable",
+    # 5xx server errors
+    500: "Server Error",
+    501: "Not Implemented",
+    502: "Bad Gateway",
+    503: "Unavailable",
+    504: "Gateway Timeout",
+    505: "Bad Version",
+    513: "Too Large",
+    # 6xx global failures
+    600: "Busy",
+    603: "Declined",
+    604: "No User",
+    606: "Not Acceptable",
+}
+
+
+def sip_label(code: int | None) -> str:
+    """Return a one- or two-word human label for a SIP response code.
+
+    Used in History / Recents / call badges so the operator sees
+    'Busy' / 'Cancelled' / 'Declined' instead of '486' / '487' / '603'.
+    Unknown codes fall back to the raw number so debug isn't lost.
+    """
+    if code is None or code == 0:
+        return ""
+    name = _SIP_CODE_LABEL.get(int(code))
+    if name:
+        return name
+    # Unknown -- emit the number so debugging still works.
+    return str(code)
+
+
 class StatusPill(QLabel):
     def __init__(self, text: str, level: str = "muted", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
@@ -44,15 +113,19 @@ class SipCodeBadge(QLabel):
         reason: str = "",
         parent: QWidget | None = None,
     ) -> None:
-        text = "" if code is None else str(code)
+        # Operator preference: pill text reads as the human label
+        # ("Busy", "Cancelled", "Declined") instead of the raw code
+        # ("486"). Full "<code> <reason>" stays as the tooltip so the
+        # exact wire-level data is one hover away for debugging.
+        text = sip_label(code)
         super().__init__(text, parent)
         self.setObjectName("SipCodeBadge")
         self.setProperty("level", sip_level(code))
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if code is not None:
-            label = f"{code} {reason}".strip()
-            self.setToolTip(label)
-            self.setAccessibleName(f"SIP code {label}")
+            tip = f"{code} {reason}".strip()
+            self.setToolTip(tip)
+            self.setAccessibleName(f"SIP code {tip}")
 
 
 class FasBadge(QLabel):

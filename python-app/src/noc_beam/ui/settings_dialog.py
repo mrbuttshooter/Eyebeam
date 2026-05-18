@@ -87,7 +87,12 @@ class SettingsDialog(QDialog):
         # If we have an account, surface it as a sub-item under Account so
         # the user sees their per-account identity at a glance.
         if account is not None:
-            sub = QListWidgetItem(f"  {account.display_name or account.username or 'active account'}")
+            # Sidebar label prefers the operator's nickname (`label`) so
+            # this matches what shows on the call/Accounts/History rows.
+            # Falls back to display_name -> username -> placeholder.
+            _nick = (getattr(account, "label", "") or "").strip()
+            _nav_text = _nick or account.display_name or account.username or "active account"
+            sub = QListWidgetItem(f"  {_nav_text}")
             sub.setData(Qt.UserRole, "Account")
             sub.setForeground(Qt.GlobalColor.gray)
             # Insert directly after the Account row.

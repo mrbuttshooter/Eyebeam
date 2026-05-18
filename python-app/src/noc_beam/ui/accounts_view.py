@@ -105,7 +105,15 @@ class AcctRow(QFrame):
         self.dot.setPixmap(_status_dot_pixmap("#7C8696"))
         self.dot.setFixedSize(10, 10)
 
-        display = account.display_name or account.username
+        # Prefer the UI nickname (`label`) so the NOC Accounts list
+        # shows the operator's chosen name; fall back to display_name
+        # (which carries the A-number in operator workflow), then to
+        # the SIP username.
+        display = (
+            getattr(account, "label", "")
+            or account.display_name
+            or account.username
+        )
         self.name = QLabel(display, self)
         self.name.setObjectName("AcctRowName")
 

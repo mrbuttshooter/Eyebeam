@@ -102,8 +102,23 @@ class RegistrationRetry(QObject):
         try:
             # pjsua2: account.setRegistration(True) issues a fresh REGISTER.
             acc.setRegistration(True)
-        except Exception:
-            log.exception("setRegistration on retry failed for %s", account_id)
+        except Exception as exc:
+            # Generic pjsua2.Error here is expected and transient: the
+            # account handle is mid-state-transition (another REGISTER
+            # already in flight, transport rebinding, etc.). Log at
+            # WARN (not ERROR) and re-schedule another retry with the
+            # next backoff step so the chain keeps trying instead of
+            # silently dying on one transient race.
+            log.warning(
+                "setRegistration race on retry for %s (%s); rescheduling",
+                account_id, type(exc).__name__,
+            )
+            # Re-schedule via the normal backoff path so the chain
+            # keeps trying instead of silently dying on one transient
+            # race. _schedule_retry uses _attempts[account_id] as the
+            # backoff index, so the wait grows naturally with repeated
+            # races.
+            self._schedule_retry(account_id, 0, "transient")
 
     def _reset(self, account_id: str) -> None:
         self._attempts.pop(account_id, None)

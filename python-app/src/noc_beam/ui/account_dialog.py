@@ -48,6 +48,8 @@ class AccountDialog(QDialog):
         if account is None:
             account = AccountConfig(id=str(uuid.uuid4()))
 
+        self.label = QLineEdit(getattr(account, "label", ""))
+        self.label.setPlaceholderText("e.g. Production main, Test trunk #1")
         self.display_name = QLineEdit(account.display_name)
         self.username = QLineEdit(account.username)
         self.auth_user = QLineEdit(account.auth_user)
@@ -111,6 +113,10 @@ class AccountDialog(QDialog):
         identity = FormSection("Identity", self)
         identity_form = QFormLayout()
         identity_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        # `Account name` is the UI nickname (chip + picker label),
+        # distinct from `Display name` which carries the A-number on
+        # the SIP wire per operator workflow.
+        identity_form.addRow("Account name", self.label)
         identity_form.addRow("Display name", self.display_name)
         identity_form.addRow("Username *", self.username)
         identity_form.addRow("Auth user", self.auth_user)
@@ -294,6 +300,7 @@ class AccountDialog(QDialog):
             port_val = 0
         return AccountConfig(
             id=self._account_id,
+            label=self.label.text().strip(),
             display_name=self.display_name.text().strip(),
             username=self.username.text().strip(),
             auth_user=self.auth_user.text().strip(),

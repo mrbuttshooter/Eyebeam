@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 from noc_beam import __app_name__, __version__
 from noc_beam.audio.devices import set_active_devices
 from noc_beam.audio.headset import detect_headsets
-from noc_beam.audio.ringer import Ringer
+from noc_beam.audio.ringer import FailureTone, Ringer
 from noc_beam.config.history import CdrEntry, append_entry
 from noc_beam.config.paths import accounts_file
 from noc_beam.config.store import (
@@ -134,6 +134,11 @@ class PhoneShell(QMainWindow):
         self.accounts = load_accounts()
         self.calls = call_manager()
         self.ringer = Ringer()
+        # Plays a PSTN-style tone (busy / reorder / reject) once when
+        # a call ends with a SIP failure code. Silent on 200 success
+        # and on auth-required (401/407, which are setup issues not
+        # real call failures).
+        self.failure_tone = FailureTone()
         self.tray = TrayController(self)
         self.reg_retry = RegistrationRetry(self)
         self.quality_sampler = CallQualitySampler(self.calls, self)
@@ -514,14 +519,21 @@ class PhoneShell(QMainWindow):
 
         # Multi-call strip: one row per active call with its own X
         # hangup button + an "End all" pill on the right when there
-        # are 2+ live calls. Stays hidden when there are zero calls
-        # so it doesn't intrude on the idle state.
+        # are 2+ live calls. Stays hidden when there are zero calls.
+        # The strip grows naturally as calls are added; what shrinks
+        # to make room is the Recent Calls strip below (see quick_dial
+        # wrapping). Window height stays put because the recents area
+        # gives up its rows.
         self.calls_strip = QFrame(self)
         self.calls_strip.setObjectName("CallStrips")
         self.calls_strip_layout = QVBoxLayout(self.calls_strip)
         self.calls_strip_layout.setContentsMargins(0, 0, 0, 0)
         self.calls_strip_layout.setSpacing(2)
         self.calls_strip.setVisible(False)
+        from PySide6.QtWidgets import QSizePolicy as _SP_
+        # Strip takes only as much vertical space as its rows need;
+        # never tries to expand opportunistically into recents area.
+        self.calls_strip.setSizePolicy(_SP_.Policy.Preferred, _SP_.Policy.Fixed)
         # Store the strip-refresh lambdas on self so closeEvent can
         # disconnect them by reference. Without this, every PhoneShell
         # ever constructed stacks another lambda on the call_manager()
@@ -543,12 +555,27 @@ class PhoneShell(QMainWindow):
         dpl.addWidget(self.call_widget)
         dpl.addWidget(self.first_run_hero)
         dpl.addWidget(self.dialpad)
-        # Stretch goes on quick_dial WITHOUT a factor -- the density
-        # audit found stretch=1 caused this widget to absorb all extra
-        # space, pushing items below the fold and forcing a scroll bar
-        # at typical window heights.
-        dpl.addWidget(self.quick_dial)
-        dpl.addStretch(1)
+        # Wrap recents in a QScrollArea so it's the shrink-victim when
+        # the multi-call strip grows. Operator request: window stays
+        # the same size, calls take space FROM the recents area
+        # (fewer recents visible, more calls visible). The scroll
+        # area's verticalSizePolicy = Expanding+ignoreSizeHint lets
+        # the layout shrink it as low as a single row before showing
+        # a scrollbar.
+        from PySide6.QtWidgets import QScrollArea as _QSA, QSizePolicy as _SP_
+        self._quick_dial_scroll = _QSA(self)
+        self._quick_dial_scroll.setObjectName("RecentsScroll")
+        self._quick_dial_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._quick_dial_scroll.setWidgetResizable(True)
+        self._quick_dial_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._quick_dial_scroll.setWidget(self.quick_dial)
+        # Minimum 1 row visible so the section never disappears
+        # entirely; Expanding policy means it surrenders space first
+        # under layout pressure (the multi-call strip will push down
+        # into it as calls are added).
+        self._quick_dial_scroll.setMinimumHeight(60)
+        self._quick_dial_scroll.setSizePolicy(_SP_.Policy.Preferred, _SP_.Policy.Expanding)
+        dpl.addWidget(self._quick_dial_scroll, 1)
 
         # Contacts + Favorites are Bria-parity tabs (the primary 4 in
         # Bria are Dialpad / Contacts / Favorites / History). NOC-only
@@ -722,6 +749,12 @@ class PhoneShell(QMainWindow):
             self.first_run_hero.setVisible(no_accounts)
             self.dialpad.setVisible(not no_accounts)
             self.quick_dial.setVisible(not no_accounts)
+            # Wrapper visibility tracks the strip so the scroll area
+            # doesn't reserve empty space when there's no account.
+            try:
+                self._quick_dial_scroll.setVisible(not no_accounts)
+            except Exception:
+                pass
             self.dial_input.setEnabled(not no_accounts)
             self.call_btn.setEnabled(not no_accounts)
         if not enabled:
@@ -735,8 +768,16 @@ class PhoneShell(QMainWindow):
             self.account_chip.style().polish(self.account_chip)
             self._set_status("No SIP account configured", "warn", "Add account", "add-account")
         else:
+            # Chip/picker prefer the UI nickname (`label`), then fall
+            # back to the SIP-wire display_name, then to user@domain.
+            def _chip_text(a) -> str:
+                return (
+                    getattr(a, "label", "")
+                    or a.display_name
+                    or f"{a.username}@{a.domain}"
+                )
             for acc in enabled:
-                label = acc.display_name or f"{acc.username}@{acc.domain}"
+                label = _chip_text(acc)
                 act = menu.addAction(label)
                 act.triggered.connect(
                     lambda _checked=False, aid=acc.id, lbl=label: self._set_active_account(aid, lbl)
@@ -745,8 +786,7 @@ class PhoneShell(QMainWindow):
             menu.addAction("Add account...", self._on_add_account)
             if not self._active_account_id or not any(a.id == self._active_account_id for a in enabled):
                 first = enabled[0]
-                first_label = first.display_name or f"{first.username}@{first.domain}"
-                self._set_active_account(first.id, first_label)
+                self._set_active_account(first.id, _chip_text(first))
         self.account_chip.setMenu(menu)
 
     def _set_active_account(self, account_id, label):
@@ -976,6 +1016,22 @@ class PhoneShell(QMainWindow):
             except Exception:
                 pass
 
+    def _active_calls_on_account(self, account_id: str) -> list:
+        """Return CallRecords currently up on a given account.
+
+        Used by destructive paths (remove / edit / re-register / supplier-
+        swap / unregister) to refuse-or-defer rather than silently tear
+        down a live call's media (the underlying PJSIP account owns the
+        Call; shutting it down drops audio without sending BYE).
+        """
+        try:
+            return [
+                r for r in self.calls.active()
+                if getattr(r, "account_id", None) == account_id
+            ]
+        except Exception:
+            return []
+
     def _on_supplier_changed(self, index: int) -> None:
         if index < 0:
             return
@@ -1000,6 +1056,31 @@ class PhoneShell(QMainWindow):
                 return
             new_uid = s.routed(getattr(acc, "routing_format", "") or "")
             if not new_uid or (new_uid == acc.username and new_uid == acc.auth_user):
+                return
+            # Guard: supplier swap calls update_account which does
+            # remove+re-add internally. Tearing down the PJSIP account
+            # mid-call kills the call's audio without sending BYE.
+            # Refuse the swap; user must end live calls first.
+            active_on = self._active_calls_on_account(acc.id)
+            if active_on:
+                QMessageBox.warning(
+                    self, "Change supplier",
+                    f"{acc.username}@{acc.domain} has {len(active_on)} active "
+                    "call(s). End them before switching supplier — the swap "
+                    "re-registers and would drop the call mid-conversation."
+                )
+                # Roll the combo back to whatever was selected before so
+                # the UI matches the un-applied state.
+                try:
+                    prev_idx = self.supplier_combo.findData(
+                        getattr(acc, "auth_user", "") or acc.username
+                    )
+                    if prev_idx >= 0:
+                        self.supplier_combo.blockSignals(True)
+                        self.supplier_combo.setCurrentIndex(prev_idx)
+                        self.supplier_combo.blockSignals(False)
+                except Exception:
+                    pass
                 return
             # Swap BOTH username and auth_user so the on-wire From: URI
             # and Authorization header agree (e.g. From: sip:U138@... +
@@ -1158,6 +1239,17 @@ class PhoneShell(QMainWindow):
         acc = next((a for a in self.accounts if a.id == account_id), None)
         if acc is None or not acc.enabled:
             return
+        # Test Register internally does remove + re-add, which tears
+        # down any live call's audio on this account without BYE.
+        active_on = self._active_calls_on_account(account_id)
+        if active_on:
+            QMessageBox.warning(
+                self, "Test register",
+                f"{acc.username}@{acc.domain} has {len(active_on)} active "
+                "call(s). End them before re-registering — Test would drop "
+                "the call mid-conversation."
+            )
+            return
         try:
             SipEndpoint.instance().remove_account(acc.id)
             self._add_account_to_endpoint(acc)
@@ -1172,6 +1264,15 @@ class PhoneShell(QMainWindow):
         in self.accounts so the user can re-register via Test."""
         acc = next((a for a in self.accounts if a.id == account_id), None)
         if acc is None:
+            return
+        # Same footgun: dropping the PJSIP account kills the call audio.
+        active_on = self._active_calls_on_account(account_id)
+        if active_on:
+            QMessageBox.warning(
+                self, "Unregister account",
+                f"{acc.username}@{acc.domain} has {len(active_on)} active "
+                "call(s). End them before unregistering."
+            )
             return
         try:
             SipEndpoint.instance().remove_account(acc.id)
@@ -1211,7 +1312,11 @@ class PhoneShell(QMainWindow):
     def _account_label(self, account_id):
         acc = next((a for a in self.accounts if a.id == account_id), None)
         if acc is None: return account_id
-        return acc.display_name or f"{acc.username}@{acc.domain}"
+        return (
+            getattr(acc, "label", "")
+            or acc.display_name
+            or f"{acc.username}@{acc.domain}"
+        )
 
     def _on_call_incoming(self, account_id, call_id, remote, is_in):
         label = self._account_label(account_id)
@@ -1250,6 +1355,16 @@ class PhoneShell(QMainWindow):
 
     def _on_call_media(self, call_id, codec, clock, channels):
         self.calls.update_media(call_id, codec, clock, channels)
+        # PJSIP's onCallMediaState wires every newly-active call to
+        # BOTH the playback and capture devices, which overrides any
+        # prior audio-focus state. Re-apply focus so a brand-new call
+        # that happens to NOT be the selected one stays silent both
+        # ways instead of immediately blaring through the speakers.
+        try:
+            from noc_beam.sip.endpoint import SipEndpoint
+            SipEndpoint.instance().set_call_audio_focus(self._selected_call_id)
+        except Exception:
+            log.exception("re-apply audio focus after media-active failed")
 
     def _on_call_quality(self, call_id, mos, loss, jitter_ms, rtt_ms):
         if call_id == self._selected_call_id:
@@ -1266,6 +1381,20 @@ class PhoneShell(QMainWindow):
 
 
     def _on_call_ended(self, call_id):
+        # If the call ended with a SIP failure code, play the matching
+        # PSTN-style tone (busy / reorder / reject) so the operator
+        # knows by ear without watching the screen. 200/auth/etc are
+        # silent. See audio.ringer.FailureTone._tone_for_code for the
+        # full mapping.
+        try:
+            rec = self.calls.get(call_id)
+            code = rec.last_code if rec is not None else 0
+            answered = getattr(rec, "was_answered", False) if rec is not None else False
+            if code and code >= 400 and not answered:
+                if getattr(self, "failure_tone", None) is not None:
+                    self.failure_tone.play_for_code(code)
+        except Exception:
+            log.exception("failure-tone play failed for call %s", call_id)
         self._maybe_write_cdr(call_id); self.ringer.stop()
 
     def _maybe_write_cdr(self, call_id):
@@ -1299,9 +1428,28 @@ class PhoneShell(QMainWindow):
 
     def _select_call(self, call_id):
         self._selected_call_id = call_id
+        # Route audio so only THIS call is audible / talked-to. Default
+        # PJSIP conference behaviour mixes every call into the speakers
+        # and sends mic to every call -- chaos when an operator has
+        # 3+ test calls running. Audio-focus routes only the selected
+        # call's downlink to the speaker and only the mic to its
+        # uplink; other calls go silent both ways (soft-hold, no
+        # re-INVITE / HOLD signalled to the far end).
+        try:
+            from noc_beam.sip.endpoint import SipEndpoint
+            SipEndpoint.instance().set_call_audio_focus(call_id)
+        except Exception:
+            log.exception("audio-focus call %s failed", call_id)
         rec = self.calls.get(call_id)
         if rec is None:
-            self.call_widget.show_idle(); self.call_widget.setVisible(False); return
+            self.call_widget.show_idle(); self.call_widget.setVisible(False)
+            # No selected call -> mute everything.
+            try:
+                from noc_beam.sip.endpoint import SipEndpoint
+                SipEndpoint.instance().set_call_audio_focus(None)
+            except Exception:
+                pass
+            return
         self.call_widget.setVisible(True)
         if rec.direction == "in" and rec.state == CallState.INCOMING:
             self.call_widget.show_incoming(call_id, rec.remote_uri)
@@ -1842,6 +1990,22 @@ class PhoneShell(QMainWindow):
         active = self.calls.active()
         others = [r for r in active if r.call_id != self._selected_call_id]
         others_by_id = {r.call_id: r for r in others}
+
+        # Auto-hide Recent Calls when the multi-call strip would
+        # otherwise push the window past its design height. Threshold
+        # is 3+ total active calls (2+ in the strip after the
+        # selected call gets the main card). Operator preference:
+        # "if there is no space just hide recent tab".
+        try:
+            wrapper = getattr(self, "_quick_dial_scroll", None)
+            if wrapper is not None:
+                enabled_accounts = any(
+                    getattr(a, "enabled", True) for a in self.accounts
+                )
+                should_show = enabled_accounts and len(active) < 3
+                wrapper.setVisible(should_show)
+        except Exception:
+            pass
 
         if not others:
             # Tear down completely when no others -- but use hide first

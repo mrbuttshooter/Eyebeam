@@ -127,6 +127,28 @@ _PATHS = {
         '<path d="M16 3l4 3-4 3"/>'
         '<path d="M11 6h9"/>'
     ),
+    # Phone handset + outgoing arrow (top-right) -- outgoing call row.
+    "call-outgoing": (
+        '<path d="M5 4h3l2 5-2 1.5a12 12 0 0 0 5.5 5.5L15 14l5 2v3a2 2 0 0 1-2 2'
+        ' A14 14 0 0 1 3 6 a2 2 0 0 1 2-2z"/>'
+        '<path d="M15 9l6-6"/>'
+        '<path d="M16 3h5v5"/>'
+    ),
+    # Phone handset + incoming arrow (down-left into the handset) --
+    # incoming call row.
+    "call-incoming": (
+        '<path d="M5 4h3l2 5-2 1.5a12 12 0 0 0 5.5 5.5L15 14l5 2v3a2 2 0 0 1-2 2'
+        ' A14 14 0 0 1 3 6 a2 2 0 0 1 2-2z"/>'
+        '<path d="M21 3l-6 6"/>'
+        '<path d="M15 3v6h6"/>'
+    ),
+    # Phone handset + diagonal slash -- missed / failed call row.
+    "call-missed": (
+        '<path d="M5 4h3l2 5-2 1.5a12 12 0 0 0 5.5 5.5L15 14l5 2v3a2 2 0 0 1-2 2'
+        ' A14 14 0 0 1 3 6 a2 2 0 0 1 2-2z"/>'
+        '<path d="M16 2l6 6"/>'
+        '<path d="M22 2l-6 6"/>'
+    ),
 }
 
 

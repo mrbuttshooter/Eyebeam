@@ -1055,6 +1055,7 @@ QLabel#DiagHint {
     line-height: 1.5;
 }
 QLabel#DiagValue {
+    background-color: transparent;
     color: #1F2933;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 12px;
@@ -1082,6 +1083,7 @@ QFrame#LastIncident {
     padding: 12px 14px;
 }
 QLabel#IncidentTitle {
+    background-color: transparent;
     color: #B22D35;
     font-weight: 600;
     font-size: 11px;
@@ -1202,6 +1204,7 @@ QToolButton#ContactRowActionBtn:hover {
 }
 QToolButton#ContactRowActionBtn::menu-indicator { image: none; width: 0; }
 QLabel#StatLabel {
+    background-color: transparent;
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 10px;
@@ -1575,11 +1578,25 @@ QLabel#RecentsEmpty {
     padding: 12px 8px;
 }
 QFrame#RecentsRow {
+    /* `border: 0` reset BEFORE border-bottom is required for the
+       :hover bg to paint full-width (Qt qstylesheetstyle border-box
+       shrinking gotcha -- same fix as DenseListRow / HistoryRow).
+       Padding moved off the layout's contentsMargins so the bg
+       covers the full row including the visual padding area. */
     background-color: transparent;
-    border: none;
+    border: 0;
     border-bottom: 1px solid #F5F6F8;
+    padding: 4px 6px 4px 8px;
+    margin: 0;
 }
-QFrame#RecentsRow:hover { background-color: #F5F6F8; }
+QFrame#RecentsRow:hover { background-color: #E8ECF1; }
+/* Force child labels transparent so the row hover bg shows through
+   instead of painting a "white inside grey" inset around the text. */
+QLabel#RecentsArrow,
+QLabel#RecentsPeer,
+QLabel#RecentsTime {
+    background-color: transparent;
+}
 QLabel#RecentsArrow {
     font-family: "Segoe UI", "Inter", sans-serif;
     font-size: 13px;
@@ -1655,6 +1672,7 @@ QToolButton#RecentsCallBtn:hover { background-color: #46CF74; border-color: #46C
 QToolButton#RecentsCallBtn:pressed { background-color: #1FA64C; }
 QToolButton#RecentsCallBtn::menu-indicator { image: none; width: 0; }
 QLabel#StatValue {
+    background-color: transparent;
     color: #1F2933;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 16px;

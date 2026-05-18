@@ -56,25 +56,38 @@ def _short_uri(uri: str) -> str:
     return s
 
 
-def _arrow(entry: CdrEntry) -> tuple[str, str]:
-    """Return (glyph, level) where level is one of:
-    'ok-out' (outgoing answered), 'fail-out' (outgoing failed),
-    'ok-in' (incoming answered), 'miss-in' (missed incoming).
+def _arrow(entry: CdrEntry) -> tuple[str, str, str]:
+    """Return (icon_name, hex_color, level) for the row direction indicator.
+
+    iOS-style convention: direction arrow stays (in vs out is preserved
+    visually even on failed/missed); color carries the success signal —
+    green for answered, red for missed/failed. Missed-incoming gets the
+    dedicated `call-missed` icon (phone + X) because it's the most
+    semantically loaded state. `level` is kept for QSS hooks on the row
+    (e.g. row-bg tints by `level` still work).
     """
+    OK = "#2EBD5C"
+    BAD = "#D33841"
     if entry.direction == "in":
         if entry.was_answered:
-            return ("↓", "ok-in")        # ↓
-        return ("↓", "miss-in")          # ↓ red
+            return ("call-incoming", OK, "ok-in")
+        return ("call-missed", BAD, "miss-in")
     if entry.was_answered:
-        return ("↑", "ok-out")           # ↑
-    return ("↑", "fail-out")             # ↑ red
+        return ("call-outgoing", OK, "ok-out")
+    return ("call-outgoing", BAD, "fail-out")
 
 
 def _chip(entry: CdrEntry) -> tuple[str, str]:
-    """Return (chip text, level) for the SIP-status pill."""
+    """Return (chip text, level) for the SIP-status pill.
+
+    Operator preference: pill reads as the human label ('Busy',
+    'Cancelled', 'Declined') instead of the raw code ('486'). The
+    raw code stays in the row's tooltip / detail view.
+    """
+    from noc_beam.ui.components import sip_label
     code = entry.end_code or 0
     reason = entry.end_reason or ""
-    text = f"{code} {reason}".strip() if code else (reason or "—")
+    label = sip_label(code) if code else (reason or "—")
     if 200 <= code < 300:
         level = "ok"
     elif 100 <= code < 200:
@@ -87,7 +100,7 @@ def _chip(entry: CdrEntry) -> tuple[str, str]:
         level = "error"
     else:
         level = "muted"
-    return text, level
+    return label, level
 
 
 def _fmt_time(ts: float) -> str:
@@ -102,8 +115,9 @@ def _fmt_time(ts: float) -> str:
 class _DialTarget:
     label: str          # peer URI for display
     uri: str            # what to dial
-    arrow: str
-    arrow_level: str
+    icon_name: str      # rail_icons key (call-outgoing / call-incoming / call-missed)
+    icon_color: str     # hex stroke colour for the SVG
+    arrow_level: str    # QSS hook for row-bg tinting (ok-in / fail-out / ...)
     chip_text: str
     chip_level: str
     time_text: str
@@ -124,13 +138,25 @@ class RecentsRow(QFrame):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(38)
+        # See DenseListRow / HistoryRow notes: QFrame's QSS background
+        # only paints the full widget rect when WA_StyledBackground is
+        # set; otherwise the hover bg only paints an inner rectangle,
+        # leaving a visible "white inside grey" inset around the
+        # children. Layout contentsMargins are also dropped to 0 so
+        # the bg covers the full row; visual padding now lives in the
+        # QSS `padding` rule on QFrame#RecentsRow.
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        # Direction arrow (left-most, ~16 px wide, coloured)
-        arrow = QLabel(target.arrow, self)
+        # Direction arrow (left-most, SVG icon, coloured at render time)
+        from noc_beam.ui.rail_icons import rail_icon as _rail_icon
+        arrow = QLabel(self)
         arrow.setObjectName("RecentsArrow")
         arrow.setProperty("level", target.arrow_level)
-        arrow.setFixedWidth(16)
+        arrow.setFixedSize(18, 18)
         arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        arrow.setPixmap(
+            _rail_icon(target.icon_name, color=target.icon_color, px=16).pixmap(16, 16)
+        )
 
         # Peer label (the dial target as displayed)
         peer = QLabel(target.label, self)
@@ -157,7 +183,9 @@ class RecentsRow(QFrame):
         call_btn.clicked.connect(lambda: self.activated.emit(self._target.uri))
 
         row = QHBoxLayout(self)
-        row.setContentsMargins(8, 4, 6, 4)
+        # contentsMargins=0 so QSS hover bg covers the full row;
+        # visual padding moved into QSS on QFrame#RecentsRow.
+        row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(8)
         row.addWidget(arrow, 0, Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(peer, 1, Qt.AlignmentFlag.AlignVCenter)
@@ -264,12 +292,13 @@ class QuickDialStrip(QFrame):
             if uri in seen:
                 continue
             seen.add(uri)
-            arrow_glyph, arrow_lvl = _arrow(entry)
+            icon_name, icon_color, arrow_lvl = _arrow(entry)
             chip_text, chip_lvl = _chip(entry)
             out.append(_DialTarget(
                 label=_short_uri(uri),
                 uri=uri,
-                arrow=arrow_glyph,
+                icon_name=icon_name,
+                icon_color=icon_color,
                 arrow_level=arrow_lvl,
                 chip_text=chip_text,
                 chip_level=chip_lvl,

@@ -65,6 +65,11 @@ def _unprotect(stored: str) -> str:
 @dataclass
 class AccountConfig:
     id: str
+    # `label` is a UI-only nickname (e.g. "Production main", "Test
+    # trunk #1") shown in the account chip + picker. Separate from
+    # display_name, which carries the A-number on the SIP wire per
+    # operator workflow. label is UI-only -- never sent in SIP.
+    label: str = ""
     display_name: str = ""
     username: str = ""
     auth_user: str = ""

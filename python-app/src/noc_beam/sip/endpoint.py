@@ -784,6 +784,60 @@ class SipEndpoint:
             raise ValueError("Plain number requires an account context for the domain")
         return f"sip:{target}@{acc.cfg.domain}"
 
+    def set_call_audio_focus(self, focused_call_id: int | None) -> None:
+        """Route audio so ONLY the focused call is audible / talked-to.
+
+        Multi-call default: PJSIP's conference bridge mixes every active
+        call's downlink into the speakers AND sends the mic to every
+        call's uplink. That's operator hell on a NOC desk -- you can't
+        tell which carrier you're hearing, and the mic leaks into
+        trunks you didn't intend to talk on.
+
+        This method walks every live call, and for each audio media:
+          * focused call -> wire BOTH directions (capture -> call,
+            call -> playback) so it's hot.
+          * every other call -> stop BOTH directions so it's silent
+            both ways (effectively a "soft-hold" without sending
+            re-INVITE/HOLD -- the call stays connected, the RTP keeps
+            flowing in the background, but the operator hears nothing
+            and the far end gets silence).
+
+        Pass `focused_call_id=None` to mute everything (idle / hangup).
+        """
+        if self._ep is None:
+            return
+        dev_mgr = self._ep.audDevManager()
+        try:
+            capture = dev_mgr.getCaptureDevMedia()
+            playback = dev_mgr.getPlaybackDevMedia()
+        except Exception:
+            log.exception("audio focus: capture/playback dev unavailable")
+            return
+        for acc in self._accounts.values():
+            for call in list(acc.calls):
+                try:
+                    info = call.getInfo()
+                except Exception:
+                    continue
+                is_focused = (focused_call_id is not None and info.id == focused_call_id)
+                for mi in info.media:
+                    if mi.type != 1 or mi.status != 1:
+                        continue
+                    try:
+                        aud = call.getAudioMedia(mi.index)
+                    except Exception:
+                        continue
+                    if is_focused:
+                        try: capture.startTransmit(aud)
+                        except Exception: pass
+                        try: aud.startTransmit(playback)
+                        except Exception: pass
+                    else:
+                        try: capture.stopTransmit(aud)
+                        except Exception: pass
+                        try: aud.stopTransmit(playback)
+                        except Exception: pass
+
     def set_call_mute(self, call: SipCall, muted: bool) -> None:
         """Stop/resume the capture device → call audio transmit.
 

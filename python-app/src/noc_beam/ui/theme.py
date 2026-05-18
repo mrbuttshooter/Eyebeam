@@ -61,6 +61,12 @@ LIGHT_TO_DARK: dict[str, str] = {
     "#EEF0F2": "#1F252E",
     "#EDEFF2": "#1F252E",
     "#ECEFF2": "#1F252E",
+    # Row-hover (the gray operator picked for light mode after the
+    # "still white" feedback). In dark mode it needs to map to a
+    # clearly-visible cyan-tinted shade -- without an entry here the
+    # programmatic-substitution leaves it as #E8ECF1, which paints
+    # near-white in dark mode and reads as a glitch on hover.
+    "#E8ECF1": "#253A5B",
 
     # ===== Status-tinted row backgrounds =====
     # Map to the SAME base as primary surface. In light mode missed/failed
@@ -238,34 +244,12 @@ def _substitute_assets(qss: str) -> str:
 _DARK_OVERRIDES = """
 /* ===== Dark-mode-only overrides (appended after color substitution) =====
    Things that can't be expressed as a simple light->dark colour swap.
+   Currently empty -- the earlier "kill all row hovers in dark mode"
+   override was removed once the operator explicitly asked for the
+   gray (light) / cyan-tinted-dark (dark) hover treatment everywhere.
+   The light->dark color substitution (LIGHT_TO_DARK with the new
+   #E8ECF1 -> #253A5B entry) now handles row hover consistently.
 */
-/* Kill ALL borders + hover indication on list rows in dark mode.
-   User explicitly asked for no hover highlight at all -- the contrast
-   between a hover bg and the panel always shows as a visible "line"
-   at the row's edge, even at small RGB deltas. Simplest fix: no
-   hover bg change, no border, no outline. */
-QFrame#HistoryRow,
-QFrame#FavoriteRow,
-QFrame#ContactRow,
-QFrame#DenseListRow,
-QFrame#ContactGroupRow,
-QFrame#AcctRow,
-QFrame#HistoryRow:hover,
-QFrame#FavoriteRow:hover,
-QFrame#ContactRow:hover,
-QFrame#DenseListRow:hover,
-QFrame#ContactGroupRow:hover,
-QFrame#AcctRow:hover,
-QFrame#HistoryRow:focus,
-QFrame#FavoriteRow:focus,
-QFrame#ContactRow:focus,
-QFrame#DenseListRow:focus,
-QFrame#ContactGroupRow:focus,
-QFrame#AcctRow:focus {
-    background-color: transparent;
-    border: none;
-    outline: none;
-}
 """
 
 

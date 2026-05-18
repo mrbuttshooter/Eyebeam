@@ -225,7 +225,13 @@ class AccountDetail(QWidget):
 
     def show_account(self, cfg: AccountConfig) -> None:
         self._account = cfg
-        display = cfg.display_name or f"{cfg.username}@{cfg.domain}"
+        # Prefer UI nickname (`label`) so the detail header reads as
+        # "Production main" / "Test trunk", not the wire fields.
+        display = (
+            getattr(cfg, "label", "")
+            or cfg.display_name
+            or f"{cfg.username}@{cfg.domain}"
+        )
         uri = f"sip:{cfg.username}@{cfg.domain}"
         self.avatar.setText(_initials(display, fallback=cfg.username))
         self.name_lbl.setText(display)
