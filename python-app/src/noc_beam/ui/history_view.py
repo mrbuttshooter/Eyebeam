@@ -448,6 +448,7 @@ class HistoryView(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._entries: list[CdrEntry] = []
+        self._visible: list[CdrEntry] = []
         self._rows: list[HistoryRow] = []
         # Persisted across restarts so the badge doesn't re-light every
         # prior missed call on next launch.
@@ -603,15 +604,15 @@ class HistoryView(QWidget):
                 w.deleteLater()
         self._rows.clear()
 
-        visible = [e for e in self._entries if self._matches_filters(e)]
-        if not visible:
+        self._visible = [e for e in self._entries if self._matches_filters(e)]
+        if not self._visible:
             self._stack.setCurrentIndex(0)
             return
 
         self._stack.setCurrentIndex(1)
         last_bucket: str | None = None
         insert_at = 0
-        for i, entry in enumerate(visible):
+        for i, entry in enumerate(self._visible):
             bucket = _bucket_label(entry.ended_at or entry.started_at)
             if bucket != last_bucket:
                 divider = _DateDivider(bucket, self._rows_holder)
@@ -663,11 +664,11 @@ class HistoryView(QWidget):
         # enumerate in _refresh_rows). Previously this method indexed
         # self._entries (the FULL list) with that visible-list value,
         # so opening detail on a filtered row showed the WRONG CDR.
-        # Resolve through the visible projection.
-        visible = [e for e in self._entries if self._matches_filters(e)]
-        if not (0 <= index < len(visible)):
+        # Resolve through the cached visible projection so a CDR appended
+        # between the row click and this handler can't shift indices.
+        if not (0 <= index < len(self._visible)):
             return
-        entry = visible[index]
+        entry = self._visible[index]
         dlg = CdrDetailDialog(entry, parent=self)
         dlg.redial_requested.connect(self.redial_requested.emit)
         runner = getattr(dlg, "exec")
@@ -675,10 +676,9 @@ class HistoryView(QWidget):
 
     def _on_delete_one(self, index: int) -> None:
         from noc_beam.config.history import save_history
-        visible = [e for e in self._entries if self._matches_filters(e)]
-        if not (0 <= index < len(visible)):
+        if not (0 <= index < len(self._visible)):
             return
-        target = visible[index]
+        target = self._visible[index]
         self._entries = [e for e in self._entries if e is not target]
         try:
             save_history(self._entries)

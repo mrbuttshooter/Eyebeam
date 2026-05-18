@@ -232,10 +232,20 @@ class FailureTone:
     instances at construction so the tone fires with zero load latency
     when a call ends. Safe to construct in headless / no-QtMultimedia
     environments (becomes a no-op).
+
+    Each tone is backed by a pool of N=3 QSoundEffect instances rotated
+    round-robin per call. This avoids the QSoundEffect.stop()/play()
+    race -- stop() is async, so replaying the same instance within one
+    tick can drop or clip the onset. With 3 slots, hammering redial up
+    to 3 times produces 3 clean overlapping tones; the 4th call wraps
+    to slot 0, which by then has almost always finished its ~2 s tone.
     """
 
+    _POOL_SIZE = 3
+
     def __init__(self) -> None:
-        self._effects: dict[str, object] = {}
+        self._pools: dict[str, list[object]] = {}
+        self._next_slot: dict[str, int] = {}
         self._available = False
         try:
             from PySide6.QtCore import QUrl
@@ -245,11 +255,16 @@ class FailureTone:
             for name, path in (
                 ("busy", busy), ("reorder", reorder), ("reject", reject),
             ):
-                fx = QSoundEffect()
-                fx.setSource(QUrl.fromLocalFile(str(path)))
-                fx.setLoopCount(1)
-                fx.setVolume(0.55)
-                self._effects[name] = fx
+                url = QUrl.fromLocalFile(str(path))
+                pool: list[object] = []
+                for _ in range(self._POOL_SIZE):
+                    fx = QSoundEffect()
+                    fx.setSource(url)
+                    fx.setLoopCount(1)
+                    fx.setVolume(0.55)
+                    pool.append(fx)
+                self._pools[name] = pool
+                self._next_slot[name] = 0
             self._available = True
         except Exception:
             log.warning(
@@ -270,12 +285,18 @@ class FailureTone:
         name = _tone_for_code(code)
         if name is None:
             return
-        fx = self._effects.get(name)
-        if fx is None:
+        pool = self._pools.get(name)
+        if not pool:
             return
         try:
-            if fx.isPlaying():
-                fx.stop()
+            slot = self._next_slot[name]
+            self._next_slot[name] = (slot + 1) % self._POOL_SIZE
+            fx = pool[slot]
+            # Fire unconditionally on the rotated slot. We never reuse a
+            # still-playing instance in the common case, so there's no
+            # stop()/play() race. (If all 3 are somehow still active --
+            # a 4th redial inside ~2 s -- the wrapped slot simply plays
+            # over itself; QSoundEffect handles that gracefully.)
             fx.play()
         except Exception:
             log.exception("FailureTone.play_for_code(%s) failed", code)

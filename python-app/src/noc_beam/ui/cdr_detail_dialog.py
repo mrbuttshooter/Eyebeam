@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import time
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -17,7 +18,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -25,6 +25,10 @@ from PySide6.QtWidgets import (
 
 from noc_beam.config.history import CdrEntry
 from noc_beam.ui.components import StatusPill
+
+# NOTE: history_view imports CdrDetailDialog at module scope, so we
+# must defer importing from it (resolve_account_label / show_export_toast
+# / default_export_dir) until call-time to avoid a circular import.
 
 
 def _fmt_ts(ts: float | None) -> str:
@@ -80,20 +84,34 @@ class CdrDetailDialog(QDialog):
         form.setSpacing(6)
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
-        for label, value in (
-            ("Call ID", str(entry.call_id)),
-            ("Account",  entry.account_id or "—"),
-            ("Started",  _fmt_ts(entry.started_at)),
-            ("Connected", _fmt_ts(entry.connected_at) if entry.connected_at else "—"),
-            ("Ended",    _fmt_ts(entry.ended_at)),
-            ("Duration", _fmt_duration(entry.duration_s)),
-            ("End code", f"{entry.end_code} {entry.end_reason}".strip() or "—"),
-            ("Codec",    entry.codec or "—"),
+        # Resolve the raw account UUID to its human label (display_name →
+        # username → UUID fallback). Operators see meaningful A-numbers
+        # instead of "7f3a8c44-..."; the raw UUID is preserved as a
+        # tooltip for engineers who still need it.
+        raw_account_id = entry.account_id or ""
+        if raw_account_id:
+            from noc_beam.ui.history_view import _resolve_account_label
+            account_label = _resolve_account_label(raw_account_id)
+        else:
+            account_label = "—"
+        account_tooltip = raw_account_id or ""
+
+        for label, value, tooltip in (
+            ("Call ID", str(entry.call_id), ""),
+            ("Account",  account_label, account_tooltip),
+            ("Started",  _fmt_ts(entry.started_at), ""),
+            ("Connected", _fmt_ts(entry.connected_at) if entry.connected_at else "—", ""),
+            ("Ended",    _fmt_ts(entry.ended_at), ""),
+            ("Duration", _fmt_duration(entry.duration_s), ""),
+            ("End code", f"{entry.end_code} {entry.end_reason}".strip() or "—", ""),
+            ("Codec",    entry.codec or "—", ""),
         ):
             v = QLabel(value)
             v.setObjectName("CdrDetailValue")
             v.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             v.setWordWrap(True)
+            if tooltip:
+                v.setToolTip(tooltip)
             form.addRow(label, v)
 
         # FAS analysis (shown only when a verdict was captured at end-of-call).
@@ -182,9 +200,15 @@ class CdrDetailDialog(QDialog):
         return s
 
     def _on_export(self) -> None:
+        # Deferred import: history_view imports CdrDetailDialog at
+        # module scope, so importing it at module scope here would cycle.
+        from noc_beam.ui.history_view import _show_export_toast, default_export_dir
         default_name = f"cdr-{self._entry.call_id}-{int(self._entry.ended_at)}.csv"
+        # Seed the dialog in Documents/NOC_BEAM/ to match every other
+        # export entry-point in the app (history_view, test_runner_view).
+        default_path = str(default_export_dir() / default_name)
         path, _filter = QFileDialog.getSaveFileName(
-            self, "Export CDR", default_name, "CSV (*.csv);;All Files (*.*)"
+            self, "Export CDR", default_path, "CSV (*.csv);;All Files (*.*)"
         )
         if not path:
             return
@@ -210,6 +234,9 @@ class CdrDetailDialog(QDialog):
                     safe(self._entry.end_reason),
                     safe(self._entry.codec),
                 ])
-            QMessageBox.information(self, "Export CDR", f"Saved CDR to:\n{path}")
-        except Exception as exc:
-            QMessageBox.warning(self, "Export CDR", f"Could not write file:\n{exc}")
+            # Non-blocking floating toast (click to open folder), matching
+            # the UX everywhere else in the app — operators exporting many
+            # CDRs shouldn't have to dismiss N modal popups.
+            _show_export_toast(self, Path(path), 1)
+        except Exception:
+            _show_export_toast(self, Path(path), 0, failed=True)

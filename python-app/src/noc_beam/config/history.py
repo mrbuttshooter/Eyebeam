@@ -10,13 +10,14 @@ import json
 import logging
 import time
 from dataclasses import asdict, dataclass, fields
+from datetime import datetime, timezone
 from pathlib import Path
 
 from noc_beam.config.paths import data_dir
 
 log = logging.getLogger(__name__)
 
-MAX_ENTRIES = 1000
+MAX_ENTRIES = 10000
 
 # Module-level in-memory cache. append_entry() used to call
 # load_history() on EVERY hangup, re-reading + re-deserializing the
@@ -123,6 +124,87 @@ def load_history() -> list[CdrEntry]:
     return out
 
 
+def _archive_file(year: int, month: int) -> Path:
+    return data_dir() / f"call_history.{year:04d}-{month:02d}.json"
+
+
+def _archive_unknown_file() -> Path:
+    """Catch-all archive for entries whose timestamp is missing/unparseable."""
+    return data_dir() / "call_history.archive.json"
+
+
+def _archive_key(entry: CdrEntry) -> Path:
+    """Pick the archive file for an entry based on ended_at (fallback started_at).
+    Unparseable / zero timestamps go to the catch-all archive."""
+    ts = entry.ended_at if entry.ended_at else entry.started_at
+    if not ts or ts <= 0:
+        return _archive_unknown_file()
+    try:
+        dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return _archive_unknown_file()
+    return _archive_file(dt.year, dt.month)
+
+
+def _atomic_write_json(path: Path, payload: list[dict]) -> None:
+    """Mirror save_history's tempfile + replace + 3-retry-backoff pattern.
+    Raises the last exception if all retries fail."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    last_err: Exception | None = None
+    for _ in range(3):
+        try:
+            tmp.replace(path)
+            return
+        except Exception as exc:
+            last_err = exc
+            time.sleep(0.05)
+    try:
+        tmp.unlink(missing_ok=True)
+    except Exception:
+        pass
+    assert last_err is not None
+    raise last_err
+
+
+def _append_to_archive(overflow: list[CdrEntry]) -> None:
+    """Append trimmed-off entries to monthly archive files. A failure here
+    must NOT block the live save -- we'd rather lose deep history than
+    drop the live CDR. Each target archive file is read, extended, and
+    rewritten atomically (same pattern as save_history)."""
+    if not overflow:
+        return
+    # Bucket by target path so we read+rewrite each archive file at most once.
+    buckets: dict[Path, list[CdrEntry]] = {}
+    for e in overflow:
+        buckets.setdefault(_archive_key(e), []).append(e)
+    for arc_path, new_entries in buckets.items():
+        try:
+            existing: list[dict] = []
+            if arc_path.exists():
+                try:
+                    raw = json.loads(arc_path.read_text(encoding="utf-8"))
+                    if isinstance(raw, list):
+                        existing = [r for r in raw if isinstance(r, dict)]
+                except Exception:
+                    # Don't quarantine the archive; just log and overwrite with
+                    # what we can salvage from this batch. Losing one archive
+                    # file is preferable to dropping the live save.
+                    log.warning(
+                        "Archive %s unreadable; rewriting with current batch",
+                        arc_path.name,
+                    )
+                    existing = []
+            payload = existing + [asdict(e) for e in new_entries]
+            _atomic_write_json(arc_path, payload)
+        except Exception:
+            log.exception(
+                "Failed to append %d CDR(s) to archive %s; continuing",
+                len(new_entries),
+                arc_path.name,
+            )
+
+
 def save_history(entries: list[CdrEntry]) -> None:
     path = history_file()
     # Cap to MAX_ENTRIES. The slice direction here depends on caller
@@ -131,9 +213,18 @@ def save_history(entries: list[CdrEntry]) -> None:
     # newest N. The HistoryView delete path passes the same list back
     # but pre-sorted newest-first via the reverse=True call in
     # _refresh_rows, where -MAX_ENTRIES would drop newest -- BUT the
-    # cap is rarely hit in practice (1000 entries) and fixing the
-    # delete path needs the caller, not this function. Tracked.
-    trimmed = entries[-MAX_ENTRIES:]
+    # cap is rarely hit in practice and fixing the delete path needs
+    # the caller, not this function. Tracked.
+    if len(entries) > MAX_ENTRIES:
+        overflow = entries[:-MAX_ENTRIES]
+        trimmed = entries[-MAX_ENTRIES:]
+        # Best-effort: route the dropped entries to monthly archive files
+        # before they fall off the hot cache. _append_to_archive swallows
+        # its own errors so a flaky archive write never blocks the live
+        # save.
+        _append_to_archive(overflow)
+    else:
+        trimmed = entries[-MAX_ENTRIES:]
     payload = [asdict(e) for e in trimmed]
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -154,6 +245,34 @@ def save_history(entries: list[CdrEntry]) -> None:
         pass
     log.error("Failed to atomically save call history after retries: %s", last_err)
     raise last_err  # type: ignore[misc]
+
+
+def load_archive(year: int, month: int) -> list[CdrEntry]:
+    """Read the monthly archive file for the given year/month. Returns []
+    if missing or unreadable. Schema-tolerant: unknown keys are dropped,
+    malformed rows are skipped (mirrors load_history())."""
+    path = _archive_file(year, month)
+    if not path.exists():
+        return []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        log.warning("Archive %s unreadable; returning empty list", path.name)
+        return []
+    if not isinstance(raw, list):
+        return []
+    known = {f.name for f in fields(CdrEntry)}
+    out: list[CdrEntry] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        clean = {k: v for k, v in item.items() if k in known}
+        try:
+            out.append(CdrEntry(**clean))
+        except TypeError:
+            log.warning("Skipping malformed archived CDR row: %s", item)
+            continue
+    return out
 
 
 def _ensure_cache() -> list[CdrEntry]:

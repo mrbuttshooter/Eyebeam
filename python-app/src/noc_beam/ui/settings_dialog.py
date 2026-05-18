@@ -10,7 +10,9 @@ Footer: Reset / [stretch] / Cancel / Save (orange primary action).
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+import logging
+
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -32,6 +34,8 @@ from PySide6.QtWidgets import (
 from noc_beam.audio.devices import enumerate_devices
 from noc_beam.codecs.manager import list_codecs
 from noc_beam.config.store import AccountConfig, GlobalSettings
+
+log = logging.getLogger(__name__)
 
 
 def _section_label(text: str) -> QLabel:
@@ -316,8 +320,16 @@ class SettingsDialog(QDialog):
             try:
                 save_suppliers(_read_all())
                 save_btn.setText("Saved ✓")
-                from PySide6.QtCore import QTimer as _QT
-                _QT.singleShot(2000, lambda: save_btn.setText("Save"))
+                # Parent the revert timer to the button so closing the
+                # Settings dialog cascades destruction; otherwise a bare
+                # QTimer.singleShot(2000, ...) can fire on a deleted
+                # button and raise RuntimeError.
+                self._save_revert_timer = QTimer(save_btn)
+                self._save_revert_timer.setSingleShot(True)
+                self._save_revert_timer.timeout.connect(
+                    lambda: save_btn.setText("Save")
+                )
+                self._save_revert_timer.start(2000)
             except Exception:
                 log.exception("Failed to save suppliers")
                 save_btn.setText("Save FAILED")
@@ -1135,27 +1147,46 @@ class SettingsDialog(QDialog):
                 self.theme_combo.setCurrentIndex(idx)
         except Exception:
             pass
-        # Codecs -- reset each spinbox to the priority pjsua2 currently
-        # advertises for that codec. Previously this was a comment that
-        # left codecs untouched; users hitting "Reset settings" reasonably
-        # expected the codec list to revert too, not stay at whatever
-        # they last set. We re-read list_codecs() (which returns the
-        # PJSIP-live priority, distinct from the GlobalSettings-stored
-        # priority) so the dialog's view matches what's actually
-        # running.
+        # Codecs -- repopulate the two drag-drop QListWidgets from the
+        # live PJSIP codec set. The old spinbox-per-codec UI was
+        # replaced by ENABLED / DISABLED columns, so the previous
+        # `_codec_priority_spins` path silently did nothing. We mirror
+        # the build pattern in `_build_codecs_pane`: priority > 0 ->
+        # ENABLED (sorted by descending priority), else DISABLED
+        # (sorted alphabetically by display name).
         try:
+            from PySide6.QtCore import Qt as _Qt
             from noc_beam.codecs.manager import list_codecs as _live_codecs
-            spins = getattr(self, "_codec_priority_spins", {})
-            for codec in _live_codecs():
-                spin = spins.get(codec.codec_id)
-                if spin is None:
-                    continue
-                try:
-                    spin.setValue(int(codec.priority))
-                except Exception:
-                    pass
+            enabled_list = getattr(self, "_codec_enabled_list", None)
+            disabled_list = getattr(self, "_codec_disabled_list", None)
+            if enabled_list is not None and disabled_list is not None:
+                enabled_list.clear()
+                disabled_list.clear()
+                decorated: list[tuple[int, str, str]] = [
+                    (int(c.priority), c.codec_id, c.display_name)
+                    for c in _live_codecs()
+                ]
+                enabled_sorted = sorted(
+                    [d for d in decorated if d[0] > 0], key=lambda t: -t[0]
+                )
+                disabled_sorted = sorted(
+                    [d for d in decorated if d[0] <= 0],
+                    key=lambda t: t[2].lower(),
+                )
+
+                def _mk(codec_id: str, display: str) -> QListWidgetItem:
+                    short = codec_id.split("/", 1)[0]
+                    item = QListWidgetItem(f"{short}    {display}")
+                    item.setData(_Qt.ItemDataRole.UserRole, codec_id)
+                    item.setToolTip(codec_id)
+                    return item
+
+                for _pri, cid, disp in enabled_sorted:
+                    enabled_list.addItem(_mk(cid, disp))
+                for _pri, cid, disp in disabled_sorted:
+                    disabled_list.addItem(_mk(cid, disp))
         except Exception:
-            pass
+            log.exception("Failed to reset codec lists")
 
     @staticmethod
     def _select_by_data(combo: QComboBox, data: int) -> None:

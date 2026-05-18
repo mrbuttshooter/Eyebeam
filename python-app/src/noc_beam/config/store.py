@@ -20,10 +20,27 @@ from noc_beam.config.paths import accounts_file, settings_file
 log = logging.getLogger(__name__)
 
 
+# Module-level flag set to True the first time DPAPI encryption fails on a
+# Windows host (typically a roaming-profile glitch or revoked master key).
+# The UI reads this via `is_dpapi_degraded()` on startup and can surface a
+# banner so the user knows their stored passwords have degraded to base64.
+_dpapi_degraded: bool = False
+
+
+def is_dpapi_degraded() -> bool:
+    """Return True if DPAPI protection has ever failed in this process.
+
+    Once flipped True, stays True for the lifetime of the process -- a
+    single failure means at least one password got written as base64.
+    """
+    return _dpapi_degraded
+
+
 # ---------------------------------------------------------------------------
 # DPAPI password protection (Windows only)
 # ---------------------------------------------------------------------------
 def _protect(plaintext: str) -> str:
+    global _dpapi_degraded
     if not plaintext:
         return ""
     if sys.platform == "win32":
@@ -35,6 +52,7 @@ def _protect(plaintext: str) -> str:
             )
             return "dpapi:" + base64.b64encode(blob).decode("ascii")
         except Exception:  # pragma: no cover - falls through to base64
+            _dpapi_degraded = True
             log.warning("DPAPI protection failed, falling back to base64", exc_info=True)
     return "b64:" + base64.b64encode(plaintext.encode("utf-8")).decode("ascii")
 
@@ -107,6 +125,30 @@ class AccountConfig:
     #   Genband:  "000{id}" (id="303" -> dial prefix "000303")
     # If empty, falls back to the supplier id verbatim.
     routing_format: str = ""
+
+    def __repr__(self) -> str:
+        # Override the dataclass-generated repr so credentials never leak
+        # into logs via a stray `log.info("cfg=%r", cfg)`. Non-empty
+        # secrets are shown as '***' (so reviewers can tell a value is
+        # set); empty strings stay empty (so missing config is obvious).
+        def _mask(v: str) -> str:
+            return "'***'" if v else "''"
+
+        return (
+            f"AccountConfig(id={self.id!r}, label={self.label!r}, "
+            f"display_name={self.display_name!r}, username={self.username!r}, "
+            f"auth_user={_mask(self.auth_user)}, domain={self.domain!r}, "
+            f"password={_mask(self.password)}, proxy={self.proxy!r}, "
+            f"transport={self.transport!r}, register={self.register!r}, "
+            f"srtp={self.srtp!r}, dtmf_method={self.dtmf_method!r}, "
+            f"stun_server={self.stun_server!r}, enabled={self.enabled!r}, "
+            f"port={self.port!r}, switch_type={self.switch_type!r}, "
+            f"dial_prefix={self.dial_prefix!r}, "
+            f"routing_format={self.routing_format!r})"
+        )
+
+    def __str__(self) -> str:
+        return self.__repr__()
 
     def to_storable(self) -> dict[str, Any]:
         d = asdict(self)

@@ -51,12 +51,6 @@ QMenu::separator { height: 1px; background: #ECEEF1; margin: 4px 6px; }
 /* ------------------------------------------------------------------
    Top strip: brand + account + audio + status
    ------------------------------------------------------------------ */
-QFrame#TopStrip {
-    background-color: #FFFFFF;
-    border: none;
-    border-bottom: 1px solid #ECEEF1;
-}
-
 QLabel#BrandMark {
     /* Now displays the real app icon as a QPixmap; chrome stripped. */
     background: transparent;
@@ -192,45 +186,13 @@ QFrame#DialBar {
     background-color: #FFFFFF;
     border: none;
 }
-QLineEdit#DialInput {
-    background-color: #ECEEF1;
-    color: #1F2933;
-    border: 1px solid #ECEEF1;
-    border-radius: 4px;
-    padding: 0 12px;
-    font-size: 13px;
-    min-height: 36px;
-    max-height: 36px;
-}
 QLineEdit#DialInput:focus {
     background-color: #FFFFFF;
     border-color: #E85D04;
 }
-QPushButton#CallButton {
-    background-color: #2EBD5C;
-    color: #FFFFFF;
-    border: 1px solid #2EBD5C;
-    border-radius: 4px;
-    padding: 0 18px;
-    min-height: 36px;
-    max-height: 36px;
-    min-width: 60px;
-    font-weight: 700;
-    font-size: 14px;
-}
 QPushButton#CallButton:hover { background-color: #46CF74; border-color: #46CF74; }
 QPushButton#CallButton:pressed { background-color: #1FA64C; border-color: #1FA64C; }
 QPushButton#CallButton:disabled { background-color: #E0E3E7; color: #94A0AD; border-color: #E0E3E7; }
-QPushButton#HangupButton {
-    background-color: #D33841;
-    color: #FFFFFF;
-    border: 1px solid #D33841;
-    border-radius: 4px;
-    padding: 7px 14px;
-    min-height: 24px;
-    min-width: 44px;
-    font-weight: 600;
-}
 QPushButton#HangupButton:hover { background-color: #E55260; border-color: #E55260; }
 QPushButton#HangupButton:disabled { background-color: #F5F6F8; color: #C9CDD3; border-color: #ECEEF1; }
 
@@ -375,26 +337,7 @@ QPushButton#DialpadKey:disabled { color: #C9CDD3; }
 /* ------------------------------------------------------------------
    Bottom tab bar (4 icons, orange when active)
    ------------------------------------------------------------------ */
-QFrame#BottomTabs {
-    background-color: #FFFFFF;
-    border: none;
-    border-top: 1px solid #ECEEF1;
-}
-QToolButton#TabBtn {
-    background: transparent;
-    color: #94A0AD;
-    border: 1px solid transparent;
-    border-top: 2px solid transparent;
-    padding: 8px 6px 6px 6px;
-    min-height: 36px;
-    min-width: 56px;
-}
 QToolButton#TabBtn:hover { color: #57606A; background-color: #F5F6F8; }
-QToolButton#TabBtn:checked {
-    color: #E85D04;
-    border-top: 2px solid #E85D04;
-    background-color: #FFFFFF;
-}
 QToolButton#TabBtn[badged="true"] {
     color: #D33841;
     font-weight: 700;
@@ -490,12 +433,6 @@ QPushButton:pressed { background-color: #ECEEF1; }
 QPushButton:disabled { color: #94A0AD; background-color: #F5F6F8; border-color: #ECEEF1; }
 QPushButton:focus { outline: none; border-color: #E85D04; }
 
-QPushButton#PrimaryAction {
-    background-color: #E85D04;
-    color: #FFFFFF;
-    border-color: #E85D04;
-    font-weight: 600;
-}
 QPushButton#PrimaryAction:hover { background-color: #FF7314; border-color: #FF7314; }
 QPushButton#PrimaryAction:pressed { background-color: #C24B00; }
 
@@ -678,7 +615,7 @@ QToolButton#TraceFastChip:checked {
 QFrame#TraceDialogRow {
     background-color: #FFFFFF;
     border: none;
-    border-bottom: 1px solid #ECEEF1;
+    border-bottom: 1px solid #D8DEE4;
     border-left: 3px solid transparent;
 }
 QFrame#TraceDialogRow:hover { background-color: #F5F6F8; }
@@ -692,14 +629,14 @@ QLabel#TraceCaret {
 }
 QLabel#TraceDialogTime {
     color: #94A0AD;
-    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
+    font-family: "Cascadia Mono", "Consolas", monospace;
     font-size: 11px;
     font-weight: 500;
 }
 QLabel#TraceDialogId {
     color: #57606A;
-    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
-    font-size: 10px;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 11px;
     font-weight: 500;
 }
 QFrame#TraceChipsHolder { background: transparent; border: none; }
@@ -759,15 +696,15 @@ QFrame#TraceDialogBody { background-color: #F5F6F8; border: none; }
 QFrame#TraceMsgRow {
     background-color: transparent;
     border: none;
-    border-bottom: 1px solid #ECEEF1;
+    border-bottom: 1px solid #D8DEE4;
 }
 QFrame#TraceMsgRow:hover { background-color: #FFFFFF; }
 QFrame#TraceMsgRow[dir="rx"] { border-left: 2px solid #2A8DC4; }
 QFrame#TraceMsgRow[dir="tx"] { border-left: 2px solid #E85D04; }
 QLabel#TraceMsgTime {
     color: #94A0AD;
-    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
-    font-size: 10px;
+    font-family: "Cascadia Mono", "Consolas", monospace;
+    font-size: 11px;
 }
 QLabel#TraceMsgDir {
     color: #57606A;
@@ -786,16 +723,6 @@ QLabel#TraceMsgSummary {
     font-size: 11px;
     font-weight: 500;
 }
-QTextEdit#TraceMsgBody {
-    background-color: #FFFFFF;
-    color: #1F2933;
-    border: none;
-    border-top: 1px solid #ECEEF1;
-    padding: 6px 28px;
-    font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
-    font-size: 10px;
-}
-
 /* ---- Trace row list (Wireshark-style) --------------------------- */
 QScrollArea#TraceScroll { background-color: #FFFFFF; border: none; }
 QFrame#TraceRowList    { background-color: #FFFFFF; border: none; }
@@ -962,8 +889,9 @@ QLabel#AcctRowUri   {
     qproperty-frameShape: NoFrame;
 }
 QFrame#AcctRow[state="focused"] QLabel#AcctRowUri { color: #1F2933; }
-QLabel#AcctRowMeta { background: transparent; border: none; }
-QLabel#AcctRowMeta  {
+QLabel#AcctRowMeta {
+    background: transparent;
+    border: none;
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 10px;
@@ -1138,11 +1066,13 @@ QFrame#ContactGroupRow {
 }
 QFrame#ContactGroupRow:hover { background-color: #E8ECF1; }
 QLabel#GroupName {
+    background-color: transparent;
     color: #1F2933;
     font-size: 13px;
     font-weight: 500;
 }
 QLabel#GroupCount {
+    background-color: transparent;
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 11px;
@@ -1162,11 +1092,9 @@ QFrame#ContactRow, QFrame#FavoriteRow {
 /* See ContactGroupRow:hover comment -- full-row tint dropped.
    Also covers focus/pressed/selected so a clicked row doesn't
    paint a slightly-different bg either. */
-QFrame#ContactRow,
 QFrame#ContactRow:hover,
 QFrame#ContactRow:focus,
 QFrame#ContactRow:pressed,
-QFrame#FavoriteRow,
 QFrame#FavoriteRow:hover,
 QFrame#FavoriteRow:focus,
 QFrame#FavoriteRow:pressed {
@@ -1227,12 +1155,9 @@ QFrame#HistoryRow {
 }
 /* Full-row gray hover. The arrow + SipCodeBadge carry the
    missed/failed signal already, so the idle state stays transparent;
-   only hover paints. */
-QFrame#HistoryRow,
-QFrame#HistoryRow[result="missed"],
-QFrame#HistoryRow[result="failed"] {
-    background-color: transparent;
-}
+   only hover paints. (Per-state idle bg:transparent for [missed]/
+   [failed] is set further down -- see QFrame#HistoryRow[result=...]
+   in the consolidated section.) */
 QFrame#HistoryRow:hover,
 QFrame#HistoryRow:focus,
 QFrame#HistoryRow:pressed,
@@ -1243,6 +1168,7 @@ QFrame#HistoryRow[result="failed"]:hover {
 }
 
 QLabel#HistoryRowArrow {
+    background-color: transparent;
     color: #2DA44E;   /* answered = green */
     font-size: 14px;
     font-weight: 700;
@@ -1251,6 +1177,7 @@ QLabel#HistoryRowArrow[result="missed"] { color: #D33841; }
 QLabel#HistoryRowArrow[result="failed"] { color: #C97C0E; }
 
 QLabel#HistoryRowPeer {
+    background-color: transparent;
     color: #1F2933;
     font-size: 13px;
     font-weight: 500;
@@ -1262,6 +1189,7 @@ QLabel#HistoryRowPeer[result="missed"] {
     font-weight: 700;
 }
 QLabel#HistoryRowMeta {
+    background-color: transparent;
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 10px;
@@ -1474,13 +1402,6 @@ QListWidget#SettingsNav::item:selected {
 }
 
 QStackedWidget#SettingsBody { background-color: #FFFFFF; }
-QWidget#SettingsPane { background-color: #FFFFFF; }
-QLabel#SettingsTitle {
-    color: #1F2933;
-    font-size: 18px;
-    font-weight: 600;
-    letter-spacing: -0.005em;
-}
 QLabel#SettingsAccountUri {
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
@@ -1591,13 +1512,10 @@ QFrame#RecentsRow {
 }
 QFrame#RecentsRow:hover { background-color: #E8ECF1; }
 /* Force child labels transparent so the row hover bg shows through
-   instead of painting a "white inside grey" inset around the text. */
-QLabel#RecentsArrow,
-QLabel#RecentsPeer,
-QLabel#RecentsTime {
-    background-color: transparent;
-}
+   instead of painting a "white inside grey" inset around the text.
+   Applied per-rule below on each child label individually. */
 QLabel#RecentsArrow {
+    background-color: transparent;
     font-family: "Segoe UI", "Inter", sans-serif;
     font-size: 13px;
     font-weight: 700;
@@ -1607,6 +1525,7 @@ QLabel#RecentsArrow[level="fail-out"]  { color: #D33841; }
 QLabel#RecentsArrow[level="ok-in"]     { color: #2A8DC4; }
 QLabel#RecentsArrow[level="miss-in"]   { color: #D33841; }
 QLabel#RecentsPeer {
+    background-color: transparent;
     color: #1F2933;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 11px;
@@ -1651,6 +1570,7 @@ QLabel#RecentsChip[level="error"] {
     border-color: rgba(211,56,65,0.45);
 }
 QLabel#RecentsTime {
+    background-color: transparent;
     color: #94A0AD;
     font-family: "Cascadia Mono", "Cascadia Code", "Consolas", monospace;
     font-size: 10px;
@@ -1760,32 +1680,51 @@ QPushButton#SecondaryAction {
     color: #1F2933;
 }
 QFrame#TopStrip {
+    background-color: #FFFFFF;
+    border: none;
     border-bottom: 1px solid #D8DEE4;
 }
 QFrame#BottomTabs {
+    background-color: #FFFFFF;
+    border: none;
     border-top: 1px solid #D8DEE4;
 }
 QToolButton#TabBtn {
+    background: transparent;
+    color: #94A0AD;
     border: none;
     border-top: 2px solid transparent;
     padding: 4px 0 3px 0;
+    min-height: 36px;
+    min-width: 56px;
     font-size: 10px;
 }
 QToolButton#TabBtn:checked {
+    background-color: #FFFFFF;
     border-top-color: #E85D04;
     color: #E85D04;
 }
 QLineEdit#DialInput {
+    background-color: #ECEEF1;
+    color: #1F2933;
+    border: 1px solid #ECEEF1;
+    border-radius: 4px;
+    padding: 0 12px;
+    font-size: 13px;
     min-height: 32px;
     max-height: 36px;
-    border-radius: 4px;
 }
 QPushButton#CallButton {
-    min-height: 32px;
-    max-height: 36px;
-    border-radius: 4px;
     background-color: #2EBD5C;
     color: #FFFFFF;
+    border: 1px solid #2EBD5C;
+    border-radius: 4px;
+    padding: 0 18px;
+    min-height: 32px;
+    max-height: 36px;
+    min-width: 60px;
+    font-weight: 700;
+    font-size: 14px;
 }
 QWidget#DialPad QPushButton#DialPadButton {
     min-height: 40px;
@@ -1801,10 +1740,14 @@ QFrame#QuickDialRow {
     border-bottom: 1px solid #D8DEE4;
 }
 QPushButton#HangupButton {
-    min-height: 32px;
-    border-radius: 4px;
     background-color: #D33841;
     color: #FFFFFF;
+    border: 1px solid #D33841;
+    border-radius: 4px;
+    padding: 7px 14px;
+    min-height: 32px;
+    min-width: 44px;
+    font-weight: 600;
 }
 QPushButton#CallControlButton {
     min-height: 28px;
@@ -1836,14 +1779,17 @@ QFrame#DenseListRow:pressed {
     outline: none;
 }
 QLabel#DenseRowMarker {
+    background-color: transparent;
     font-size: 13px;
     color: #E85D04;
 }
 QLabel#DenseRowTitle {
+    background-color: transparent;
     font-size: 13px;
     font-weight: 600;
 }
 QLabel#DenseRowSubtitle {
+    background-color: transparent;
     font-size: 11px;
     color: #57606A;
 }
@@ -1856,13 +1802,6 @@ QFrame#DenseRowActions {
 QFrame#HistoryRow[result="missed"], QFrame#HistoryRow[result="failed"] {
     background-color: transparent;
 }
-QFrame#TraceDialogRow, QFrame#TraceMsgRow {
-    border-bottom: 1px solid #D8DEE4;
-}
-QLabel#TraceDialogTime, QLabel#TraceMsgTime, QLabel#TraceDialogId {
-    font-family: "Cascadia Mono", "Consolas", monospace;
-    font-size: 11px;
-}
 QLabel#TraceMsgDir[dir="rx"] {
     color: #0969DA;
 }
@@ -1870,6 +1809,11 @@ QLabel#TraceMsgDir[dir="tx"] {
     color: #1A7F37;
 }
 QTextEdit#TraceMsgBody {
+    background-color: #FFFFFF;
+    color: #1F2933;
+    border: none;
+    border-top: 1px solid #ECEEF1;
+    padding: 6px 28px;
     font-family: "Cascadia Mono", "Consolas", monospace;
     font-size: 11px;
 }
@@ -1887,16 +1831,6 @@ QFrame#OperatorToolbar {
     border: 1px solid #D8DEE4;
     border-radius: 4px;
     padding: 6px;
-}
-QTextEdit#TestRunnerPasteBox {
-    border: 1px solid #D8DEE4;
-    border-radius: 4px;
-    font-family: "Cascadia Mono", "Consolas", monospace;
-    font-size: 12px;
-}
-QTableWidget#TestRunnerResults {
-    gridline-color: #D8DEE4;
-    selection-background-color: #E5F2FA;
 }
 QPushButton#RunTestButton {
     min-height: 32px;
@@ -2165,6 +2099,7 @@ QLabel#SettingsTitle {
     color: #1F2328;
     font-size: 22px;
     font-weight: 600;
+    letter-spacing: -0.005em;
     padding-bottom: 2px;
     background-color: transparent;
 }
@@ -2701,13 +2636,3 @@ QListWidget#CodecDnDList::item:selected {
    the middle. Force every child widget to transparent so the row's
    hover bg shows through everywhere.
    ------------------------------------------------------------------ */
-QLabel#HistoryRowArrow,
-QLabel#HistoryRowPeer,
-QLabel#HistoryRowMeta,
-QLabel#DenseRowMarker,
-QLabel#DenseRowTitle,
-QLabel#DenseRowSubtitle,
-QLabel#GroupName,
-QLabel#GroupCount {
-    background-color: transparent;
-}

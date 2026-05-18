@@ -45,8 +45,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pathlib import Path
+
 from noc_beam.config.paths import log_dir
 from noc_beam.sip.events import sip_events
+from noc_beam.ui.history_view import default_export_dir
 
 
 _trace_logger: logging.Logger | None = None
@@ -861,14 +864,15 @@ class TraceView(QWidget):
 
     # ------------------------------------------------------------------
     def _on_export(self) -> None:
-        default = log_dir() / f"sip_trace_export_{datetime.now():%Y%m%d_%H%M%S}.log"
+        default = default_export_dir() / f"sip_trace_export_{datetime.now():%Y%m%d_%H%M%S}.log"
         path, _ = QFileDialog.getSaveFileName(
             self, "Export current trace", str(default), "Log files (*.log);;All files (*.*)"
         )
         if not path:
             return
+        out = Path(path)
         try:
-            with open(path, "w", encoding="utf-8") as fh:
+            with out.open("w", encoding="utf-8") as fh:
                 for row in self._dialogs.values():
                     if not row.isVisible():
                         continue
@@ -876,6 +880,13 @@ class TraceView(QWidget):
                     fh.write(f"=== Call-ID: {d.call_id} ===\n")
                     for m in d.msgs:
                         fh.write(f"[{m.when}] {m.direction}  {m.peer}\n{m.body}\n\n")
+        except OSError as e:
+            logging.getLogger(__name__).exception("Trace export failed")
+            try:
+                out.unlink(missing_ok=True)
+            except OSError:
+                logging.getLogger(__name__).exception("Failed to clean up partial export file %s", out)
+            self.export_failed.emit(f"Export failed: {e}")
         except Exception as e:
             logging.getLogger(__name__).exception("Trace export failed")
             self.export_failed.emit(f"Export failed: {e}")

@@ -181,14 +181,32 @@ def _to_dark(qss: str) -> str:
     Uses a single pass with a regex so each hex literal is touched at
     most once -- naive sequential replace() would re-substitute the
     output of an earlier swap.
+
+    We match BOTH 6-digit (#RRGGBB) and 3-digit (#RGB) hex literals.
+    light.qss today only uses 6-digit form, but a future PR could
+    slip in `#FFF` shorthand and -- without the 3-digit branch --
+    the dark substitution would silently leave it as `#FFF` (white)
+    on a dark surface, producing white-on-white with no test to
+    catch it. We canonicalize 3-digit to its 6-digit equivalent
+    (#FFF -> #FFFFFF) and reuse the existing LIGHT_TO_DARK entries,
+    rather than maintaining a parallel 3-digit table.
     """
     if not qss:
         return qss
-    pat = re.compile(r"#[0-9A-Fa-f]{6}\b")
+    # 6-digit OR 3-digit hex. Order matters: try 6-digit first so we
+    # don't greedily consume the first 3 chars of a 6-digit literal.
+    pat = re.compile(r"#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})\b")
 
     def _repl(m: re.Match) -> str:
-        hex_val = m.group(0).upper()
-        return LIGHT_TO_DARK.get(hex_val, m.group(0))
+        raw = m.group(0)
+        # Canonicalize 3-digit shorthand to 6-digit so LIGHT_TO_DARK
+        # (which only stores 6-digit keys) can match it.
+        if len(raw) == 4:  # '#' + 3 hex chars
+            r, g, b = raw[1], raw[2], raw[3]
+            hex_val = f"#{r}{r}{g}{g}{b}{b}".upper()
+        else:
+            hex_val = raw.upper()
+        return LIGHT_TO_DARK.get(hex_val, raw)
 
     return pat.sub(_repl, qss)
 

@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -32,10 +33,62 @@ def load_contacts() -> list[Contact]:
         return []
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-        return [Contact(**item) for item in raw]
     except Exception:
-        log.exception("Failed to load contacts")
+        # Quarantine the corrupt file rather than silently returning [] --
+        # otherwise the very next save_contacts would overwrite it and
+        # destroy the user's entire contact list. Quarantined file is
+        # timestamped so multiple corruptions don't collide.
+        try:
+            quarantine = path.with_name(
+                f"{path.stem}.corrupt-{int(time.time())}{path.suffix}"
+            )
+            path.rename(quarantine)
+            log.error(
+                "contacts.json was unreadable; quarantined to %s",
+                quarantine.name,
+            )
+        except Exception:
+            log.exception(
+                "Failed to read contacts AND failed to quarantine; "
+                "leaving file in place to prevent overwrite"
+            )
         return []
+    if not isinstance(raw, list):
+        # Top-level shape is wrong (someone hand-edited it, wrote a dict,
+        # etc.). Same risk as a JSON parse failure: returning [] here
+        # would let the next save wipe recoverable data. Quarantine it.
+        try:
+            quarantine = path.with_name(
+                f"{path.stem}.corrupt-{int(time.time())}{path.suffix}"
+            )
+            path.rename(quarantine)
+            log.error(
+                "contacts.json top-level was not a list; quarantined to %s",
+                quarantine.name,
+            )
+        except Exception:
+            log.exception(
+                "contacts.json top-level was not a list AND failed to "
+                "quarantine; leaving file in place to prevent overwrite"
+            )
+        return []
+    # Filter unknown keys per row so a stale field on disk (e.g. one
+    # written by a newer build with extra dataclass fields) doesn't take
+    # out the whole list. Skip individual malformed rows rather than
+    # returning [] for the whole file -- preserves recoverable contacts.
+    known = {f.name for f in fields(Contact)}
+    out: list[Contact] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            log.warning("Skipping non-dict contact row: %r", item)
+            continue
+        clean = {k: v for k, v in item.items() if k in known}
+        try:
+            out.append(Contact(**clean))
+        except TypeError:
+            log.warning("Skipping malformed contact row: %s", item)
+            continue
+    return out
 
 
 def save_contacts(contacts: list[Contact]) -> None:
@@ -43,7 +96,23 @@ def save_contacts(contacts: list[Contact]) -> None:
     payload = [asdict(contact) for contact in contacts]
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    # Windows: tmp.replace can fail if the target is held open by an
+    # antivirus / file watcher. Retry a couple of times before giving up.
+    last_err: BaseException | None = None
+    for _ in range(3):
+        try:
+            tmp.replace(path)
+            return
+        except Exception as exc:
+            last_err = exc
+            time.sleep(0.05)
+    # Clean up the orphaned tmp so it doesn't poison the next save.
+    try:
+        tmp.unlink(missing_ok=True)
+    except Exception:
+        pass
+    log.error("Failed to atomically save contacts after retries: %s", last_err)
+    raise last_err  # type: ignore[misc]
 
 
 def add_contact(

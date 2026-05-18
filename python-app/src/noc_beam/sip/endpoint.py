@@ -633,11 +633,34 @@ class SipEndpoint:
             call.makeCall(target_uri, prm)
         except Exception:
             with self._lock:
+                # acc may have been shutdown by a concurrent
+                # remove_account during the makeCall window — in
+                # which case acc.calls may be inaccessible or stale.
+                # Best-effort cleanup; swallow.
                 try:
                     acc.calls.remove(call)
                 except Exception:
                     pass
             raise
+        # Re-acquire the lock and verify the account is still registered
+        # with this endpoint. Between the lock release above and now,
+        # another thread may have called remove_account(account_id),
+        # which acc.shutdown()s the pjsua2.Account. Continuing to use
+        # the resulting SipCall is undefined behavior. If the account
+        # vanished, drop the call from acc.calls (best-effort), tear
+        # down the call, and surface a clear error so the caller knows.
+        with self._lock:
+            if account_id not in self._accounts:
+                try:
+                    acc.calls.remove(call)
+                except Exception:
+                    pass
+                try:
+                    acc.deleteCall(call)
+                except Exception:
+                    pass
+                call = None
+                raise RuntimeError("Account removed during call setup")
         return call
 
     @staticmethod
@@ -872,6 +895,33 @@ class SipEndpoint:
                         try: aud.stopTransmit(playback)
                         except Exception as exc:
                             log.debug("audio focus stopTransmit (call->speaker) failed: %s", exc)
+
+    def set_playback_mute(self, muted: bool) -> None:
+        """Mute / unmute the speaker output globally.
+
+        Scales the playback device port's Rx level on the conference
+        bridge — 0.0 silences everything routed to the speaker
+        regardless of which call(s) are active, 1.0 restores unity
+        gain. This is the equivalent of an "audio strip mute" on the
+        operator's headset and mirrors the pattern already used by the
+        phone shell's audio strip (which previously reached into
+        `_ep.audDevManager()` directly).
+
+        Safe to call during startup/shutdown: no-op if PJSIP is not
+        currently initialized.
+        """
+        if self._ep is None:
+            return
+        try:
+            dev_mgr = self._ep.audDevManager()
+            dev_mgr.getPlaybackDevMedia().adjustRxLevel(0.0 if muted else 1.0)
+        except Exception:
+            # Don't silently swallow — operator hitting mute and getting
+            # no effect is a confusing safety/privacy failure. Log
+            # loudly so it shows up in support bundles.
+            log.warning(
+                "set_playback_mute(%s) failed", muted, exc_info=True,
+            )
 
     def set_call_mute(self, call: SipCall, muted: bool) -> None:
         """Stop/resume the capture device → call audio transmit.

@@ -200,6 +200,23 @@ class PhoneShell(QMainWindow):
         self._refresh_accounts()
 
         QTimer.singleShot(0, self._start_sip)
+        # Surface DPAPI degradation if it fired during accounts load:
+        # passwords silently fell back to base64-encoding (NOT encrypted).
+        # User needs to know — domain roaming-profile glitches are the
+        # usual cause and the fix is to relog or re-protect creds.
+        QTimer.singleShot(500, self._check_dpapi_status)
+
+    def _check_dpapi_status(self) -> None:
+        try:
+            from noc_beam.config.store import is_dpapi_degraded
+            if is_dpapi_degraded():
+                self._set_status(
+                    "⚠ Password protection degraded (DPAPI failed; using base64). "
+                    "Re-enter account passwords if this persists.",
+                    "warn",
+                )
+        except Exception:
+            pass
 
     def _start_sip(self):
         SipEndpoint.instance().start(self.settings, accounts=self.accounts)
@@ -578,9 +595,29 @@ class PhoneShell(QMainWindow):
         # singleton was fanning every CallRecord mutation to 30+ dead
         # PhoneShell instances, each chaining processEvents through
         # the next via the strip-rebuild path. v3 audit root cause.
+        # Coalesce strip refreshes: call_updated fires multiple times
+        # per second per call (FAS verdict, quality samples, codec
+        # changes, mute toggles). On a 10-call test sweep that's 50+
+        # full diff-rebuilds per second — wakes the painter for nothing
+        # since the visible chrome only needs a redraw every ~50 ms to
+        # look smooth. A single-shot timer collapses bursts into one
+        # rebuild. add/remove still fire immediately because those
+        # genuinely change the row count + selection.
+        self._strip_dirty = False
+        self._strip_coalesce = QTimer(self)
+        self._strip_coalesce.setSingleShot(True)
+        self._strip_coalesce.setInterval(50)
+        self._strip_coalesce.timeout.connect(self._flush_strip_if_dirty)
+
+        def _mark_strip_dirty(_cid):
+            self._strip_dirty = True
+            if not self._strip_coalesce.isActive():
+                self._strip_coalesce.start()
+
         self._strip_refresh_added = lambda _cid: self._refresh_calls_strip()
         self._strip_refresh_removed = lambda _cid: self._refresh_calls_strip()
-        self._strip_refresh_updated = lambda _cid: self._refresh_calls_strip()
+        # _updated is the high-frequency one — coalesce.
+        self._strip_refresh_updated = _mark_strip_dirty
         self.calls.call_added.connect(self._strip_refresh_added)
         self.calls.call_removed.connect(self._strip_refresh_removed)
         self.calls.call_updated.connect(self._strip_refresh_updated)
@@ -1233,6 +1270,17 @@ class PhoneShell(QMainWindow):
         accounts = [new_cfg if a.id == acc.id else a for a in self.accounts]
         if not self._save_accounts_or_warn(accounts):
             return
+        # Snapshot prior in-memory accounts so we can roll back the UI
+        # state if the re-add fails (without this, the old PJSIP account
+        # has been torn down + self.accounts has been mutated to the new
+        # cfg, but no live endpoint backs it -- UI shows a registered
+        # account that won't survive a restart and that the registrar
+        # has never heard of). The save_accounts() to disk already
+        # happened above; if re-add fails the on-disk state is the new
+        # cfg, which is fine -- next launch will try the new cfg
+        # cleanly. The in-memory state needs to match the live
+        # endpoint, hence the rollback.
+        prior_accounts = list(self.accounts)
         self.accounts = accounts
         # Reset retry state before tearing down the PJSIP account so any
         # pending retry timer doesn't fire setRegistration(True) on the
@@ -1240,10 +1288,21 @@ class PhoneShell(QMainWindow):
         self.reg_retry.reset(acc.id)
         SipEndpoint.instance().remove_account(acc.id)
         if new_cfg.enabled:
-            self._add_account_to_endpoint(new_cfg)
-            self._set_status(
-                f"Registering {new_cfg.username}@{new_cfg.domain}…", "muted"
-            )
+            try:
+                self._add_account_to_endpoint(new_cfg)
+                self._set_status(
+                    f"Registering {new_cfg.username}@{new_cfg.domain}…", "muted"
+                )
+            except Exception:
+                log.exception("Edit-account re-register failed; rolling back UI state")
+                # Roll back self.accounts so the UI doesn't show an
+                # account that has no live PJSIP backing.
+                self.accounts = prior_accounts
+                self._set_status(
+                    f"Edit failed: re-register of {new_cfg.username}@{new_cfg.domain} "
+                    "didn't take. Disk has new config; restart to pick it up.",
+                    "danger",
+                )
         self._refresh_accounts()
 
     def _remove_account_by_id(self, account_id: str) -> None:
@@ -1851,21 +1910,18 @@ class PhoneShell(QMainWindow):
 
         Operating at the device level (not per-call) means a re-INVITE
         or codec change cannot un-stick our mute, and it works even
-        across simultaneous calls. adjustRxLevel(0) on the playback
-        device scales every signal the conference bridge feeds it.
+        across simultaneous calls. The endpoint's set_playback_mute
+        wraps adjustRxLevel(0/1) on the playback device with a None-
+        guard for startup/shutdown windows. Was previously reaching
+        into ep._ep directly here — layering violation that broke if
+        SipEndpoint internals were ever refactored.
         """
         try:
             ep = SipEndpoint.instance()
         except Exception:
             return
         try:
-            from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE
-            if not PJSUA2_AVAILABLE:
-                return
-            slider_v = self.audio.slider.value()
-            level = 0.0 if muted else max(0.0, min(1.5, slider_v / 66.6))
-            playback = ep._ep.audDevManager().getPlaybackDevMedia()
-            playback.adjustRxLevel(level)
+            ep.set_playback_mute(muted)
         except Exception:
             log.exception("audio-strip speaker (device) mute failed")
 
@@ -2047,6 +2103,16 @@ class PhoneShell(QMainWindow):
                     ep.hangup_call(live)
             except Exception:
                 log.exception("hangup failed for call %s", cid)
+
+    def _flush_strip_if_dirty(self) -> None:
+        """Coalesce sink for high-frequency call_updated bursts. The
+        50 ms timer ensures we redraw at most ~20 fps even if the
+        FAS engine + quality sampler are both firing. add/remove
+        bypass this and refresh immediately so the strip's row count
+        stays accurate."""
+        if self._strip_dirty:
+            self._strip_dirty = False
+            self._refresh_calls_strip()
 
     def _refresh_calls_strip(self) -> None:
         """Render the multi-call stack of OTHER active calls.
