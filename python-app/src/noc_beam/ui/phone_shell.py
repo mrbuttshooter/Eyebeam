@@ -451,6 +451,7 @@ class PhoneShell(QMainWindow):
             _le.textEdited.connect(self._on_supplier_text_edited)
             _le.returnPressed.connect(self._on_supplier_return_pressed)
         self.supplier_combo.currentIndexChanged.connect(self._on_supplier_changed)
+        self.supplier_combo.activated.connect(self._on_supplier_activated)
         try:
             self.supplier_combo.view().setMinimumWidth(320)
         except Exception:
@@ -1020,6 +1021,7 @@ class PhoneShell(QMainWindow):
             except Exception:
                 pass
         # Reset autofill state.
+        self._supplier_filtering_text = False
         self._supplier_last_fill = ""
         self._supplier_typed_len = 0
         return resolved_idx >= 0
@@ -1027,6 +1029,7 @@ class PhoneShell(QMainWindow):
     def _on_supplier_text_edited(self, text: str) -> None:
         """Filter the supplier popup without rewriting what was typed."""
         if not text:
+            self._supplier_filtering_text = False
             self._supplier_last_fill = ""
             self._supplier_typed_len = 0
             self._supplier_proxy.setFilterFixedString("")
@@ -1035,6 +1038,7 @@ class PhoneShell(QMainWindow):
             except Exception:
                 pass
             return
+        self._supplier_filtering_text = True
         self._supplier_last_fill = ""
         self._supplier_typed_len = len(text)
         le = self.supplier_combo.lineEdit()
@@ -1092,6 +1096,13 @@ class PhoneShell(QMainWindow):
             return
         QTimer.singleShot(0, _restore_edit_state)
 
+    def _on_supplier_activated(self, index: int) -> None:
+        """Commit an explicit popup selection while search filtering."""
+        if not getattr(self, "_supplier_filtering_text", False):
+            return
+        self._supplier_filtering_text = False
+        self._on_supplier_changed(index)
+
     def _active_calls_on_account(self, account_id: str) -> list:
         """Return CallRecords currently up on a given account.
 
@@ -1110,6 +1121,8 @@ class PhoneShell(QMainWindow):
 
     def _on_supplier_changed(self, index: int) -> None:
         if index < 0:
+            return
+        if getattr(self, "_supplier_filtering_text", False):
             return
         sid = self.supplier_combo.itemData(index) or ""
         self._active_supplier_id = str(sid)

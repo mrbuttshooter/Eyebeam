@@ -333,6 +333,7 @@ class TestRunnerView(QMainWindow):
             _le.textEdited.connect(self._on_supplier_text_edited)
             _le.returnPressed.connect(self._on_supplier_return_pressed)
         self.supplier_combo.currentIndexChanged.connect(self._on_supplier_changed)
+        self.supplier_combo.activated.connect(self._on_supplier_activated)
         _supp_l.addWidget(self.supplier_label)
         _supp_l.addWidget(self.supplier_combo, 1)
         self.supplier_row.setVisible(False)
@@ -686,16 +687,19 @@ class TestRunnerView(QMainWindow):
                 self.targets_edit.setFocus(Qt.FocusReason.TabFocusReason)
             except Exception:
                 pass
+        self._supplier_filtering_text = False
         self._refresh_plan_preview()
 
     def _on_supplier_text_edited(self, text: str) -> None:
         if not text:
+            self._supplier_filtering_text = False
             self._supplier_proxy.setFilterFixedString("")
             try:
                 self.supplier_combo.hidePopup()
             except Exception:
                 pass
             return
+        self._supplier_filtering_text = True
         le = self.supplier_combo.lineEdit()
         if le is not None:
             saved_text = le.text()
@@ -749,8 +753,17 @@ class TestRunnerView(QMainWindow):
             return
         QTimer.singleShot(0, _restore_edit_state)
 
+    def _on_supplier_activated(self, index: int) -> None:
+        """Commit an explicit popup selection while search filtering."""
+        if not getattr(self, "_supplier_filtering_text", False):
+            return
+        self._supplier_filtering_text = False
+        self._on_supplier_changed(index)
+
     def _on_supplier_changed(self, index: int) -> None:
         if index < 0:
+            return
+        if getattr(self, "_supplier_filtering_text", False):
             return
         self._batch_supplier_id = self.supplier_combo.itemData(index) or ""
         # Reflect new supplier in the preflight line.
