@@ -7,6 +7,7 @@ from noc_beam.config.store import AccountConfig
 from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE, pj
 from noc_beam.sip.call import SipCall
 from noc_beam.sip.events import sip_events
+from noc_beam.sip.netselect import local_address_for_account
 
 log = logging.getLogger(__name__)
 
@@ -209,6 +210,11 @@ if PJSUA2_AVAILABLE:
             if proxy_uri:
                 ac.sipConfig.proxies.append(proxy_uri)
 
+            try:
+                ac.natConfig.sipOutboundUse = 0
+            except Exception:
+                log.warning("SIP outbound disable not available on this pjsua2 build")
+
             tid = _transport_id_for(cfg.transport, self._transports)
             if tid >= 0:
                 ac.sipConfig.transportId = tid
@@ -236,6 +242,14 @@ if PJSUA2_AVAILABLE:
 
             ac.mediaConfig.srtpUse = _srtp_use(cfg.srtp)
             ac.mediaConfig.srtpSecureSignaling = 0 if cfg.srtp != "mandatory" else 1
+            try:
+                media_address = local_address_for_account(cfg)
+                ac.mediaConfig.transportConfig.publicAddress = media_address
+                log.info(
+                    "Account %s advertising media address %s", cfg.id, media_address
+                )
+            except Exception:
+                log.debug("Could not select media advertised address for %r", cfg)
 
             # ICE only when a STUN server is configured. Earlier we
             # enabled ICE unconditionally to fix one-way audio behind

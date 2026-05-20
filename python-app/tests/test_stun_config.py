@@ -133,3 +133,31 @@ def test_endpoint_start_appends_account_stun_servers(monkeypatch: pytest.MonkeyP
         "stun2.example.com",
     ]
     assert _FakeEndpoint.last_config.uaConfig.stunIgnoreFailure is True
+
+
+def test_sip_advertised_address_uses_first_enabled_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        endpoint_module,
+        "local_address_for_account",
+        lambda _cfg: "10.35.150.184",
+    )
+
+    assert SipEndpoint._sip_advertised_address(
+        [
+            AccountConfig(id="disabled", enabled=False, domain="10.0.0.1"),
+            AccountConfig(id="enabled", domain="208.87.170.99"),
+        ]
+    ) == "10.35.150.184"
+
+
+def test_apply_transport_advertised_address_sets_public_address() -> None:
+    class FakeTransportConfig:
+        publicAddress = ""
+
+    tcfg = FakeTransportConfig()
+
+    SipEndpoint._apply_transport_advertised_address(tcfg, "10.35.150.184")
+
+    assert tcfg.publicAddress == "10.35.150.184"

@@ -84,6 +84,7 @@ class CallWidget(QWidget):
 
         self.call_id = -1
         self._on_hold = False
+        self._started_at: float | None = None
         self._connected_at: float | None = None
 
         # ----- Card (single compact row) ---------------------------------
@@ -292,6 +293,7 @@ class CallWidget(QWidget):
         self._set_peer("", "")
         self.state_label.setText("")
         self.duration_label.setText("")
+        self._started_at = None
         self._connected_at = None
         try:
             self._duration_timer.stop()
@@ -304,6 +306,7 @@ class CallWidget(QWidget):
             b.setEnabled(False)
 
     def show_outgoing(self, call_id: int, target: str) -> None:
+        is_new_call = self.call_id != call_id
         self.call_id = call_id
         headline, sub = _split_peer(target)
         # Don't fall back to "Outgoing call" -- the state label
@@ -314,6 +317,10 @@ class CallWidget(QWidget):
         self.state_label.setText("Calling…")
         self.state_label.setProperty("level", "progress")
         self.duration_label.setText("00:00")
+        if is_new_call or self._started_at is None:
+            self._started_at = time.time()
+            self._connected_at = None
+        self._ensure_duration_timer_running()
         self._set_active_row(True)
         self.hangup_btn.setEnabled(True)
         self.mute_btn.setEnabled(False)
@@ -339,7 +346,11 @@ class CallWidget(QWidget):
         self._set_state("incoming")
 
     def update_state(self, state_name: str, code: int, reason: str) -> None:
-        if code:
+        if state_name == "CALLING":
+            pill = "Calling..."
+        elif state_name == "EARLY":
+            pill = "Ringing"
+        elif code:
             pill = f"{code} {reason}".strip()
         else:
             pill = state_name.title()
@@ -400,11 +411,12 @@ class CallWidget(QWidget):
         if state_name == "CONFIRMED":
             if self._connected_at is None:
                 self._connected_at = time.time()
-            try:
-                if not self._duration_timer.isActive():
-                    self._duration_timer.start()
-            except Exception:
-                pass
+            self._ensure_duration_timer_running()
+            self._tick_duration()
+        elif state_name in ("CALLING", "EARLY"):
+            if self._started_at is None:
+                self._started_at = time.time()
+            self._ensure_duration_timer_running()
             self._tick_duration()
         elif state_name == "HELD":
             self._tick_duration()
@@ -472,11 +484,19 @@ class CallWidget(QWidget):
         else:
             self.hold_clicked.emit(self.call_id)
 
+    def _ensure_duration_timer_running(self) -> None:
+        try:
+            if not self._duration_timer.isActive():
+                self._duration_timer.start()
+        except Exception:
+            pass
+
     def _tick_duration(self) -> None:
-        if self._connected_at is None:
+        anchor = self._connected_at if self._connected_at is not None else self._started_at
+        if anchor is None:
             self.duration_label.setText("")
             return
-        elapsed = int(time.time() - self._connected_at)
+        elapsed = int(time.time() - anchor)
         h, rem = divmod(elapsed, 3600)
         m, s = divmod(rem, 60)
         fmt = f"{h:02d}:{m:02d}:{s:02d}" if h else f"00:{m:02d}:{s:02d}"

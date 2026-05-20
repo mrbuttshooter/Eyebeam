@@ -27,6 +27,7 @@ from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE, pj
 from noc_beam.sip.account import SipAccount
 from noc_beam.sip.call import SipCall
 from noc_beam.sip.events import sip_events
+from noc_beam.sip.netselect import local_address_for_account
 
 log = logging.getLogger(__name__)
 
@@ -186,7 +187,7 @@ class SipEndpoint:
                 self._ep.libInit(ep_cfg)
 
                 # Transports
-                self._create_transports(settings.sip_port)
+                self._create_transports(settings.sip_port, accounts)
 
                 # Codecs (apply priorities)
                 self._apply_codec_priorities(settings.codecs.priorities)
@@ -281,15 +282,22 @@ class SipEndpoint:
     # ------------------------------------------------------------------
     # Transports
     # ------------------------------------------------------------------
-    def _create_transports(self, port: int) -> None:
+    def _create_transports(
+        self,
+        port: int,
+        accounts: list[AccountConfig] | None = None,
+    ) -> None:
         assert self._ep is not None
+        advertised_address = self._sip_advertised_address(accounts)
 
         tcfg = pj.TransportConfig()
         tcfg.port = port
+        self._apply_transport_advertised_address(tcfg, advertised_address)
         self._transports["udp"] = self._ep.transportCreate(pj.PJSIP_TRANSPORT_UDP, tcfg)
 
         tcfg_tcp = pj.TransportConfig()
         tcfg_tcp.port = port
+        self._apply_transport_advertised_address(tcfg_tcp, advertised_address)
         try:
             self._transports["tcp"] = self._ep.transportCreate(
                 pj.PJSIP_TRANSPORT_TCP, tcfg_tcp
@@ -299,6 +307,7 @@ class SipEndpoint:
 
         tcfg_tls = pj.TransportConfig()
         tcfg_tls.port = port + 1 if port else 0
+        self._apply_transport_advertised_address(tcfg_tls, advertised_address)
         # Verify the registrar's certificate by default. PJSIP defaults
         # to verifyServer=False which means TLS gives you encryption
         # without authentication -- a downgrade from regular HTTPS that
@@ -322,6 +331,29 @@ class SipEndpoint:
             )
         except Exception:
             log.warning("TLS transport unavailable (PJSIP built without TLS?)")
+
+    @staticmethod
+    def _sip_advertised_address(accounts: list[AccountConfig] | None) -> str:
+        if not accounts:
+            return ""
+        for cfg in accounts:
+            if not getattr(cfg, "enabled", True):
+                continue
+            try:
+                return local_address_for_account(cfg)
+            except Exception:
+                log.debug("Could not select SIP advertised address for %r", cfg)
+        return ""
+
+    @staticmethod
+    def _apply_transport_advertised_address(tcfg, address: str) -> None:  # type: ignore[no-untyped-def]
+        if not address:
+            return
+        try:
+            tcfg.publicAddress = address
+            log.info("Advertising SIP transport address %s", address)
+        except Exception:
+            log.warning("pjsua2 transport config does not accept publicAddress")
 
     # ------------------------------------------------------------------
     # Codecs
@@ -660,6 +692,9 @@ class SipEndpoint:
             target_uri = self._normalize_dial_target(target_uri, acc.cfg.domain)
             call = SipCall(acc, account_id=account_id)
             prm = pj.CallOpParam(True)
+            local_uri = self._format_invite_local_uri(acc.cfg)
+            if local_uri:
+                self._set_call_tx_local_uri(prm, local_uri)
             # Append to acc.calls under the lock so concurrent
             # find_call / set_call_mute / quality sampling sees a
             # consistent list.
@@ -722,6 +757,70 @@ class SipEndpoint:
         if "@" in t:
             return f"sip:{t}"
         return f"sip:{t}@{account_domain}"
+
+    @staticmethod
+    def _format_invite_local_uri(cfg: AccountConfig) -> str:
+        """Build an optional per-INVITE From URI carrying the A-number.
+
+        PJSIP's AccountConfig.idUri must stay as a bare SIP URI on this
+        build, otherwise Account.create() rejects the account with
+        PJSIP_EINVALIDURI. SipTxOption.localUri is the supported per-call
+        override for the initial INVITE From header, so use it to restore
+        Eyebeam-style caller identity:
+
+            "96171488860" <sip:U080@208.87.170.99>
+        """
+        display = SipEndpoint._sanitize_display_name(getattr(cfg, "display_name", ""))
+        if not display:
+            return ""
+        user = SipEndpoint._sanitize_uri_user(getattr(cfg, "username", ""))
+        if not user:
+            return ""
+        host = SipEndpoint._account_host(cfg)
+        transport = (getattr(cfg, "transport", "") or "udp").lower()
+        scheme = "sips" if transport == "tls" else "sip"
+        transport_param = f";transport={transport}" if transport in ("tcp", "tls") else ""
+        return f'"{display}" <{scheme}:{user}@{host}{transport_param}>'
+
+    @staticmethod
+    def _account_host(cfg: AccountConfig) -> str:
+        host = (getattr(cfg, "domain", "") or "").strip()
+        port = int(getattr(cfg, "port", 0) or 0)
+        if port and host and not (host.endswith(f":{port}") or "]" in host):
+            return f"{host}:{port}"
+        return host
+
+    @staticmethod
+    def _sanitize_display_name(value: str) -> str:
+        return (
+            (value or "")
+            .replace("\\", "")
+            .replace('"', "")
+            .replace("<", "")
+            .replace(">", "")
+            .replace("\r", "")
+            .replace("\n", "")
+            .strip()
+        )
+
+    @staticmethod
+    def _sanitize_uri_user(value: str) -> str:
+        user = (value or "").strip().replace("{id}", "").replace("{", "").replace("}", "")
+        return "".join(ch for ch in user if ch > " " and ch not in '<>"\\')
+
+    @staticmethod
+    def _set_call_tx_local_uri(prm, local_uri: str) -> None:  # type: ignore[no-untyped-def]
+        opt = pj.SipTxOption()
+        opt.localUri = local_uri
+        if hasattr(prm, "msgData"):
+            prm.msgData = opt
+        elif hasattr(prm, "txOption"):
+            prm.txOption = opt
+        else:
+            log.warning(
+                "pjsua2 CallOpParam exposes neither msgData nor txOption; "
+                "cannot set INVITE local URI"
+            )
 
     def answer_call(self, call: SipCall, code: int = 200) -> None:
         prm = pj.CallOpParam(True)
