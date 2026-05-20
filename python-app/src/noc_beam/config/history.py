@@ -60,6 +60,9 @@ class CdrEntry:
     end_code: int = 0
     end_reason: str = ""
     codec: str = ""
+    dialed_uri: str = ""
+    supplier_id: str = ""
+    supplier_label: str = ""
     # FAS (False Answer Supervision) verdict captured at disconnect.
     # Empty when FAS is disabled or the call never reached CONFIRMED.
     fas_verdict: str = ""

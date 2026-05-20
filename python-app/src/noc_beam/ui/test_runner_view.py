@@ -97,9 +97,16 @@ __test__ = False
 
 
 class TestRunnerView(QMainWindow):
-    def __init__(self, accounts: list[AccountConfig], parent=None) -> None:
+    def __init__(
+        self,
+        accounts: list[AccountConfig],
+        parent=None,
+        *,
+        active_account_id: str = "",
+    ) -> None:
         super().__init__(parent)
         self.accounts = accounts
+        self._active_account_id = active_account_id or ""
         self.results: list[RunnerResult] = []
         self.runner: Runner | None = None
         self._row_by_call_index: dict[int, int] = {}
@@ -491,14 +498,113 @@ class TestRunnerView(QMainWindow):
         # Populate supplier picker now that all widgets exist.
         self._refresh_supplier_picker()
 
+    def set_active_account_id(self, account_id: str) -> None:
+        self._active_account_id = account_id or ""
+        self._refresh_supplier_picker()
+        self._refresh_plan_preview()
+
+    def _selected_batch_account(self) -> AccountConfig | None:
+        if self._active_account_id:
+            acc = next(
+                (
+                    a for a in self.accounts
+                    if getattr(a, "id", None) == self._active_account_id
+                    and getattr(a, "enabled", True)
+                ),
+                None,
+            )
+            if acc is not None:
+                return acc
+        return next((a for a in self.accounts if getattr(a, "enabled", True)), None)
+
+    @staticmethod
+    def _account_label(account: AccountConfig | None) -> str:
+        if account is None:
+            return "no account"
+        name = (getattr(account, "label", "") or getattr(account, "account_name", "") or "").strip()
+        if name:
+            return name
+        display = (getattr(account, "display_name", "") or "").strip()
+        username = (getattr(account, "username", "") or "").strip()
+        domain = (getattr(account, "domain", "") or "").strip()
+        if display:
+            return display
+        if username and domain:
+            return f"{username}@{domain}"
+        return username or getattr(account, "id", "") or "account"
+
+    @staticmethod
+    def _render_supplier_template(template: str, supplier_id: str) -> str:
+        rendered = (template or "").strip()
+        for token in ("{id}", "{ID}", "{Id}", "{iD}"):
+            rendered = rendered.replace(token, supplier_id)
+        return rendered
+
+    def _account_label_by_token(self, token: str) -> str:
+        token = (token or "").strip()
+        if not token or token in ("*", "auto", "any"):
+            return self._account_label(self._selected_batch_account())
+        for account in self.accounts:
+            if token in (
+                getattr(account, "id", ""),
+                getattr(account, "username", ""),
+                getattr(account, "account_id", ""),
+            ):
+                return self._account_label(account)
+        return token
+
+    def _materialize_active_teles_account(self) -> None:
+        account = self._selected_batch_account()
+        if account is None:
+            return
+        kind = (getattr(account, "switch_type", "other") or "other").lower()
+        routing_fmt = (getattr(account, "routing_format", "") or "").strip()
+        if kind != "teles" or not self._batch_supplier_id:
+            return
+        needs_supplier = "{id}" in routing_fmt.lower() or routing_fmt in {"U", "N"}
+        if not needs_supplier:
+            return
+        try:
+            from noc_beam.config.suppliers import load_suppliers
+            from noc_beam.sip.endpoint import SipEndpoint
+        except Exception:
+            return
+        try:
+            supplier = next(
+                (s for s in load_suppliers() if s.id == self._batch_supplier_id),
+                None,
+            )
+            if supplier is None:
+                return
+            if "{id}" in routing_fmt.lower():
+                new_uid = self._render_supplier_template(routing_fmt, supplier.id)
+            elif routing_fmt in {"U", "N"}:
+                new_uid = f"{routing_fmt}{supplier.id}"
+            else:
+                new_uid = supplier.routed(routing_fmt)
+            if not new_uid:
+                return
+            if account.username == new_uid and account.auth_user == new_uid:
+                return
+            account.username = new_uid
+            account.auth_user = new_uid
+            parent = self.parent()
+            if parent is not None and hasattr(parent, "_save_accounts_or_warn"):
+                parent._save_accounts_or_warn(self.accounts)
+            SipEndpoint.instance().update_account(account)
+        except Exception:
+            import logging as _logging
+            _logging.getLogger(__name__).exception(
+                "Failed to materialize Teles account for Test Runner"
+            )
+
     def _refresh_supplier_picker(self) -> None:
-        """Show/hide + populate the supplier picker based on the first
-        enabled account's switch_type. Also toggles the toolbar
+        """Show/hide + populate the supplier picker based on the active
+        dial-pad account's switch_type. Also toggles the toolbar
         separator that follows the supplier row in the new layout.
-        Test Runner uses the first enabled account by default; if none
-        has teles/genband the picker stays hidden and the runner
-        behaves as before."""
-        acc = next((a for a in self.accounts if getattr(a, "enabled", True)), None)
+        If no active account is available, the first enabled account is
+        used as the fallback."""
+        acc = self._selected_batch_account()
         # Match separator visibility to the supplier row's visibility.
         sep = getattr(self, "_supplier_sep", None)
         kind = (getattr(acc, "switch_type", "other") or "other").lower() if acc else "other"
@@ -526,8 +632,11 @@ class TestRunnerView(QMainWindow):
             self._all_suppliers.append((s.display(), s.id))
         self._supplier_proxy.setFilterFixedString("")
         if self.supplier_combo.count():
-            self.supplier_combo.setCurrentIndex(0)
-            self._batch_supplier_id = self.supplier_combo.itemData(0) or ""
+            idx = self.supplier_combo.findData(self._batch_supplier_id)
+            if idx < 0:
+                idx = 0
+                self._batch_supplier_id = self.supplier_combo.itemData(0) or ""
+            self.supplier_combo.setCurrentIndex(idx)
         self.supplier_combo.blockSignals(False)
         self.supplier_label.setText(
             "SUPPLIER (auth)" if kind == "teles" else "SUPPLIER (prefix)"
@@ -537,30 +646,29 @@ class TestRunnerView(QMainWindow):
             sep.setVisible(True)
 
     def _on_supplier_return_pressed(self) -> None:
-        """Enter commits the visible supplier match.
+        self._commit_supplier_text(focus_targets=True)
 
-        Resolves via _all_suppliers cache (the combo's model is the
-        filtered proxy view, so iterating it would miss rows the
-        current filter hides). See phone_shell version for full notes.
-        """
+    def _supplier_id_from_text(self, text: str) -> str:
+        text_lower = (text or "").strip().lower()
+        if not text_lower:
+            return ""
+        for display, sid in self._all_suppliers:
+            if display.lower() == text_lower:
+                return sid
+        for display, sid in self._all_suppliers:
+            if text_lower in display.lower():
+                return sid
+        return ""
+
+    def _commit_supplier_text(self, *, focus_targets: bool = False) -> None:
         try:
             text = self.supplier_combo.lineEdit().text().strip()
         except Exception:
             return
         if not text:
             return
-        text_lower = text.lower()
-        target_id = None
-        for display, sid in self._all_suppliers:
-            if display.lower() == text_lower:
-                target_id = sid
-                break
-        if target_id is None:
-            for display, sid in self._all_suppliers:
-                if text_lower in display.lower():
-                    target_id = sid
-                    break
-        if target_id is None:
+        target_id = self._supplier_id_from_text(text)
+        if not target_id:
             return
         try:
             self._supplier_proxy.setFilterFixedString("")
@@ -573,67 +681,21 @@ class TestRunnerView(QMainWindow):
             self.supplier_combo.hidePopup()
         except Exception:
             pass
-        try:
-            self.targets_edit.setFocus(Qt.FocusReason.TabFocusReason)
-        except Exception:
-            pass
-        self._supplier_last_fill = ""
-        self._supplier_typed_len = 0
+        if focus_targets:
+            try:
+                self.targets_edit.setFocus(Qt.FocusReason.TabFocusReason)
+            except Exception:
+                pass
+        self._refresh_plan_preview()
 
     def _on_supplier_text_edited(self, text: str) -> None:
-        """UNIQUE-match autofill + filter combo's own popup.
-
-        Uses _all_suppliers cache for unique-match detection (proxy-
-        filter-independent). Filter mutation is wrapped in line-edit
-        signal blocking + state-restore so the line edit doesn't get
-        cleared when the currently-selected row gets filtered out.
-        """
         if not text:
-            self._supplier_last_fill = ""
-            self._supplier_typed_len = 0
             self._supplier_proxy.setFilterFixedString("")
             try:
                 self.supplier_combo.hidePopup()
             except Exception:
                 pass
             return
-        last_fill = getattr(self, "_supplier_last_fill", "")
-        typed_len = getattr(self, "_supplier_typed_len", 0)
-        text_lower = text.lower()
-        is_backspace_collapse = (
-            last_fill and len(text) == typed_len
-            and text.lower() == last_fill.lower()[:typed_len]
-        )
-        if is_backspace_collapse:
-            self._supplier_last_fill = ""
-            self._supplier_typed_len = len(text)
-        else:
-            unique_match = None
-            for display, _sid in self._all_suppliers:
-                if text_lower in display.lower():
-                    if unique_match is not None:
-                        unique_match = None
-                        break
-                    unique_match = display
-            if unique_match is not None and unique_match != text:
-                le = self.supplier_combo.lineEdit()
-                if le is not None:
-                    idx = unique_match.lower().find(text_lower)
-                    cursor_at = idx + len(text)
-                    le.blockSignals(True)
-                    try:
-                        le.setText(unique_match)
-                        le.setCursorPosition(cursor_at)
-                        if cursor_at < len(unique_match):
-                            le.setSelection(cursor_at, len(unique_match) - cursor_at)
-                    finally:
-                        le.blockSignals(False)
-                    self._supplier_last_fill = unique_match
-                    self._supplier_typed_len = cursor_at
-            elif unique_match is None:
-                self._supplier_last_fill = ""
-                self._supplier_typed_len = len(text)
-        # Filter combo's popup, preserving line edit state across the swap.
         le = self.supplier_combo.lineEdit()
         if le is not None:
             saved_text = le.text()
@@ -652,19 +714,6 @@ class TestRunnerView(QMainWindow):
             finally:
                 le.blockSignals(False)
                 self.supplier_combo.blockSignals(False)
-            # See phone_shell: open popup only when not already visible,
-            # AND take focus back to the line edit immediately because
-            # Qt::Popup steals keyboard focus.
-            try:
-                view = self.supplier_combo.view()
-                rc = self._supplier_proxy.rowCount()
-                if rc > 0 and not view.isVisible():
-                    self.supplier_combo.showPopup()
-                    le.setFocus(Qt.FocusReason.OtherFocusReason)
-                elif rc == 0 and view.isVisible():
-                    self.supplier_combo.hidePopup()
-            except Exception:
-                pass
 
     def _on_supplier_changed(self, index: int) -> None:
         if index < 0:
@@ -758,9 +807,10 @@ class TestRunnerView(QMainWindow):
                 supplier_part = " via " + (self.supplier_combo.currentText() or "")
         except Exception:
             pass
+        account_part = f" from {self._account_label(self._selected_batch_account())}"
         plural = "call" if count == 1 else "calls"
         return (
-            f"Will run {count} {plural}{supplier_part} @ "
+            f"Will run {count} {plural}{account_part}{supplier_part} @ "
             f"parallel={parallel}, hold={hold}s  ≈  {eta_str}"
         )
 
@@ -768,6 +818,8 @@ class TestRunnerView(QMainWindow):
         self.hold_spin.setEnabled(self.pass_combo.currentData() == "full-call")
 
     def _on_run_clicked(self) -> None:
+        self._commit_supplier_text()
+        self._materialize_active_teles_account()
         spec = self._spec_from_ui()
         calls = expand(spec)
         if not calls or self.runner is not None:
@@ -806,6 +858,7 @@ class TestRunnerView(QMainWindow):
         self.runner = Runner(
             spec, self.accounts, self,
             supplier_id=self._batch_supplier_id,
+            active_account_id=self._active_account_id,
         )
         self.runner.call_started.connect(self._on_call_started)
         self.runner.call_completed.connect(self._on_call_completed)
@@ -966,7 +1019,7 @@ class TestRunnerView(QMainWindow):
         for column, text in enumerate(
             [
                 str(call.index),
-                call.caller_number,
+                self._account_label_by_token(call.caller_number),
                 call.target_number,
                 "queued",
                 "",      # FAS (column 4)
@@ -988,7 +1041,7 @@ class TestRunnerView(QMainWindow):
         # Columns: # / FROM / TO / RESULT(3) / FAS(4) / CODE(5) / RTT(6) / TIME(7) / NOTES(8)
         text_columns = {
             0: str(result.call.index),
-            1: result.from_account,
+            1: self._account_label_by_token(result.from_account),
             2: result.to_uri,
             5: code,
             6: rtt,

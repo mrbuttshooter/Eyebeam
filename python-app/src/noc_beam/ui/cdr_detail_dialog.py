@@ -54,6 +54,34 @@ def _direction_label(entry: CdrEntry) -> str:
     return "Outgoing (answered)" if entry.was_answered else "Outgoing (failed)"
 
 
+def _display_peer(entry: CdrEntry) -> str:
+    clean = (getattr(entry, "dialed_uri", "") or "").strip()
+    if clean:
+        return clean
+    raw = entry.peer_uri or ""
+    s = raw.strip()
+    for scheme in ("sip:", "sips:", "tel:"):
+        if s.lower().startswith(scheme):
+            s = s[len(scheme):]
+            break
+    s = s.split(";", 1)[0]
+    if "@" in s:
+        s = s.split("@", 1)[0] or s
+    return s or "Unknown peer"
+
+
+def _redial_target(entry: CdrEntry) -> str:
+    return (getattr(entry, "dialed_uri", "") or "").strip() or (entry.peer_uri or "")
+
+
+def _supplier_display(entry: CdrEntry) -> str:
+    label = (getattr(entry, "supplier_label", "") or "").strip()
+    if label:
+        return label
+    sid = (getattr(entry, "supplier_id", "") or "").strip()
+    return f"C{sid}" if sid else "—"
+
+
 class CdrDetailDialog(QDialog):
     """Single-CDR detail view. Emits redial_requested(peer_uri) on Redial."""
 
@@ -67,9 +95,11 @@ class CdrDetailDialog(QDialog):
         self.setMinimumWidth(420)
 
         # Header: peer URI big + direction underneath
-        peer_lbl = QLabel(entry.peer_uri or "Unknown peer")
+        peer_lbl = QLabel(_display_peer(entry))
         peer_lbl.setObjectName("CdrDetailPeer")
         peer_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        if entry.peer_uri:
+            peer_lbl.setToolTip(f"Wire target: {entry.peer_uri}")
 
         if entry.was_answered:
             level = "ok"
@@ -99,6 +129,8 @@ class CdrDetailDialog(QDialog):
         for label, value, tooltip in (
             ("Call ID", str(entry.call_id), ""),
             ("Account",  account_label, account_tooltip),
+            ("Supplier", _supplier_display(entry), ""),
+            ("Wire target", entry.peer_uri or "—", ""),
             ("Started",  _fmt_ts(entry.started_at), ""),
             ("Connected", _fmt_ts(entry.connected_at) if entry.connected_at else "—", ""),
             ("Ended",    _fmt_ts(entry.ended_at), ""),
@@ -150,7 +182,7 @@ class CdrDetailDialog(QDialog):
         # Action row: Redial (left) + Export CSV (right) + Close
         self.redial_btn = QPushButton("Redial")
         self.redial_btn.setObjectName("PrimaryAction")
-        self.redial_btn.setEnabled(bool(entry.peer_uri))
+        self.redial_btn.setEnabled(bool(_redial_target(entry)))
         self.redial_btn.clicked.connect(self._on_redial)
 
         self.export_btn = QPushButton("Export CSV…")
@@ -182,8 +214,9 @@ class CdrDetailDialog(QDialog):
 
     # ------------------------------------------------------------------
     def _on_redial(self) -> None:
-        if self._entry.peer_uri:
-            self.redial_requested.emit(self._entry.peer_uri)
+        target = _redial_target(self._entry)
+        if target:
+            self.redial_requested.emit(target)
             self.accept()
 
     @staticmethod

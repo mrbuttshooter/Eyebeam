@@ -59,6 +59,9 @@ class CallRecord:
     account_id: str
     account_label: str = ""          # human label for the account_id
     remote_uri: str = ""
+    dialed_uri: str = ""             # user-facing dial target, before routing prefixes
+    supplier_id: str = ""
+    supplier_label: str = ""
     direction: str = "out"          # "in" | "out"
     state: CallState = CallState.NULL
     last_code: int = 0

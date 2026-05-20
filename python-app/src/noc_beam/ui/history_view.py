@@ -158,6 +158,26 @@ def _peer_userpart(uri: str) -> str:
     return s
 
 
+def _display_peer(entry: CdrEntry) -> str:
+    """Operator-facing called/calling number for lists and CSV."""
+    clean = (getattr(entry, "dialed_uri", "") or "").strip()
+    if clean:
+        return _peer_userpart(clean)
+    return _peer_userpart(entry.peer_uri or "")
+
+
+def _redial_target(entry: CdrEntry) -> str:
+    return (getattr(entry, "dialed_uri", "") or "").strip() or (entry.peer_uri or "")
+
+
+def _supplier_display(entry: CdrEntry) -> str:
+    label = (getattr(entry, "supplier_label", "") or "").strip()
+    if label:
+        return label
+    sid = (getattr(entry, "supplier_id", "") or "").strip()
+    return f"C{sid}" if sid else ""
+
+
 def _resolve_account_label(account_id: str) -> str:
     """Resolve a CDR's stored account_id (an internal UUID) to the
     A-number to show in CSV exports.
@@ -188,7 +208,7 @@ def _ab_numbers(entry: CdrEntry) -> tuple[str, str]:
     For INCOMING calls: A = peer userpart (caller), B = our username.
     """
     own = _resolve_account_label(entry.account_id or "")
-    peer = _peer_userpart(entry.peer_uri or "")
+    peer = _display_peer(entry)
     if entry.direction == "out":
         return (own, peer)
     return (peer, own)
@@ -330,18 +350,24 @@ class HistoryRow(QFrame):
         # fixed in 11c7ca6). The tooltip carries the FULL URI so the
         # @domain is one hover away when needed.
         from PySide6.QtWidgets import QSizePolicy as _SP
-        from noc_beam.ui.quick_dial import _short_uri as _strip_uri
         peer_full = entry.peer_uri or "(unknown)"
-        peer_display = _strip_uri(peer_full) or peer_full
+        redial_target = _redial_target(entry)
+        supplier_text = _supplier_display(entry)
+        peer_display = _display_peer(entry) or peer_full
         peer_lbl = QLabel(peer_display)
         peer_lbl.setObjectName("HistoryRowPeer")
         peer_lbl.setProperty("result", _result_class(entry))
-        peer_lbl.setToolTip(peer_full)
+        tooltip = f"Wire target: {peer_full}"
+        if supplier_text:
+            tooltip += f"\nSupplier: {supplier_text}"
+        peer_lbl.setToolTip(tooltip)
         peer_lbl.setSizePolicy(_SP.Policy.Ignored, _SP.Policy.Preferred)
 
         when = _fmt_when(entry.ended_at or entry.started_at)
         dur = _fmt_duration(entry.duration_s)
         bits = [when]
+        if supplier_text:
+            bits.append(supplier_text)
         if dur:
             bits.append(dur)
         if entry.end_code and not entry.was_answered:
@@ -373,10 +399,10 @@ class HistoryRow(QFrame):
         self._call_btn.setObjectName("HistoryRowCall")
         self._call_btn.setText("\U0001F4DE")
         self._call_btn.setToolTip(
-            f"Call {entry.peer_uri}" if entry.peer_uri else "No peer URI to call back"
+            f"Call {redial_target}" if redial_target else "No peer URI to call back"
         )
         self._call_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._call_btn.setEnabled(bool(entry.peer_uri))
+        self._call_btn.setEnabled(bool(redial_target))
         self._call_btn.clicked.connect(self._emit_redial)
 
         code = entry.end_code if entry.end_code else (200 if entry.was_answered else None)
@@ -400,8 +426,9 @@ class HistoryRow(QFrame):
         self.customContextMenuRequested.connect(self._show_context_menu)
 
     def _emit_redial(self) -> None:
-        if self._entry.peer_uri:
-            self.redial.emit(self._entry.peer_uri)
+        target = _redial_target(self._entry)
+        if target:
+            self.redial.emit(target)
 
     def is_checked(self) -> bool:
         """Whether this row's selection checkbox is ticked."""
@@ -419,8 +446,9 @@ class HistoryRow(QFrame):
 
     def _show_context_menu(self, pos) -> None:
         menu = QMenu(self)
-        if self._entry.peer_uri:
-            act_call = QAction(f"Call {self._entry.peer_uri}", menu)
+        redial_target = _redial_target(self._entry)
+        if redial_target:
+            act_call = QAction(f"Call {redial_target}", menu)
             act_call.triggered.connect(self._emit_redial)
             menu.addAction(act_call)
         act_detail = QAction("Show full detail…", menu)
@@ -631,8 +659,18 @@ class HistoryView(QWidget):
     def _matches_filters(self, entry: CdrEntry) -> bool:
         # Search filter (peer URI substring, case-insensitive).
         needle = self._search.text().strip().lower()
-        if needle and needle not in (entry.peer_uri or "").lower():
-            return False
+        if needle:
+            haystack = " ".join(
+                s for s in (
+                    entry.peer_uri or "",
+                    getattr(entry, "dialed_uri", "") or "",
+                    _display_peer(entry),
+                    _supplier_display(entry),
+                )
+                if s
+            ).lower()
+            if needle not in haystack:
+                return False
         # Direction filter
         dir_key = self._dir_filter.currentData()
         if dir_key == "in" and entry.direction != "in":

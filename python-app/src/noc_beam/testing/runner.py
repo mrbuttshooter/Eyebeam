@@ -52,6 +52,28 @@ class _ActiveCall:
 CLEANUP_FALLBACK_SECONDS = 1.0
 
 
+def _render_supplier_template(template: str, supplier_id: str) -> str:
+    rendered = (template or "").strip()
+    for token in ("{id}", "{ID}", "{Id}", "{iD}"):
+        rendered = rendered.replace(token, supplier_id)
+    return rendered
+
+
+def _genband_supplier_prefix(account: AccountConfig, supplier_id: str) -> str:
+    supplier_id = str(supplier_id or "").strip()
+    dial_prefix = (getattr(account, "dial_prefix", "") or "").strip()
+    routing_fmt = (getattr(account, "routing_format", "") or "").strip()
+    if supplier_id:
+        if "{id}" in routing_fmt.lower():
+            return _render_supplier_template(routing_fmt, supplier_id)
+        if "{id}" in dial_prefix.lower():
+            return _render_supplier_template(dial_prefix, supplier_id)
+        if routing_fmt:
+            return routing_fmt
+        return f"{dial_prefix}{supplier_id}"
+    return _render_supplier_template(dial_prefix, supplier_id)
+
+
 def _apply_routing_to_target(
     target: str,
     account: AccountConfig,
@@ -73,20 +95,14 @@ def _apply_routing_to_target(
         return target
     out = target
     kind = (getattr(account, "switch_type", "other") or "other").lower()
-    if kind == "genband" and supplier_id:
-        try:
-            from noc_beam.config.suppliers import load_suppliers
-            suppliers = {s.id: s for s in load_suppliers()}
-            s = suppliers.get(supplier_id)
-            if s is not None:
-                prefix = s.routed(getattr(account, "routing_format", "") or "")
-                if prefix:
-                    out = f"{prefix}{out}"
-        except Exception:
-            pass
-    dial_prefix = (getattr(account, "dial_prefix", "") or "").strip()
-    if dial_prefix and not out.startswith(dial_prefix):
-        out = f"{dial_prefix}{out}"
+    if kind == "genband":
+        prefix = _genband_supplier_prefix(account, supplier_id)
+        if prefix and not out.startswith(prefix):
+            out = f"{prefix}{out}"
+    else:
+        dial_prefix = (getattr(account, "dial_prefix", "") or "").strip()
+        if dial_prefix and not out.startswith(dial_prefix):
+            out = f"{dial_prefix}{out}"
     return out
 
 
@@ -104,6 +120,7 @@ class TestRunner(QObject):
         endpoint: object | None = None,
         events: SipEvents | None = None,
         supplier_id: str = "",
+        active_account_id: str = "",
     ) -> None:
         super().__init__(parent)
         self.spec = spec
@@ -116,6 +133,7 @@ class TestRunner(QObject):
         # ...)` pattern leaked stale state into shared mutable accounts
         # that also persist to disk.
         self._supplier_id = supplier_id or ""
+        self._active_account_id = active_account_id or ""
 
         self._queue: deque[TestCall] = deque()
         self._active: dict[int, _ActiveCall] = {}
@@ -578,6 +596,13 @@ class TestRunner(QObject):
         token = (caller_number or "").strip()
         # Empty / wildcard -> first enabled account
         if not token or token in ("*", "auto", "any"):
+            if self._active_account_id:
+                for account in self.accounts:
+                    if (
+                        getattr(account, "id", None) == self._active_account_id
+                        and getattr(account, "enabled", True)
+                    ):
+                        return account
             for account in self.accounts:
                 if getattr(account, "enabled", True):
                     return account

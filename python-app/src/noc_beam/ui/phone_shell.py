@@ -896,6 +896,13 @@ class PhoneShell(QMainWindow):
             self._refresh_supplier_picker()
         except Exception:
             log.exception("Supplier picker refresh failed for account %s", account_id)
+        runner = getattr(self, "_test_runner_window", None)
+        if runner is not None:
+            try:
+                runner.accounts = list(self.accounts)
+                runner.set_active_account_id(account_id)
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Supplier picker (drives dial routing)
@@ -1260,6 +1267,25 @@ class PhoneShell(QMainWindow):
                 return routing_fmt
             return f"{dial_prefix}{supplier_id}"
         return cls._render_supplier_template(dial_prefix, supplier_id)
+
+    def _current_supplier_context(self, acc) -> tuple[str, str]:
+        kind = (getattr(acc, "switch_type", "other") or "other").lower()
+        if kind not in ("teles", "genband"):
+            return "", ""
+        supplier_id = str(getattr(self, "_active_supplier_id", "") or "")
+        if not supplier_id and self.supplier_combo.currentIndex() >= 0:
+            supplier_id = str(self.supplier_combo.currentData() or "")
+        if not supplier_id:
+            return "", ""
+        try:
+            from noc_beam.config.suppliers import load_suppliers
+
+            supplier = next((s for s in load_suppliers() if s.id == supplier_id), None)
+            if supplier is not None:
+                return supplier_id, supplier.display()
+        except Exception:
+            pass
+        return supplier_id, f"C{supplier_id}"
 
     def _add_account_to_endpoint(self, cfg):
         self._ensure_teles_supplier_identity(cfg)
@@ -1676,6 +1702,9 @@ class PhoneShell(QMainWindow):
                 end_code=rec.last_code,
                 end_reason=rec.last_reason,
                 codec=rec.codec,
+                dialed_uri=getattr(rec, "dialed_uri", "") or "",
+                supplier_id=getattr(rec, "supplier_id", "") or "",
+                supplier_label=getattr(rec, "supplier_label", "") or "",
             )
         try:
             append_entry(snap)
@@ -1761,6 +1790,9 @@ class PhoneShell(QMainWindow):
                 started_at=rec.started_at, connected_at=rec.connected_at,
                 ended_at=rec.ended_at or rec.started_at,
                 end_code=rec.last_code, end_reason=rec.last_reason, codec=rec.codec,
+                dialed_uri=getattr(rec, "dialed_uri", "") or "",
+                supplier_id=getattr(rec, "supplier_id", "") or "",
+                supplier_label=getattr(rec, "supplier_label", "") or "",
                 fas_verdict=getattr(rec, "fas_verdict", "") or "",
                 fas_confidence=float(getattr(rec, "fas_confidence", 0.0) or 0.0),
                 fas_reasons=getattr(rec, "fas_reasons", "") or "",
@@ -1899,6 +1931,8 @@ class PhoneShell(QMainWindow):
                 "The SIP user must be U080, not U.",
             )
             return
+        display_target = target
+        supplier_id, supplier_label = self._current_supplier_context(acc) if acc is not None else ("", "")
         target = self._rewrite_dial_target(target)
         # Verify the active account actually exists in the SIP endpoint.
         # The UI tracks _active_account_id from config; the endpoint's
@@ -1944,7 +1978,11 @@ class PhoneShell(QMainWindow):
             self.calls.register(CallRecord(
                 call_id=cid, account_id=self._active_account_id,
                 account_label=self._account_label(self._active_account_id),
-                remote_uri=target, direction="out",
+                remote_uri=target,
+                dialed_uri=display_target,
+                supplier_id=supplier_id,
+                supplier_label=supplier_label,
+                direction="out",
             ))
             self.calls.update_state(cid, CallState.CALLING)
             self._select_call(cid); self.dialpad.set_in_call(True)
@@ -2743,9 +2781,17 @@ class PhoneShell(QMainWindow):
     def _on_open_test_runner(self):
         from noc_beam.ui.test_runner_view import TestRunnerView
         if not hasattr(self, "_test_runner_window"):
-            self._test_runner_window = TestRunnerView(self.accounts, self)
+            self._test_runner_window = TestRunnerView(
+                self.accounts,
+                self,
+                active_account_id=self._active_account_id,
+            )
             self._test_runner_window.resize(900, 620)
         self._test_runner_window.accounts = list(self.accounts)
+        try:
+            self._test_runner_window.set_active_account_id(self._active_account_id)
+        except Exception:
+            pass
         self._test_runner_window.show()
         self._test_runner_window.raise_(); self._test_runner_window.activateWindow()
 

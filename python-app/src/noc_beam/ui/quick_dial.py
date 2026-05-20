@@ -56,6 +56,10 @@ def _short_uri(uri: str) -> str:
     return s
 
 
+def _display_uri(entry: CdrEntry) -> str:
+    return (getattr(entry, "dialed_uri", "") or "").strip() or (entry.peer_uri or "")
+
+
 def _arrow(entry: CdrEntry) -> tuple[str, str, str]:
     """Return (icon_name, hex_color, level) for the row direction indicator.
 
@@ -286,7 +290,7 @@ class QuickDialStrip(QFrame):
         # user who hammered redial 5 times saw five identical rows.
         seen: set[str] = set()
         for entry in history_sorted:
-            uri = (entry.peer_uri or "").strip()
+            uri = _display_uri(entry).strip()
             if not uri:
                 continue
             if uri in seen:
