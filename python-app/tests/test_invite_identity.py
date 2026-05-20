@@ -51,3 +51,29 @@ def test_teles_invite_local_uri_defaults_to_tcp_transport() -> None:
     assert SipEndpoint._format_invite_local_uri(cfg) == (
         '"96171488860" <sip:U080@208.87.170.99;transport=tcp>'
     )
+
+
+def test_teles_codec_profile_matches_legacy_eyebeam_offer() -> None:
+    priorities = {
+        "PCMA/8000": 245,
+        "PCMU/8000": 240,
+        "G722/16000": 235,
+        "opus/48000": 230,
+        "G729/8000": 220,
+        "iLBC/8000": 210,
+        "speex/16000": 200,
+        "speex/8000": 195,
+        "GSM/8000": 190,
+    }
+    result = SipEndpoint._effective_codec_priorities(
+        priorities,
+        [AccountConfig(id="a", switch_type="teles")],
+    )
+
+    assert result["PCMU/8000"] > result["PCMA/8000"] > result["G729/8000"]
+    assert result["opus/48000"] == 0
+    assert result["G722/16000"] == 0
+    assert result["iLBC/8000"] == 0
+    assert result["speex/16000"] == 0
+    assert result["speex/8000"] == 0
+    assert result["GSM/8000"] == 0

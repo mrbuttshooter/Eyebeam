@@ -119,6 +119,7 @@ class SipEndpoint:
         self._started = False
         self._lock = threading.RLock()
         self._log_writer = None
+        self._base_codec_priorities: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -190,7 +191,10 @@ class SipEndpoint:
                 self._create_transports(settings.sip_port, accounts)
 
                 # Codecs (apply priorities)
-                self._apply_codec_priorities(settings.codecs.priorities)
+                self._base_codec_priorities = dict(settings.codecs.priorities)
+                self._apply_codec_priorities(
+                    self._effective_codec_priorities(self._base_codec_priorities, accounts)
+                )
 
                 self._ep.libStart()
                 self._started = True
@@ -409,6 +413,31 @@ class SipEndpoint:
             except Exception:
                 log.exception("codecSetPriority failed for %s", codec_id)
 
+    @staticmethod
+    def _effective_codec_priorities(
+        priorities: dict[str, int],
+        accounts: list[AccountConfig] | None,
+    ) -> dict[str, int]:
+        result = dict(priorities)
+        if not accounts or not any(
+            getattr(cfg, "enabled", True)
+            and (getattr(cfg, "switch_type", "") or "").lower() == "teles"
+            for cfg in accounts
+        ):
+            return result
+        result.update({
+            "PCMU/8000": 245,
+            "PCMA/8000": 240,
+            "G729/8000": 230,
+            "G722/16000": 0,
+            "opus/48000": 0,
+            "iLBC/8000": 0,
+            "speex/16000": 0,
+            "speex/8000": 0,
+            "GSM/8000": 0,
+        })
+        return result
+
     def list_codecs(self) -> list[tuple[str, int]]:
         if not self._started or self._ep is None:
             return []
@@ -614,6 +643,13 @@ class SipEndpoint:
                     f"Check %APPDATA%/NOC_Beam/Logs/noc_beam.log for the full traceback."
                 ) from exc
             self._accounts[cfg.id] = acc
+            if cfg.enabled and self._base_codec_priorities:
+                self._apply_codec_priorities(
+                    self._effective_codec_priorities(
+                        self._base_codec_priorities,
+                        [account.cfg for account in self._accounts.values()],
+                    )
+                )
             # Drain any deferred diagnostic the configure() step set
             # (e.g. requested transport not bound). Capture under the
             # lock, dispatch OUTSIDE the lock so subscribers can call

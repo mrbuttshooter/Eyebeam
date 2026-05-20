@@ -54,11 +54,27 @@ _URI_USER_RE = re.compile(
 
 
 def _diagnostic_mode_enabled() -> bool:
-    """True iff the user has explicitly opted into raw, unredacted
-    wire capture for this session. Anything else = redacted output."""
+    """True iff the user has explicitly opted into raw wire capture."""
     return _os.environ.get("SIP_TRACE_DIAGNOSTIC", "").lower() in (
         "1", "true", "yes", "on",
     )
+
+
+def trace_redaction_enabled() -> bool:
+    """Return whether SIP trace bodies should be redacted before emit.
+
+    The env var remains as a hard override for support/debug sessions.
+    Otherwise use the persisted Settings -> Advanced privacy toggle.
+    Default to redaction if settings cannot be read.
+    """
+    if _diagnostic_mode_enabled():
+        return False
+    try:
+        from noc_beam.config.store import load_settings
+
+        return bool(load_settings().compliance.trace_pii_redaction)
+    except Exception:
+        return True
 
 
 def redact_sip_body(body: str) -> str:
@@ -184,8 +200,8 @@ class TraceLogWriter(_LogWriterBase):
         body = "\n".join(self._buf).strip()
         if body and _SIP_START.search(body):
             # Mask credentials + user-parts before emitting unless the
-            # user has explicitly opted into diagnostic mode this run.
-            emit_body = body if _diagnostic_mode_enabled() else redact_sip_body(body)
+            # user has explicitly opted into raw diagnostic tracing.
+            emit_body = redact_sip_body(body) if trace_redaction_enabled() else body
             sip_events().sip_message.emit(
                 time.time(), self._direction, self._peer, emit_body,
             )

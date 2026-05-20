@@ -1071,6 +1071,16 @@ class SettingsDialog(QDialog):
         self.log_level = QSpinBox()
         self.log_level.setRange(0, 6)
         self.log_level.setValue(self._settings.log_level)
+        self.trace_pii_redaction_chk = QCheckBox("Mask SIP trace user IDs and auth headers")
+        self.trace_pii_redaction_chk.setObjectName("SettingsCheckbox")
+        self.trace_pii_redaction_chk.setChecked(
+            bool(self._settings.compliance.trace_pii_redaction)
+        )
+        trace_hint = QLabel(
+            "Turn this off only while debugging. New SIP trace messages will show raw From, To, Contact, and Request-URI values."
+        )
+        trace_hint.setObjectName("SettingsRowHint")
+        trace_hint.setWordWrap(True)
 
         form = QFormLayout()
         form.setSpacing(8)
@@ -1078,6 +1088,8 @@ class SettingsDialog(QDialog):
         form.addRow("SIP port", self.sip_port)
         form.addRow("Log level (0-6)", self.log_level)
         outer.addLayout(form)
+        outer.addWidget(self.trace_pii_redaction_chk)
+        outer.addWidget(trace_hint)
         outer.addStretch(1)
         return w
 
@@ -1217,6 +1229,16 @@ class SettingsDialog(QDialog):
         settings.audio.clock_rate = self.clock.value()
         settings.sip_port = self.sip_port.value()
         settings.log_level = self.log_level.value()
+        try:
+            from noc_beam.config.store import ComplianceSettings
+            if not hasattr(settings, "compliance") or settings.compliance is None:
+                settings.compliance = ComplianceSettings()
+            if hasattr(self, "trace_pii_redaction_chk"):
+                settings.compliance.trace_pii_redaction = (
+                    self.trace_pii_redaction_chk.isChecked()
+                )
+        except Exception:
+            pass
         settings.appearance.high_contrast = self.high_contrast_chk.isChecked()
         settings.appearance.reduced_motion = self.reduced_motion_chk.isChecked()
         settings.appearance.theme = self.theme_combo.currentData() or "light"
