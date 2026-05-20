@@ -1128,7 +1128,21 @@ class PhoneShell(QMainWindow):
             s = suppliers.get(self._active_supplier_id)
             if s is None:
                 return
-            new_uid = s.routed(getattr(acc, "routing_format", "") or "")
+            routing_fmt = getattr(acc, "routing_format", "") or ""
+            # Guard: if routing_format has no `{id}` placeholder, treat the
+            # user's typed username as a fixed value. Without this, the
+            # supplier picker rewrites username to the literal template
+            # string every time (e.g. routing_format="U" -> username="U",
+            # clobbering "U080" the user typed). Operators who use one
+            # supplier per account get burned by this.
+            if "{id}" not in routing_fmt:
+                log.info(
+                    "Supplier swap skipped: routing_format=%r has no {id} "
+                    "placeholder, leaving username=%r untouched",
+                    routing_fmt, acc.username,
+                )
+                return
+            new_uid = s.routed(routing_fmt)
             if not new_uid or (new_uid == acc.username and new_uid == acc.auth_user):
                 return
             # Guard: supplier swap calls update_account which does

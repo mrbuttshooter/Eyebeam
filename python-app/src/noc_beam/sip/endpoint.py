@@ -533,7 +533,7 @@ class SipEndpoint:
             ac_cfg = acc.configure()
             try:
                 acc.create(ac_cfg)
-            except Exception:
+            except Exception as exc:
                 # acc.create can raise on bad cred / refused transport
                 # AFTER the SipAccount has been partially built. Without
                 # this clean-up the SWIG-shadow pj.Account leaks until
@@ -543,7 +543,43 @@ class SipEndpoint:
                     acc.shutdown()
                 except Exception:
                     log.exception("Cleanup of partially-created account failed")
-                raise
+                # pjsua2.Error stringifies to "" — useless for the user.
+                # Extract every diagnostic surface PJSIP exposes:
+                #   - .info() returns the formatted "title (status N: <text>) ..."
+                #   - .args[0] sometimes has the underlying message
+                #   - pj.Endpoint.utilStrError(status) decodes a numeric status
+                # Log the enriched diagnostic AND raise a new RuntimeError
+                # with the same enriched text so the UI dialog shows it.
+                detail = ""
+                for attr in ("info", "args"):
+                    try:
+                        val = getattr(exc, attr, None)
+                        if callable(val):
+                            val = val()
+                        if val and str(val).strip():
+                            detail = str(val).strip() if not isinstance(val, tuple) else " | ".join(str(v) for v in val)
+                            break
+                    except Exception:
+                        continue
+                # Snapshot the config we tried so the user knows what failed.
+                cfg_snapshot = (
+                    f"idUri={getattr(ac_cfg, 'idUri', '?')} "
+                    f"registrar={getattr(getattr(ac_cfg, 'regConfig', None), 'registrarUri', '?')} "
+                    f"transport={cfg.transport} port={cfg.port or 'default'}"
+                )
+                log.error(
+                    "pjsua2 Account.create rejected our config. detail=%r cfg=%s",
+                    detail or "(empty)", cfg_snapshot,
+                )
+                if detail:
+                    raise RuntimeError(
+                        f"PJSIP rejected the account: {detail}\n\nConfig: {cfg_snapshot}"
+                    ) from exc
+                raise RuntimeError(
+                    f"PJSIP rejected the account (no detail surfaced).\n\n"
+                    f"Config: {cfg_snapshot}\n\n"
+                    f"Check %APPDATA%/NOC_Beam/Logs/noc_beam.log for the full traceback."
+                ) from exc
             self._accounts[cfg.id] = acc
             # Drain any deferred diagnostic the configure() step set
             # (e.g. requested transport not bound). Capture under the
