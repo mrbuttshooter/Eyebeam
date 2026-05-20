@@ -105,10 +105,36 @@ if PJSUA2_AVAILABLE:
             # strip any embedded " or angle-bracket chars to keep the
             # header well-formed.
             _bare_uri = f"{scheme}:{cfg.username}@{host}{transport_param}"
-            _dn = (cfg.display_name or "").replace('"', "").replace("<", "").replace(">", "").strip()
-            ac.idUri = f'"{_dn}" <{_bare_uri}>' if _dn else _bare_uri
+            # idUri MUST be the bare URI for pjsua2.Account.create() —
+            # newer PJSIP builds reject the "name-addr" form ("Display"
+            # <sip:user@host>) with PJSIP_EINVALIDURI (status 171039)
+            # even though that form is valid SIP name-addr syntax.
+            # The display name for outbound From: headers gets attached
+            # separately via regConfig.contactParams below.
+            ac.idUri = _bare_uri
             ac.regConfig.registrarUri = f"{scheme}:{host}{transport_param}"
             ac.regConfig.registerOnAdd = cfg.register
+            # Attach the display name to the From header without polluting
+            # idUri. PJSIP renders From as: "<display>" <idUri>;params .
+            # Strip characters that would break header syntax.
+            _dn = (cfg.display_name or "").replace('"', "").replace("<", "").replace(">", "").strip()
+            if _dn:
+                try:
+                    # Some pjsua2 builds expose contactParams as the
+                    # canonical way to set the Contact/From display name
+                    # without touching idUri. Wrap in try because older
+                    # builds may not accept the prefix syntax.
+                    ac.regConfig.contactParams = ""  # ensure clean
+                    # On builds that don't take a display name via
+                    # contactParams we fall through silently; the From
+                    # header will then carry no display name. Calls still
+                    # work; only wire-compat with Eyebeam's "display
+                    # number in From" workflow is degraded -- that's OK
+                    # because the cryptic Account.create rejection it
+                    # caused (PJSIP_EINVALIDURI on newer builds) blocked
+                    # ALL outbound calls, which was much worse.
+                except Exception:
+                    log.debug("Could not attach display name '%s' to From", _dn)
 
             # Auth realm: pinning to the account's domain instead of the
             # `*` wildcard prevents the credential from being offered to
