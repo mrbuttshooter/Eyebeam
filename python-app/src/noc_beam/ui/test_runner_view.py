@@ -748,10 +748,27 @@ class TestRunnerView(QMainWindow):
 
         try:
             if not self.supplier_combo.view().isVisible():
+                self._prepare_supplier_popup_window()
                 self.supplier_combo.showPopup()
         except Exception:
             return
         QTimer.singleShot(0, _restore_edit_state)
+
+    def _prepare_supplier_popup_window(self) -> None:
+        """Keep the supplier popup frameless instead of a tiny window."""
+        view = self.supplier_combo.view()
+        try:
+            view.setWindowFlags(
+                Qt.WindowType.Popup
+                | Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.NoDropShadowWindowHint
+            )
+        except Exception:
+            pass
+        try:
+            view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        except Exception:
+            pass
 
     def _on_supplier_activated(self, index: int) -> None:
         """Commit an explicit popup selection while search filtering."""
