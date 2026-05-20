@@ -104,7 +104,39 @@ if PJSUA2_AVAILABLE:
             # display string (Eyebeam wire compatibility) see it. We
             # strip any embedded " or angle-bracket chars to keep the
             # header well-formed.
-            _bare_uri = f"{scheme}:{cfg.username}@{host}{transport_param}"
+            # Defensive: if username (or auth_user) still carries an
+            # unsubstituted `{id}` placeholder from a legacy bad supplier
+            # swap, sanitize it. Curly braces are RFC-3261 reserved
+            # characters not allowed in SIP user-part; passing them to
+            # pjsua_acc_add raises PJSIP_EINVALIDURI silently. We:
+            #   1. Try to substitute {id} from auth_user (if it doesn't
+            #      itself contain {id})
+            #   2. Otherwise strip the {id} placeholder (logged loud so
+            #      the operator fixes their config)
+            def _sanitize_userpart(value: str, fallback: str = "") -> str:
+                if not value or "{" not in value:
+                    return value
+                if fallback and "{" not in fallback:
+                    # Substitute {id} with the fallback's digit portion
+                    # if reasonable; otherwise use the fallback verbatim.
+                    sub = fallback.lstrip("Uu")
+                    return value.replace("{id}", sub) if "{id}" in value else fallback
+                # No useful fallback — strip the placeholder
+                return value.replace("{id}", "").replace("{", "").replace("}", "") or "anonymous"
+
+            _orig_user = cfg.username
+            _orig_auth = cfg.auth_user
+            _safe_user = _sanitize_userpart(cfg.username, cfg.auth_user)
+            _safe_auth = _sanitize_userpart(cfg.auth_user, _safe_user)
+            if _safe_user != _orig_user or _safe_auth != _orig_auth:
+                log.warning(
+                    "Account %s username/auth_user contained unsubstituted "
+                    "{id} placeholder: user %r->%r, auth %r->%r. "
+                    "Please open Edit Account and set Username to the "
+                    "actual carrier UID (e.g. 'U080'), not a template.",
+                    cfg.id, _orig_user, _safe_user, _orig_auth, _safe_auth,
+                )
+            _bare_uri = f"{scheme}:{_safe_user}@{host}{transport_param}"
             # idUri MUST be the bare URI for pjsua2.Account.create() —
             # newer PJSIP builds reject the "name-addr" form ("Display"
             # <sip:user@host>) with PJSIP_EINVALIDURI (status 171039)
@@ -149,8 +181,12 @@ if PJSUA2_AVAILABLE:
             #     the carrier either 200-OKs by IP or 401s and we surface
             #     that to the user
             if (cfg.password or "").strip():
+                # Use sanitized values so the auth cred matches what's in
+                # the From: URI. If both are still empty/braced after
+                # sanitize, pjsua AuthCredInfo will refuse — that's fine,
+                # we'd rather see that than a silent Invalid URI.
                 cred = pj.AuthCredInfo(
-                    "digest", realm, cfg.auth_user or cfg.username, 0, cfg.password
+                    "digest", realm, _safe_auth or _safe_user, 0, cfg.password
                 )
                 ac.sipConfig.authCreds.append(cred)
             else:
