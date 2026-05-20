@@ -36,3 +36,18 @@ def test_invite_local_uri_keeps_transport_and_port() -> None:
     assert SipEndpoint._format_invite_local_uri(cfg) == (
         '"96171488860" <sip:U080@sip.example.test:5070;transport=tcp>'
     )
+
+
+def test_teles_invite_local_uri_defaults_to_tcp_transport() -> None:
+    cfg = AccountConfig(
+        id="a",
+        display_name="96171488860",
+        username="U080",
+        domain="208.87.170.99",
+        switch_type="teles",
+        transport="udp",
+    )
+
+    assert SipEndpoint._format_invite_local_uri(cfg) == (
+        '"96171488860" <sip:U080@208.87.170.99;transport=tcp>'
+    )

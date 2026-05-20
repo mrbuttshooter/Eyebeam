@@ -7,7 +7,7 @@ from noc_beam.config.store import AccountConfig
 from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE, pj
 from noc_beam.sip.call import SipCall
 from noc_beam.sip.events import sip_events
-from noc_beam.sip.netselect import local_address_for_account
+from noc_beam.sip.netselect import effective_transport_for_account, local_address_for_account
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +35,15 @@ def _normalize_proxy_uri(proxy: str, scheme: str) -> str:
     if value.lower().startswith(("sip:", "sips:")):
         return value
     return f"{scheme}:{value}"
+
+
+def _contact_uri_params_for_transport(transport: str) -> str:
+    key = (transport or "udp").lower()
+    if key == "tcp":
+        return ";transport=TCP"
+    if key == "tls":
+        return ";transport=TLS"
+    return ""
 
 
 def _srtp_use(setting: str) -> int:
@@ -106,7 +115,12 @@ if PJSUA2_AVAILABLE:
             # TLS, producing the classic "registers fine on UDP, calls
             # fail because Contact: advertises a TLS port we never bound"
             # gotcha. Be explicit.
-            transport = (cfg.transport or "udp").lower()
+            transport = effective_transport_for_account(cfg)
+            if transport != (cfg.transport or "udp").lower():
+                log.info(
+                    "Account %s using %s transport for %s switch compatibility",
+                    cfg.id, transport.upper(), cfg.switch_type,
+                )
             scheme = "sips" if transport == "tls" else "sip"
             transport_param = f";transport={transport}" if transport in ("tcp", "tls") else ""
             # If display_name is set, render the SIP id-URI as
@@ -209,13 +223,16 @@ if PJSUA2_AVAILABLE:
             proxy_uri = _normalize_proxy_uri(cfg.proxy, scheme)
             if proxy_uri:
                 ac.sipConfig.proxies.append(proxy_uri)
+            contact_uri_params = _contact_uri_params_for_transport(transport)
+            if contact_uri_params:
+                ac.sipConfig.contactUriParams = contact_uri_params
 
             try:
                 ac.natConfig.sipOutboundUse = 0
             except Exception:
                 log.warning("SIP outbound disable not available on this pjsua2 build")
 
-            tid = _transport_id_for(cfg.transport, self._transports)
+            tid = _transport_id_for(transport, self._transports)
             if tid >= 0:
                 ac.sipConfig.transportId = tid
             else:
@@ -232,10 +249,10 @@ if PJSUA2_AVAILABLE:
                 log.error(
                     "Account %s requested transport=%s but no such "
                     "transport is bound; refusing silent UDP downgrade",
-                    cfg.id, cfg.transport,
+                    cfg.id, transport,
                 )
                 self._pending_transport_error = (
-                    f"Transport '{cfg.transport}' unavailable; "
+                    f"Transport '{transport}' unavailable; "
                     f"account will not register"
                 )
                 ac.regConfig.registerOnAdd = False

@@ -76,6 +76,13 @@ def route_target_for_account(cfg: AccountConfig) -> str:
     return host
 
 
+def effective_transport_for_account(cfg: AccountConfig) -> str:
+    transport = (getattr(cfg, "transport", "") or "udp").lower()
+    if (getattr(cfg, "switch_type", "") or "").lower() == "teles" and transport == "udp":
+        return "tcp"
+    return transport
+
+
 def local_address_for_sip_target(value: str, default_transport: str = "udp") -> str:
     """Return the local IP Windows would use to reach a SIP next hop."""
     target = parse_sip_target(value, default_transport=default_transport)
@@ -91,5 +98,5 @@ def local_address_for_sip_target(value: str, default_transport: str = "udp") -> 
 def local_address_for_account(cfg: AccountConfig) -> str:
     return local_address_for_sip_target(
         route_target_for_account(cfg),
-        default_transport=(getattr(cfg, "transport", "") or "udp").lower(),
+        default_transport=effective_transport_for_account(cfg),
     )

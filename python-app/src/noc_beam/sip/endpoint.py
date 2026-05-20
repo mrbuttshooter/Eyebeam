@@ -27,7 +27,7 @@ from noc_beam.sip._pjsua2_loader import PJSUA2_AVAILABLE, pj
 from noc_beam.sip.account import SipAccount
 from noc_beam.sip.call import SipCall
 from noc_beam.sip.events import sip_events
-from noc_beam.sip.netselect import local_address_for_account
+from noc_beam.sip.netselect import effective_transport_for_account, local_address_for_account
 
 log = logging.getLogger(__name__)
 
@@ -777,7 +777,7 @@ class SipEndpoint:
         if not user:
             return ""
         host = SipEndpoint._account_host(cfg)
-        transport = (getattr(cfg, "transport", "") or "udp").lower()
+        transport = effective_transport_for_account(cfg)
         scheme = "sips" if transport == "tls" else "sip"
         transport_param = f";transport={transport}" if transport in ("tcp", "tls") else ""
         return f'"{display}" <{scheme}:{user}@{host}{transport_param}>'

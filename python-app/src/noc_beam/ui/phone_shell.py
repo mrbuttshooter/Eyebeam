@@ -936,6 +936,16 @@ class PhoneShell(QMainWindow):
         self.supplier_kicker.setText(
             "SUPPLIER (auth)" if kind == "teles" else "SUPPLIER (prefix)"
         )
+        # If a Teles account has a routing template such as U{id}, selecting
+        # or restoring the supplier must immediately materialise the account
+        # user (for example U080). The combo population above blocks signals,
+        # so currentIndexChanged will not fire by itself on startup or after
+        # editing the account from "other" to "teles".
+        if kind == "teles" and self.supplier_combo.currentIndex() >= 0:
+            QTimer.singleShot(
+                0,
+                lambda idx=self.supplier_combo.currentIndex(): self._on_supplier_changed(idx),
+            )
 
     def _on_supplier_return_pressed(self) -> None:
         """Enter on the supplier line edit commits the visible match.

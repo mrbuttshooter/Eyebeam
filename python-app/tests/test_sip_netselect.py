@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from noc_beam.config.store import AccountConfig
-from noc_beam.sip.netselect import parse_sip_target, route_target_for_account
+from noc_beam.sip.netselect import (
+    effective_transport_for_account,
+    parse_sip_target,
+    route_target_for_account,
+)
 
 
 def test_parse_sip_target_accepts_bare_host() -> None:
@@ -35,3 +39,15 @@ def test_route_target_appends_account_port_without_proxy() -> None:
     cfg = AccountConfig(id="a", domain="sip.example.test", port=5070)
 
     assert route_target_for_account(cfg) == "sip.example.test:5070"
+
+
+def test_teles_accounts_default_to_tcp_transport() -> None:
+    cfg = AccountConfig(id="a", switch_type="teles", transport="udp")
+
+    assert effective_transport_for_account(cfg) == "tcp"
+
+
+def test_teles_accounts_preserve_explicit_tls_transport() -> None:
+    cfg = AccountConfig(id="a", switch_type="teles", transport="tls")
+
+    assert effective_transport_for_account(cfg) == "tls"
