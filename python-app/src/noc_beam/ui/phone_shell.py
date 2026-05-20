@@ -183,6 +183,7 @@ class PhoneShell(QMainWindow):
         self._selected_call_id = None
         self._last_snapshots = {}
         self._final_call_results: dict[int, tuple[int, bool]] = {}
+        self._locally_finished_call_ids: set[int] = set()
         self._really_quitting = False
         self._reg_state: dict[str, int] = {}
         # Peer URI cache per call_id, used by _on_call_record_updated to
@@ -408,6 +409,8 @@ class PhoneShell(QMainWindow):
         self.supplier_combo.setObjectName("SupplierCombo")
         self.supplier_combo.setEditable(True)
         self.supplier_combo.setInsertPolicy(_QComboBox.InsertPolicy.NoInsert)
+        self.supplier_combo.setMinimumContentsLength(18)
+        self.supplier_combo.setMaxVisibleItems(18)
         self.supplier_combo.setAccessibleName("Active supplier")
         self.supplier_combo.setAccessibleDescription(
             "Pick a supplier from the active account's switch. "
@@ -439,11 +442,16 @@ class PhoneShell(QMainWindow):
         _le = self.supplier_combo.lineEdit()
         if _le is not None:
             _le.setCompleter(None)
+            _le.setPlaceholderText("Search supplier or C080")
             self._supplier_combo_filter = _SupplierComboFocusFilter(self.supplier_combo)
             _le.installEventFilter(self._supplier_combo_filter)
             _le.textEdited.connect(self._on_supplier_text_edited)
             _le.returnPressed.connect(self._on_supplier_return_pressed)
         self.supplier_combo.currentIndexChanged.connect(self._on_supplier_changed)
+        try:
+            self.supplier_combo.view().setMinimumWidth(320)
+        except Exception:
+            pass
         supp_row.addWidget(self.supplier_kicker)
         supp_row.addWidget(self.supplier_combo, 1)
         # Wrap in a QWidget so we can hide the whole row including the label.
@@ -964,9 +972,11 @@ class PhoneShell(QMainWindow):
             return
         text_lower = text.lower()
         target_id = None
-        # Exact match first.
+        code_text = text_lower[1:] if text_lower.startswith("c") else text_lower
+        # Exact display or supplier-id/code match first.
         for display, sid in self._all_suppliers:
-            if display.lower() == text_lower:
+            sid_lower = str(sid).lower()
+            if display.lower() == text_lower or sid_lower == code_text:
                 target_id = sid
                 break
         # Substring fallback (commit mid-autofill).
@@ -998,20 +1008,7 @@ class PhoneShell(QMainWindow):
         self._supplier_typed_len = 0
 
     def _on_supplier_text_edited(self, text: str) -> None:
-        """UNIQUE-match inline autofill + filter combo's own popup.
-
-        Two behaviors stacked:
-
-        1. Inline-fill the line edit when the typed text uniquely
-           identifies one supplier (substring match, case-insensitive),
-           using the `_all_suppliers` cache. Forward-typing re-expands;
-           Backspace on the selected suffix collapses and stays.
-        2. Drive the QSortFilterProxyModel's filter so the combo's
-           OWN popup (the one we control) shows only the matching
-           rows. hide+show is needed to force the popup to resize
-           when the row count shrinks.
-        """
-        # ---- Pass 1: autofill via cache (unique substring match) ----
+        """Filter the supplier popup without rewriting what was typed."""
         if not text:
             self._supplier_last_fill = ""
             self._supplier_typed_len = 0
@@ -1021,48 +1018,8 @@ class PhoneShell(QMainWindow):
             except Exception:
                 pass
             return
-        last_fill = getattr(self, "_supplier_last_fill", "")
-        typed_len = getattr(self, "_supplier_typed_len", 0)
-        text_lower = text.lower()
-        is_backspace_collapse = (
-            last_fill and len(text) == typed_len
-            and text.lower() == last_fill.lower()[:typed_len]
-        )
-        if is_backspace_collapse:
-            self._supplier_last_fill = ""
-            self._supplier_typed_len = len(text)
-        else:
-            unique_match = None
-            for display, _sid in self._all_suppliers:
-                if text_lower in display.lower():
-                    if unique_match is not None:
-                        unique_match = None  # ambiguous
-                        break
-                    unique_match = display
-            if unique_match is not None and unique_match != text:
-                le = self.supplier_combo.lineEdit()
-                if le is not None:
-                    idx = unique_match.lower().find(text_lower)
-                    cursor_at = idx + len(text)
-                    le.blockSignals(True)
-                    try:
-                        le.setText(unique_match)
-                        le.setCursorPosition(cursor_at)
-                        if cursor_at < len(unique_match):
-                            le.setSelection(cursor_at, len(unique_match) - cursor_at)
-                    finally:
-                        le.blockSignals(False)
-                    self._supplier_last_fill = unique_match
-                    self._supplier_typed_len = cursor_at
-            elif unique_match is None:
-                self._supplier_last_fill = ""
-                self._supplier_typed_len = len(text)
-        # ---- Pass 2: filter the combo's popup ----
-        # CAREFUL: setFilterFixedString can filter out the row whose
-        # currentIndex the combo is pointing at, which makes Qt clear
-        # the line edit ("losing" what the user typed). To prevent
-        # that we capture the line edit's text + cursor + selection,
-        # block signals, set the filter, then restore the line edit.
+        self._supplier_last_fill = ""
+        self._supplier_typed_len = len(text)
         le = self.supplier_combo.lineEdit()
         if le is not None:
             saved_text = le.text()
@@ -1276,6 +1233,31 @@ class PhoneShell(QMainWindow):
         if user in {"U", "N", ""} or auth_user in {"U", "N", ""}:
             return False
         return "{" not in user and "{" not in auth_user
+
+    @staticmethod
+    def _render_supplier_template(template: str, supplier_id: str) -> str:
+        rendered = (template or "").strip()
+        for token in ("{id}", "{ID}", "{Id}", "{iD}"):
+            rendered = rendered.replace(token, supplier_id)
+        return rendered
+
+    @classmethod
+    def _genband_supplier_prefix(cls, acc, supplier_id: str) -> str:
+        supplier_id = str(supplier_id or "").strip()
+        dial_prefix = (getattr(acc, "dial_prefix", "") or "").strip()
+        routing_fmt = (getattr(acc, "routing_format", "") or "").strip()
+        if supplier_id:
+            # Genband is prefix routing: "000" + supplier C080 + number
+            # becomes "000080<number>". Keep old template configs working,
+            # but the normal account field is just Dial prefix = 000.
+            if "{id}" in routing_fmt.lower():
+                return cls._render_supplier_template(routing_fmt, supplier_id)
+            if "{id}" in dial_prefix.lower():
+                return cls._render_supplier_template(dial_prefix, supplier_id)
+            if routing_fmt:
+                return routing_fmt
+            return f"{dial_prefix}{supplier_id}"
+        return cls._render_supplier_template(dial_prefix, supplier_id)
 
     def _add_account_to_endpoint(self, cfg):
         self._ensure_teles_supplier_identity(cfg)
@@ -1566,6 +1548,11 @@ class PhoneShell(QMainWindow):
             if call_id == self._selected_call_id:
                 self.call_widget.update_state(state, code, reason)
             return
+        if new_state == CallState.DISCONNECTED and self.calls.get(call_id) is None:
+            if call_id in self._locally_finished_call_ids:
+                return
+        elif new_state != CallState.DISCONNECTED:
+            self._locally_finished_call_ids.discard(call_id)
         if self.calls.get(call_id) is None:
             self.calls.register(CallRecord(call_id=call_id, account_id=account_id, direction="out"))
         if new_state == CallState.DISCONNECTED:
@@ -1861,25 +1848,18 @@ class PhoneShell(QMainWindow):
         if acc is None:
             return target
         out = target
-        # Genband supplier prefix layered FIRST (innermost), then the
-        # account-level dial prefix (outermost) so the wire sees
-        # <dial_prefix><supplier_prefix><number>.
         kind = (getattr(acc, "switch_type", "other") or "other").lower()
-        if kind == "genband" and self._active_supplier_id:
-            try:
-                from noc_beam.config.suppliers import load_suppliers
-
-                suppliers = {s.id: s for s in load_suppliers()}
-                s = suppliers.get(self._active_supplier_id)
-                if s is not None:
-                    prefix = s.routed(getattr(acc, "routing_format", "") or "")
-                    if prefix:
-                        out = f"{prefix}{out}"
-            except Exception:
-                log.exception("Genband prefix application failed")
-        dial_prefix = (getattr(acc, "dial_prefix", "") or "").strip()
-        if dial_prefix and not out.startswith(dial_prefix):
-            out = f"{dial_prefix}{out}"
+        if kind == "genband":
+            supplier_id = str(getattr(self, "_active_supplier_id", "") or "")
+            if not supplier_id and self.supplier_combo.currentIndex() >= 0:
+                supplier_id = str(self.supplier_combo.currentData() or "")
+            prefix = self._genband_supplier_prefix(acc, supplier_id)
+            if prefix and not out.startswith(prefix):
+                out = f"{prefix}{out}"
+        else:
+            dial_prefix = (getattr(acc, "dial_prefix", "") or "").strip()
+            if dial_prefix and not out.startswith(dial_prefix):
+                out = f"{dial_prefix}{out}"
         if out != target:
             log.info("Dial rewrite: %r -> %r (account=%s kind=%s)",
                      target, out, acc.id, kind)
@@ -1889,11 +1869,11 @@ class PhoneShell(QMainWindow):
         if not self._active_account_id:
             QMessageBox.information(self, "No account", "Add a SIP account first."); return
         acc = self._selected_account()
-        if acc is not None and (getattr(acc, "switch_type", "") or "").lower() == "teles":
+        if acc is not None and (getattr(acc, "switch_type", "") or "").lower() in ("teles", "genband"):
             try:
                 self._refresh_supplier_picker()
             except Exception:
-                log.exception("Supplier picker refresh failed before Teles call")
+                log.exception("Supplier picker refresh failed before call")
         if acc is not None and self._ensure_teles_supplier_identity(acc):
             self._save_accounts_or_warn(self.accounts)
             try:
@@ -1987,13 +1967,29 @@ class PhoneShell(QMainWindow):
         if self._selected_call_id is None: return None
         return SipEndpoint.instance().find_call(self._selected_call_id)
 
-    def _on_hangup_requested(self):
-        call = self._selected_pjsua_call()
-        if call is None: return
-        try: SipEndpoint.instance().hangup_call(call)
-        except Exception: log.exception("hangup failed")
+    def _finish_call_locally(self, call_id: int, code: int, reason: str) -> None:
+        rec = self.calls.get(call_id)
+        if rec is None:
+            return
+        self._final_call_results[call_id] = (
+            code,
+            bool(rec.connected_at is not None),
+        )
+        self._locally_finished_call_ids.add(call_id)
+        QTimer.singleShot(
+            10000,
+            lambda cid=call_id: self._locally_finished_call_ids.discard(cid),
+        )
+        if self.calls.update_state(call_id, CallState.DISCONNECTED, code, reason):
+            self._maybe_write_cdr(call_id)
+        self.ringer.stop()
 
-    def _on_hangup_by_id(self, _call_id): self._on_hangup_requested()
+    def _on_hangup_requested(self):
+        if self._selected_call_id is None:
+            return
+        self._hangup_one(self._selected_call_id)
+
+    def _on_hangup_by_id(self, call_id): self._hangup_one(call_id)
 
     def _on_answer(self, _call_id):
         call = self._selected_pjsua_call()
@@ -2505,12 +2501,23 @@ class PhoneShell(QMainWindow):
     def _hangup_one(self, call_id: int) -> None:
         """Hangup a specific call by ID. Bypasses the selected-call
         gate so any strip row can end its own call."""
+        rec = self.calls.get(call_id)
+        if rec is None:
+            return
+        code = 487 if rec.state in (
+            CallState.CALLING,
+            CallState.INCOMING,
+            CallState.EARLY,
+            CallState.CONNECTING,
+        ) else 200
         try:
             live = SipEndpoint.instance().find_call(call_id)
             if live is not None:
                 SipEndpoint.instance().hangup_call(live)
+            self._finish_call_locally(call_id, code, "Local hangup")
         except Exception:
             log.exception("hangup_one failed for call %s", call_id)
+            self._finish_call_locally(call_id, code, "Local hangup")
 
     def _on_digit_pressed(self, digit):
         # When in a call, digits are DTMF tones routed via the SIP endpoint.

@@ -218,14 +218,17 @@ class AccountDialog(QDialog):
         # don't apply there. Re-show when user picks teles/genband.
         def _toggle_routing(*_a):
             kind = self.switch_type.currentText()
-            show = kind in ("teles", "genband")
+            show = kind == "teles"
             self.routing_format.setEnabled(show)
-            if not show:
+            if kind == "genband":
+                self.dial_prefix.setPlaceholderText("e.g. 000 (C080 -> 000080)")
+                self.routing_format.setPlaceholderText("(not needed for Genband)")
+            elif not show:
+                self.dial_prefix.setPlaceholderText("e.g. 00")
                 self.routing_format.setPlaceholderText("(not used for 'other' accounts)")
-            elif kind == "teles":
-                self.routing_format.setPlaceholderText("e.g. U{id} or N{id}")
             else:
-                self.routing_format.setPlaceholderText("e.g. 000{id}")
+                self.dial_prefix.setPlaceholderText("e.g. 00")
+                self.routing_format.setPlaceholderText("e.g. U{id} or N{id}")
         self.switch_type.currentTextChanged.connect(_toggle_routing)
         _toggle_routing()
 
