@@ -714,6 +714,40 @@ class TestRunnerView(QMainWindow):
             finally:
                 le.blockSignals(False)
                 self.supplier_combo.blockSignals(False)
+            try:
+                if self._supplier_proxy.rowCount() > 0:
+                    self._show_supplier_popup_preserving_edit(le)
+                else:
+                    self.supplier_combo.hidePopup()
+            except Exception:
+                pass
+
+    def _show_supplier_popup_preserving_edit(self, line_edit) -> None:
+        """Open filtered supplier results without stealing typing focus."""
+        if line_edit is None:
+            return
+        saved_text = line_edit.text()
+        saved_cursor = line_edit.cursorPosition()
+        saved_sel_start = line_edit.selectionStart()
+        saved_sel_len = len(line_edit.selectedText())
+
+        def _restore_edit_state() -> None:
+            try:
+                if line_edit.text() != saved_text:
+                    line_edit.setText(saved_text)
+                line_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+                line_edit.setCursorPosition(min(saved_cursor, len(saved_text)))
+                if saved_sel_start >= 0 and saved_sel_len > 0:
+                    line_edit.setSelection(saved_sel_start, saved_sel_len)
+            except Exception:
+                pass
+
+        try:
+            if not self.supplier_combo.view().isVisible():
+                self.supplier_combo.showPopup()
+        except Exception:
+            return
+        QTimer.singleShot(0, _restore_edit_state)
 
     def _on_supplier_changed(self, index: int) -> None:
         if index < 0:

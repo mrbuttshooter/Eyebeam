@@ -1056,19 +1056,41 @@ class PhoneShell(QMainWindow):
             finally:
                 le.blockSignals(False)
                 self.supplier_combo.blockSignals(False)
-            # Do not auto-open the popup while typing. Qt's combo popup
-            # steals keyboard focus on Windows, so the next character can
-            # get consumed as popup navigation instead of text input. The
-            # filter is still applied; Enter or Call commits the typed
-            # supplier, and the user can open the dropdown manually.
             try:
                 rc = self._supplier_proxy.rowCount()
                 if rc > 0:
-                    le.setFocus(Qt.FocusReason.OtherFocusReason)
-                if self.supplier_combo.view().isVisible():
+                    self._show_supplier_popup_preserving_edit(le)
+                else:
                     self.supplier_combo.hidePopup()
             except Exception:
                 pass
+
+    def _show_supplier_popup_preserving_edit(self, line_edit) -> None:
+        """Open filtered supplier results without stealing typing focus."""
+        if line_edit is None:
+            return
+        saved_text = line_edit.text()
+        saved_cursor = line_edit.cursorPosition()
+        saved_sel_start = line_edit.selectionStart()
+        saved_sel_len = len(line_edit.selectedText())
+
+        def _restore_edit_state() -> None:
+            try:
+                if line_edit.text() != saved_text:
+                    line_edit.setText(saved_text)
+                line_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+                line_edit.setCursorPosition(min(saved_cursor, len(saved_text)))
+                if saved_sel_start >= 0 and saved_sel_len > 0:
+                    line_edit.setSelection(saved_sel_start, saved_sel_len)
+            except Exception:
+                pass
+
+        try:
+            if not self.supplier_combo.view().isVisible():
+                self.supplier_combo.showPopup()
+        except Exception:
+            return
+        QTimer.singleShot(0, _restore_edit_state)
 
     def _active_calls_on_account(self, account_id: str) -> list:
         """Return CallRecords currently up on a given account.
