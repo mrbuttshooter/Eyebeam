@@ -1382,6 +1382,12 @@ class PhoneShell(QMainWindow):
         # endpoint, hence the rollback.
         prior_accounts = list(self.accounts)
         self.accounts = accounts
+        if new_cfg.id == self._active_account_id:
+            try:
+                self._refresh_supplier_picker()
+                self._ensure_teles_supplier_identity(new_cfg)
+            except Exception:
+                log.exception("Failed to refresh supplier picker before account re-add")
         # Reset retry state before tearing down the PJSIP account so any
         # pending retry timer doesn't fire setRegistration(True) on the
         # freshly re-added account, racing the legitimate REGISTER.
@@ -1883,6 +1889,11 @@ class PhoneShell(QMainWindow):
         if not self._active_account_id:
             QMessageBox.information(self, "No account", "Add a SIP account first."); return
         acc = self._selected_account()
+        if acc is not None and (getattr(acc, "switch_type", "") or "").lower() == "teles":
+            try:
+                self._refresh_supplier_picker()
+            except Exception:
+                log.exception("Supplier picker refresh failed before Teles call")
         if acc is not None and self._ensure_teles_supplier_identity(acc):
             self._save_accounts_or_warn(self.accounts)
             try:
