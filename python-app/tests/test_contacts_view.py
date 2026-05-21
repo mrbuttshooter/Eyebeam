@@ -161,6 +161,14 @@ def test_add_edit_delete_persist_and_emit_contact_saved(
 
     monkeypatch.setattr(contacts_view_module, "ContactDialog", FakeDialog)
     monkeypatch.setattr(contacts_view_module, "_open_modal", lambda _dlg: True)
+    # _on_delete_contact opens QMessageBox.question for confirmation;
+    # without this monkeypatch the test process blocks indefinitely on
+    # the modal — full pytest suite would hang forever.
+    monkeypatch.setattr(
+        contacts_view_module.QMessageBox,
+        "question",
+        lambda *_a, **_kw: contacts_view_module.QMessageBox.StandardButton.Yes,
+    )
 
     view = ContactsView()
     view.show()
@@ -348,6 +356,14 @@ def test_delete_save_failure_warns_and_keeps_current_list(
         contacts_view_module.QMessageBox,
         "warning",
         lambda _parent, _title, body: warnings.append(body),
+    )
+    # _on_delete_contact also opens QMessageBox.question for confirmation
+    # before the save is attempted. Without patching it the modal blocks
+    # the test process indefinitely (full pytest suite hangs forever).
+    monkeypatch.setattr(
+        contacts_view_module.QMessageBox,
+        "question",
+        lambda *_a, **_kw: contacts_view_module.QMessageBox.StandardButton.Yes,
     )
     view = ContactsView()
     view.show()

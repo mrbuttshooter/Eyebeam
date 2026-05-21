@@ -84,19 +84,70 @@ def effective_transport_for_account(cfg: AccountConfig) -> str:
 
 
 def local_address_for_sip_target(value: str, default_transport: str = "udp") -> str:
-    """Return the local IP Windows would use to reach a SIP next hop."""
-    target = parse_sip_target(value, default_transport=default_transport)
-    family = socket.AF_INET6 if ":" in target.host and not target.host.count(".") else socket.AF_INET
-    # UDP connect only asks the kernel to select a route/local address; it
-    # does not send a packet and works even when the peer would reject TCP.
-    with socket.socket(family, socket.SOCK_DGRAM) as sock:
-        sock.settimeout(0.5)
-        sock.connect((target.host, target.port))
-        return str(sock.getsockname()[0])
+    """Return the local IP Windows would use to reach a SIP next hop.
+
+    Returns "" on any failure (DNS miss, route unreachable, IPv6 mismatch,
+    socket exhaustion, timeout). Callers MUST treat empty as "don't set
+    publicAddress" — the previous version raised silently into a bare
+    except, which then meant we ALSO silently lost the NAT-publicAddress
+    fix that this whole module exists to provide. Now empty is explicit
+    and the caller logs at WARNING with the account id.
+
+    DNS hardening: getaddrinfo() ignores socket.settimeout(), so we
+    resolve via a thread-pool with a hard 500 ms cap. Without this a
+    flaky corporate resolver could freeze the Qt main thread for 5+
+    seconds during account.configure() / endpoint.start().
+    """
+    try:
+        target = parse_sip_target(value, default_transport=default_transport)
+    except Exception:
+        return ""
+    if not target.host:
+        return ""
+
+    # Resolve host to (family, sockaddr) with a deadline. Use AF_UNSPEC
+    # so v4 and v6 both work, and pick the first usable one (kernel will
+    # then pick the right local interface).
+    import concurrent.futures
+    def _resolve():
+        try:
+            return socket.getaddrinfo(
+                target.host, target.port,
+                family=socket.AF_UNSPEC,
+                type=socket.SOCK_DGRAM,
+            )
+        except socket.gaierror:
+            return []
+
+    addrs: list = []
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_resolve)
+            try:
+                addrs = future.result(timeout=0.5)
+            except concurrent.futures.TimeoutError:
+                return ""  # DNS too slow; skip publicAddress entirely
+    except Exception:
+        return ""
+
+    for family, _socktype, _proto, _canon, sockaddr in addrs:
+        try:
+            with socket.socket(family, socket.SOCK_DGRAM) as sock:
+                sock.settimeout(0.5)
+                sock.connect(sockaddr)
+                return str(sock.getsockname()[0])
+        except OSError:
+            continue
+        except Exception:
+            continue
+    return ""
 
 
 def local_address_for_account(cfg: AccountConfig) -> str:
-    return local_address_for_sip_target(
-        route_target_for_account(cfg),
-        default_transport=effective_transport_for_account(cfg),
-    )
+    try:
+        return local_address_for_sip_target(
+            route_target_for_account(cfg),
+            default_transport=effective_transport_for_account(cfg),
+        )
+    except Exception:
+        return ""

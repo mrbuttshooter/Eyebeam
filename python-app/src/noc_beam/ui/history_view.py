@@ -191,12 +191,19 @@ def _resolve_account_label(account_id: str) -> str:
     if not account_id:
         return ""
     try:
-        from noc_beam.config.store import load_settings
-        for acc in load_settings().accounts:
+        # NB: GlobalSettings has NO `.accounts` field — accounts live in
+        # accounts.json via load_accounts(). The previous version called
+        # load_settings().accounts which raised AttributeError that the
+        # bare `except Exception: pass` silently swallowed, causing every
+        # CSV export to show raw UUIDs instead of the operator's display
+        # names. Caught in pre-rollout audit; load_accounts() is the
+        # correct call.
+        from noc_beam.config.store import load_accounts
+        for acc in load_accounts():
             if acc.id == account_id:
                 return acc.display_name or acc.username or account_id
     except Exception:
-        pass
+        log.exception("Could not resolve account label for %s", account_id)
     return account_id
 
 

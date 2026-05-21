@@ -146,8 +146,20 @@ if PJSUA2_AVAILABLE:
                     # if reasonable; otherwise use the fallback verbatim.
                     sub = fallback.lstrip("Uu")
                     return value.replace("{id}", sub) if "{id}" in value else fallback
-                # No useful fallback — strip the placeholder
-                return value.replace("{id}", "").replace("{", "").replace("}", "") or "anonymous"
+                # No useful fallback — strip the placeholder. Refuse the
+                # "anonymous" fallback: that was registering accounts as
+                # a literal user "anonymous" against the carrier,
+                # silently misrepresenting identity. If we land here both
+                # username and auth_user contain unsubstituted {id} AND
+                # there's nothing to substitute from — return empty so
+                # the caller (Account.create) fails loudly instead of
+                # silently authenticating as the wrong identity.
+                stripped = (
+                    value.replace("{id}", "")
+                         .replace("{", "")
+                         .replace("}", "")
+                )
+                return stripped  # may be empty -> caller errors out clearly
 
             _orig_user = cfg.username
             _orig_auth = cfg.auth_user
@@ -259,14 +271,35 @@ if PJSUA2_AVAILABLE:
 
             ac.mediaConfig.srtpUse = _srtp_use(cfg.srtp)
             ac.mediaConfig.srtpSecureSignaling = 0 if cfg.srtp != "mandatory" else 1
+            # Set the publicAddress on mediaConfig so RTP c=IN IP4 advertises
+            # the outbound-reachable address. Empty string means netselect
+            # couldn't resolve / no route — do NOT call setter, since some
+            # pjsua2 builds normalise empty to 0.0.0.0 which guarantees the
+            # one-way-audio bug this whole code path exists to prevent.
             try:
                 media_address = local_address_for_account(cfg)
-                ac.mediaConfig.transportConfig.publicAddress = media_address
-                log.info(
-                    "Account %s advertising media address %s", cfg.id, media_address
-                )
+                if media_address:
+                    ac.mediaConfig.transportConfig.publicAddress = media_address
+                    log.info(
+                        "Account %s advertising media address %s",
+                        cfg.id, media_address,
+                    )
+                else:
+                    # WARNING (not DEBUG) so support bundles surface this —
+                    # silent fallback was regressing the NAT fix without
+                    # the operator noticing one-way audio until a real call.
+                    log.warning(
+                        "Account %s: netselect returned no usable local "
+                        "address; RTP publicAddress NOT set. Calls behind "
+                        "symmetric NAT may have one-way audio. Check that "
+                        "domain %s resolves and is routable.",
+                        cfg.id, cfg.domain,
+                    )
             except Exception:
-                log.debug("Could not select media advertised address for %r", cfg)
+                log.warning(
+                    "Account %s: could not select media advertised address: %r",
+                    cfg.id, cfg,
+                )
 
             # ICE only when a STUN server is configured. Earlier we
             # enabled ICE unconditionally to fix one-way audio behind

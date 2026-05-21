@@ -51,7 +51,24 @@ def expand(spec: TestSpec) -> list[TestCall]:
     if spec.mode == "matrix":
         pairs = [(caller, target) for caller in callers for target in spec.targets]
     elif spec.mode == "paired":
-        pairs = list(zip(callers, spec.targets, strict=False))
+        # Paired mode is a strict 1:1 zip — but historically (and per
+        # operator mental model) "I have ONE caller and many targets,
+        # call all of them from that caller" is the most common batch
+        # shape. zip() of a 1-element list with N targets silently
+        # drops N-1 targets, which is a footgun: operator pastes 100
+        # numbers, clicks Run, sees only 1 call fire, the other 99
+        # vanish without a trace.
+        #
+        # Defensive: when callers has exactly 1 entry but targets has
+        # more, promote to fan-out semantics (that single caller is
+        # used for every target). Same for the inverse (1 target,
+        # many callers => fan-in). Otherwise zip as before.
+        if len(callers) == 1 and len(spec.targets) > 1:
+            pairs = [(callers[0], target) for target in spec.targets]
+        elif len(spec.targets) == 1 and len(callers) > 1:
+            pairs = [(caller, spec.targets[0]) for caller in callers]
+        else:
+            pairs = list(zip(callers, spec.targets, strict=False))
     elif spec.mode == "fan-out":
         pairs = [(callers[0], target) for target in spec.targets]
     else:

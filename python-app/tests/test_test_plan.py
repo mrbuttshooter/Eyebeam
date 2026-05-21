@@ -99,9 +99,22 @@ def test_normalise_lines_strips_drops_blanks_and_preserves_duplicates() -> None:
 
 
 @pytest.mark.parametrize("mode", ["matrix", "paired", "fan-out", "fan-in"])
-def test_all_modes_return_empty_when_either_side_empty(mode: str) -> None:
-    assert plan.expand(make_spec([], ["2001"], mode)) == []
+def test_empty_targets_returns_no_calls(mode: str) -> None:
+    """Empty targets => no calls; an empty targets list has no destinations
+    to dial regardless of how many callers."""
     assert plan.expand(make_spec(["1001"], [], mode)) == []
+
+
+@pytest.mark.parametrize("mode", ["matrix", "paired", "fan-out", "fan-in"])
+def test_empty_callers_uses_wildcard_active_account(mode: str) -> None:
+    """Empty callers => wildcard `*` (active account). This is the common
+    'paste targets, leave callers blank, click Run' workflow — before the
+    fix this silently returned [] and no calls fired. Now the wildcard
+    caller dials every target via the currently-selected account."""
+    calls = plan.expand(make_spec([], ["2001"], mode))
+    assert len(calls) == 1
+    assert calls[0].caller_number == "*"
+    assert calls[0].target_number == "2001"
 
 
 def test_unknown_mode_raises_even_when_inputs_are_empty() -> None:
