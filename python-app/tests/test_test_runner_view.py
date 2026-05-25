@@ -809,8 +809,13 @@ def test_fas_sweep_tries_per_pair_quick_thorough_custom(qt_app):
         view.close()
 
 
-def test_origination_destination_rows_hidden_when_no_zone_has_numbers(qt_app, monkeypatch):
-    # Force load_destinations to return only empty-numbers entries.
+def test_origination_destination_rows_show_hint_when_no_zone_has_numbers(qt_app, monkeypatch):
+    """When the destinations library has zero zones with numbers, the
+    ORIGINATION + DESTINATION rows are still visible — but the dropdowns
+    are disabled and an inline hint points the operator at Settings →
+    Destinations to seed the first number. Engineers need to see the
+    feature exists; previously the rows were hidden entirely, which made
+    them un-discoverable on a fresh install."""
     empty_only = [
         destinations_module.Destination(country='X', zone='X-Z', numbers=tuple()),
     ]
@@ -820,8 +825,45 @@ def test_origination_destination_rows_hidden_when_no_zone_has_numbers(qt_app, mo
     )
     view = RunnerWindow([])
     try:
-        assert not view.origination_row.isVisible()
-        assert not view.destination_row.isVisible()
+        # Rows are NOT explicitly hidden — they're discoverable when the
+        # window is shown. (Use isHidden() not isVisible() because the
+        # offscreen test window isn't show()ed.)
+        assert not view.origination_row.isHidden()
+        assert not view.destination_row.isHidden()
+        # Dropdowns are disabled (can't pick from an empty library).
+        assert not view.origination_country.isEnabled()
+        assert not view.origination_zone.isEnabled()
+        assert not view.destination_country.isEnabled()
+        assert not view.destination_zone.isEnabled()
+        # Hint labels are showing (not explicitly hidden).
+        assert not view.origination_hint.isHidden()
+        assert not view.destination_hint.isHidden()
+        assert "Settings" in view.origination_hint.text()
+        assert "Settings" in view.destination_hint.text()
+    finally:
+        view.close()
+
+
+def test_origination_destination_hint_hides_after_zone_gets_number(qt_app, monkeypatch):
+    """When the operator adds the first real number (via Settings or by
+    JSON-editing the destinations file and clicking the reload button),
+    the empty-state hint disappears and the dropdowns become usable."""
+    populated = [
+        destinations_module.Destination(
+            country='Egypt', zone='Egypt-Mobile (Vodafone)', numbers=('201001234567',)
+        ),
+    ]
+    monkeypatch.setattr(
+        test_runner_view_module.destinations_module, 'load_destinations',
+        lambda: populated,
+    )
+    view = RunnerWindow([])
+    try:
+        assert view.origination_country.isEnabled()
+        assert view.destination_country.isEnabled()
+        # Hint is explicitly hidden once the library has populated zones.
+        assert view.origination_hint.isHidden()
+        assert view.destination_hint.isHidden()
     finally:
         view.close()
 

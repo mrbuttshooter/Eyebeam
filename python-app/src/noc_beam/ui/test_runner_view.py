@@ -453,7 +453,7 @@ class TestRunnerView(QMainWindow):
             self._destinations_items = []
         _any_dest = destinations_module.any_zone_has_numbers(self._destinations_items)
 
-        def _build_dest_row(label_text: str, callback) -> tuple[_QWidget, SupplierDropdown, QComboBox, QToolButton]:
+        def _build_dest_row(label_text: str, callback) -> tuple[_QWidget, SupplierDropdown, QComboBox, QToolButton, QLabel]:
             row = _QWidget()
             rl = QHBoxLayout(row)
             rl.setContentsMargins(0, 0, 0, 0)
@@ -471,21 +471,35 @@ class TestRunnerView(QMainWindow):
             reload_btn.setObjectName(f"TestRunnerDest{label_text.title()}Reload")
             reload_btn.setText("↻")
             reload_btn.setToolTip("Reload destinations.json")
+            hint = QLabel("Configure zones in Settings → Destinations")
+            hint.setObjectName(f"TestRunnerDest{label_text.title()}Hint")
+            hint.setStyleSheet("color: palette(mid); font-style: italic;")
             rl.addWidget(lbl)
             rl.addWidget(country, 1)
             rl.addWidget(zone, 2)
             rl.addWidget(reload_btn)
-            return row, country, zone, reload_btn
+            rl.addWidget(hint, 1)
+            return row, country, zone, reload_btn, hint
 
-        self.origination_row, self.origination_country, self.origination_zone, self.origination_reload = (
-            _build_dest_row("ORIGINATION", None)
-        )
-        self.destination_row, self.destination_country, self.destination_zone, self.destination_reload = (
-            _build_dest_row("DESTINATION", None)
-        )
-        # Hide both rows when the catalogue has no populated zones.
-        self.origination_row.setVisible(_any_dest)
-        self.destination_row.setVisible(_any_dest)
+        (
+            self.origination_row,
+            self.origination_country,
+            self.origination_zone,
+            self.origination_reload,
+            self.origination_hint,
+        ) = _build_dest_row("ORIGINATION", None)
+        (
+            self.destination_row,
+            self.destination_country,
+            self.destination_zone,
+            self.destination_reload,
+            self.destination_hint,
+        ) = _build_dest_row("DESTINATION", None)
+        # Rows are ALWAYS visible — engineers need to see the feature exists.
+        # When the catalogue has no populated zones, the dropdowns are
+        # disabled and the inline hint label points the operator to
+        # Settings → Destinations to add their first number.
+        self._apply_destination_empty_state(not _any_dest)
         outer.addWidget(self.origination_row)
         outer.addWidget(self.destination_row)
         self._populate_destination_pickers()
@@ -1014,6 +1028,23 @@ class TestRunnerView(QMainWindow):
     # ------------------------------------------------------------------
     # Destination picker (ORIGINATION / DESTINATION) handling
     # ------------------------------------------------------------------
+    def _apply_destination_empty_state(self, is_empty: bool) -> None:
+        """Toggle the disabled+hint state on the ORIGINATION/DESTINATION rows.
+
+        Rows stay visible regardless — the dropdowns just go disabled and
+        the inline hint appears to point the operator at Settings when
+        the destinations library has no populated zones yet.
+        """
+        if not hasattr(self, "origination_row"):
+            return
+        for country, zone, hint in (
+            (self.origination_country, self.origination_zone, self.origination_hint),
+            (self.destination_country, self.destination_zone, self.destination_hint),
+        ):
+            country.setEnabled(not is_empty)
+            zone.setEnabled(not is_empty)
+            hint.setVisible(is_empty)
+
     def _populate_destination_pickers(self) -> None:
         """Populate the country dropdowns with countries that have at
         least one zone with numbers."""
@@ -1023,6 +1054,7 @@ class TestRunnerView(QMainWindow):
         country_list = sorted({
             d.country for d in items if d.numbers
         })
+        self._apply_destination_empty_state(not country_list)
         if not country_list:
             return
         rendered = [(c, c) for c in country_list]
@@ -1120,11 +1152,7 @@ class TestRunnerView(QMainWindow):
             self._destinations_items = destinations_module.load_destinations()
         except Exception:
             return
-        _any = destinations_module.any_zone_has_numbers(self._destinations_items)
-        if hasattr(self, "origination_row"):
-            self.origination_row.setVisible(_any)
-            self.destination_row.setVisible(_any)
-        self._populate_destination_pickers()
+        self._populate_destination_pickers()  # also re-applies empty-state
         # Restore selections if still present.
         if prev_orig_country:
             idx = self.origination_country.findData(prev_orig_country)
