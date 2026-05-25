@@ -495,14 +495,17 @@ class TestRunnerView(QMainWindow):
             reload_btn.setObjectName(f"TestRunnerDest{label_text.title()}Reload")
             reload_btn.setText("↻")
             reload_btn.setToolTip("Reload destinations.json")
-            # Hint label kept as an instance attr for backwards-compat
-            # with _apply_destination_empty_state() but NOT added to the
-            # row layout -- it was eating horizontal space on every
-            # render even when destinations.json was populated. The
-            # disabled-state of country/zone is enough to signal "empty"
-            # when the catalogue is unconfigured; the operator opens
-            # Settings → Destinations to fix it.
-            hint = QLabel("Configure in Settings → Destinations")
+            # Hint label kept as an instance attr (so back-compat
+            # code paths and _apply_destination_empty_state don't
+            # break) but NOT shown -- the operator already asked us
+            # to remove the inline "Configure in Settings →
+            # Destinations" text. Parent it to `cell` so it has a
+            # real owner window and never escapes as a top-level
+            # NOC_Beam window when something calls setVisible(True)
+            # on it (the bug that produced the "Configure in
+            # Settings → Destinations" floating mini-window in the
+            # Alt+Tab switcher).
+            hint = QLabel("Configure in Settings → Destinations", cell)
             hint.setObjectName(f"TestRunnerDest{label_text.title()}Hint")
             hint.setVisible(False)
             rl.addWidget(lbl)
@@ -592,51 +595,54 @@ class TestRunnerView(QMainWindow):
         lc_l.setContentsMargins(0, 0, 0, 0)
         lc_l.setSpacing(0)
 
-        # BOTH Targets AND Callers visible at the same time, stacked
-        # vertically -- not behind a tab toggle. The old tab pattern
-        # forced operators to flip back and forth to remember what was
-        # in the other box; with both panes onscreen the whole batch
-        # reads at a glance.
-        #
-        # _tab_targets_btn / _tab_callers_btn / _run_count_badge are
-        # kept as QLabel attributes (not buttons) so the existing
-        # _refresh_plan_preview() / _refresh_tab_titles() calls to
-        # .setText() on them still work without conditional branches.
-        # Acts as both the section header and the live counter.
-        self._tab_targets_btn = QLabel("Targets (0)", left_card)
-        self._tab_targets_btn.setObjectName("TestRunnerPasteHeader")
-        self._tab_callers_btn = QLabel("Callers (auto)", left_card)
-        self._tab_callers_btn.setObjectName("TestRunnerPasteHeader")
-        self._run_count_badge = QLabel("0 calls", left_card)
+        # Tabbed Targets / Callers -- ONE panel visible at a time,
+        # toggle via the tab strip at the top. The user's preference
+        # is the original tabbed pattern (compact, panel reads
+        # full-width inside the strip) over the stacked-both-at-once
+        # variant we briefly tried (which read as two horizontal
+        # bands and felt cluttered). Cap each text box at 90 px so
+        # the results table grid still dominates the body.
+        tabs_row = QHBoxLayout()
+        tabs_row.setContentsMargins(10, 8, 10, 0)
+        tabs_row.setSpacing(4)
+        self._tab_targets_btn = QToolButton()
+        self._tab_targets_btn.setObjectName("TestRunnerTab")
+        self._tab_targets_btn.setText("Targets (0)")
+        self._tab_targets_btn.setCheckable(True)
+        self._tab_targets_btn.setChecked(True)
+        self._tab_targets_btn.setAutoRaise(True)
+        self._tab_targets_btn.setProperty("active", True)
+        self._tab_callers_btn = QToolButton()
+        self._tab_callers_btn.setObjectName("TestRunnerTab")
+        self._tab_callers_btn.setText("Callers (auto)")
+        self._tab_callers_btn.setCheckable(True)
+        self._tab_callers_btn.setAutoRaise(True)
+        _grp = QButtonGroup(left_card)
+        _grp.setExclusive(True)
+        _grp.addButton(self._tab_targets_btn)
+        _grp.addButton(self._tab_callers_btn)
+        tabs_row.addWidget(self._tab_targets_btn)
+        tabs_row.addWidget(self._tab_callers_btn)
+        tabs_row.addStretch(1)
+        self._run_count_badge = QLabel("0 calls")
         self._run_count_badge.setObjectName("TestRunnerCountBadge")
         self._run_count_badge.setVisible(False)
+        tabs_row.addWidget(self._run_count_badge)
+        lc_l.addLayout(tabs_row)
 
-        # Targets pane (top)
-        _targets_hdr = QHBoxLayout()
-        _targets_hdr.setContentsMargins(10, 6, 10, 0)
-        _targets_hdr.setSpacing(4)
-        _targets_hdr.addWidget(self._tab_targets_btn)
-        _targets_hdr.addStretch(1)
-        lc_l.addLayout(_targets_hdr)
-        self.targets_edit.setMaximumHeight(72)
-        lc_l.addWidget(self.targets_edit)
-
-        # Callers pane (directly below)
-        _callers_hdr = QHBoxLayout()
-        _callers_hdr.setContentsMargins(10, 4, 10, 0)
-        _callers_hdr.setSpacing(4)
-        _callers_hdr.addWidget(self._tab_callers_btn)
-        _callers_hdr.addStretch(1)
-        lc_l.addLayout(_callers_hdr)
-        self.callers_edit.setMaximumHeight(72)
-        lc_l.addWidget(self.callers_edit)
-
-        # _target_stack: legacy attr that some test helpers / consumer
-        # code references. Kept as an invisible stub so setCurrentIndex
-        # calls on it are no-ops (no widgets added, never shown).
         self._target_stack = QStackedWidget()
-        self._target_stack.setVisible(False)
-
+        self._target_stack.addWidget(self.targets_edit)
+        self._target_stack.addWidget(self.callers_edit)
+        self._target_stack.setMaximumHeight(100)
+        self.targets_edit.setMaximumHeight(90)
+        self.callers_edit.setMaximumHeight(90)
+        lc_l.addWidget(self._target_stack, 1)
+        self._tab_targets_btn.toggled.connect(
+            lambda checked: checked and self._target_stack.setCurrentIndex(0)
+        )
+        self._tab_callers_btn.toggled.connect(
+            lambda checked: checked and self._target_stack.setCurrentIndex(1)
+        )
         split.addWidget(left_card)
 
         # ---- RIGHT: results table ----
@@ -664,11 +670,8 @@ class TestRunnerView(QMainWindow):
         # of the body on the default window.
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
-        # Strip now hosts BOTH Targets and Callers stacked vertically
-        # (was one tabbed view at ~100 px). ~180 px is the tight fit
-        # for two 72 px text boxes + their headers + spacing; the rest
-        # of the body goes to the results table grid.
-        split.setSizes([180, 620])
+        # Compact tabbed paste strip up top, results table dominates.
+        split.setSizes([130, 700])
         outer.addWidget(split, 1)
 
         # ===== Sticky footer ==========================================
@@ -1103,7 +1106,12 @@ class TestRunnerView(QMainWindow):
         ):
             country.setEnabled(not is_empty)
             zone.setEnabled(not is_empty)
-            hint.setVisible(is_empty)
+            # NEVER show the hint label -- it was rendering as a
+            # standalone "Configure in Settings → Destinations"
+            # NOC_Beam window in the taskbar/Alt+Tab. The disabled
+            # dropdowns are enough signal that the catalogue is empty;
+            # the operator opens Settings → Destinations to populate.
+            hint.setVisible(False)
 
     def _populate_destination_pickers(self) -> None:
         """Populate the country dropdowns with countries that have at
