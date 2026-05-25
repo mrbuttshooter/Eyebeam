@@ -117,6 +117,47 @@ def run(argv: list[str]) -> int:
     app = QApplication(argv)
     app.setWindowIcon(_load_icon())
 
+    # Optional orphan-window detector. Enabled by setting the env var
+    # NOC_BEAM_DEBUG_ORPHANS=1 before launching. When on, every top-
+    # level QWidget shown during the session logs a one-shot line:
+    #     [ORPHAN-WINDOW] <ClassName> title='<title>' parent=<None|...>
+    # This lets us identify any stray QMainWindow/QWidget that gets
+    # constructed without a parent and surfaces as its own taskbar
+    # entry / mini-window. Cost is one event filter on the Qt event
+    # loop; do not enable in production unless debugging.
+    import os
+    if os.environ.get("NOC_BEAM_DEBUG_ORPHANS") == "1":
+        from PySide6.QtCore import QEvent, QObject
+        from PySide6.QtWidgets import QWidget
+
+        _seen_orphans: set[int] = set()
+
+        class _OrphanWindowFilter(QObject):
+            def eventFilter(self, obj, event):  # noqa: ANN001, N802
+                try:
+                    if (
+                        event.type() == QEvent.Type.Show
+                        and isinstance(obj, QWidget)
+                        and obj.isWindow()
+                        and id(obj) not in _seen_orphans
+                    ):
+                        _seen_orphans.add(id(obj))
+                        parent = obj.parent()
+                        log.warning(
+                            "[ORPHAN-WINDOW] %s title=%r parent=%s flags=%s",
+                            type(obj).__name__,
+                            obj.windowTitle(),
+                            type(parent).__name__ if parent else "None",
+                            int(obj.windowFlags()),
+                        )
+                except Exception:
+                    pass
+                return False
+
+        _orphan_filter = _OrphanWindowFilter()
+        app.installEventFilter(_orphan_filter)
+        log.info("Orphan-window detector active (NOC_BEAM_DEBUG_ORPHANS=1)")
+
     # Load persisted settings to pick the theme. PhoneShell loads them
     # again itself; this is the small price of theme being a process-
     # wide concern (QApplication.setStyleSheet) while the rest of

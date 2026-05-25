@@ -32,6 +32,7 @@ MainWindow stays as the old wide-shell entry point.
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer
@@ -724,7 +725,7 @@ class PhoneShell(QMainWindow):
         # they have stable identity for the registry to remember.
         from noc_beam.ui._signal_registry import SignalRegistry
         self._signals = SignalRegistry()
-        self._sip_on_started = lambda: self._set_status("Ready", "ok")
+        self._sip_on_started = self._on_sip_endpoint_started
         self._sip_on_stopped = lambda: self._set_status("SIP endpoint stopped", "warn")
         ev = sip_events()
         for sig, slot in (
@@ -1106,9 +1107,37 @@ class PhoneShell(QMainWindow):
         kind = (getattr(acc, "switch_type", "other") or "other").lower()
         if kind != "teles":
             return
+        # Early-return gate: the supplier combo's QTimer.singleShot(0, ...)
+        # in _refresh_supplier_picker can fire this slot during PhoneShell
+        # construction, BEFORE SipEndpoint.start() completes. Without this
+        # guard we'd reach update_account -> add_account, which raises
+        # RuntimeError("Endpoint not started") and log a misleading
+        # traceback on every cold start. The natural startup path
+        # (_start_sip -> _add_account_to_endpoint ->
+        # _ensure_teles_supplier_identity) materialises the supplier UID
+        # on the first add, and _sip_on_started re-fires this slot after
+        # start so an operator-initiated mid-startup swap still applies.
+        from noc_beam.sip.endpoint import SipEndpoint
+
+        endpoint = SipEndpoint.instance()
+        is_started = False
+        if endpoint is not None:
+            checker = getattr(endpoint, "is_started", None)
+            if callable(checker):
+                try:
+                    is_started = bool(checker())
+                except Exception:
+                    is_started = bool(getattr(endpoint, "_started", False))
+            else:
+                is_started = bool(getattr(endpoint, "_started", False))
+        if not is_started:
+            log.info(
+                "Skipping supplier swap -- endpoint not started yet "
+                "(will fire after startup)"
+            )
+            return
         try:
             from noc_beam.config.suppliers import load_suppliers
-            from noc_beam.sip.endpoint import SipEndpoint
 
             suppliers = {s.id: s for s in load_suppliers()}
             s = suppliers.get(self._active_supplier_id)
@@ -1171,10 +1200,13 @@ class PhoneShell(QMainWindow):
             # timer doesn't fire setRegistration(True) on the rebuilt
             # account, racing the supplier-swap REGISTER.
             self.reg_retry.reset(acc.id)
-            try:
-                SipEndpoint.instance().update_account(acc)
-            except Exception:
-                log.exception("Failed to re-register account %s with new Uid", acc.id)
+            # No inner try/except here: the early-return gate above
+            # ensures the endpoint is started, so update_account won't
+            # raise the misleading "Endpoint not started" RuntimeError.
+            # Any other failure (auth rejected, transport gone) is
+            # caught by the outer except and logged once with full
+            # context.
+            SipEndpoint.instance().update_account(acc)
         except Exception:
             log.exception("Teles auth swap failed for supplier %s", self._active_supplier_id)
 
@@ -1976,7 +2008,22 @@ class PhoneShell(QMainWindow):
                 out = f"{prefix}{out}"
         else:
             dial_prefix = (getattr(acc, "dial_prefix", "") or "").strip()
-            if dial_prefix and not out.startswith(dial_prefix):
+            # Only apply the Teles-style numeric dial prefix when the
+            # target is a pure phone number (digits, optionally with a
+            # leading "+"). Alphabetic SIP usernames like `echo` or
+            # `service-test` must pass through unchanged -- otherwise
+            # dialing `echo` becomes `00echo`, which the registrar
+            # rejects (and the call_manager logs a duplicate call_id
+            # warning when the user retries). Targets already in E.164
+            # form (leading "+") are also passed through -- the "+"
+            # already signals international, so re-prefixing with "00"
+            # would produce an invalid hybrid like "00+12345".
+            if (
+                dial_prefix
+                and not out.startswith(dial_prefix)
+                and not out.startswith("+")
+                and re.fullmatch(r"\d+", out)
+            ):
                 out = f"{dial_prefix}{out}"
         if out != target:
             log.info("Dial rewrite: %r -> %r (account=%s kind=%s)",
@@ -2805,7 +2852,11 @@ class PhoneShell(QMainWindow):
     def _on_diagnostics(self):
         from noc_beam.ui.diagnostics_view import DiagnosticsView
         if not hasattr(self, "_diagnostics_window"):
-            self._diagnostics_window = DiagnosticsView()
+            # Parent to self so Windows treats the diagnostics window as
+            # a child of the main shell — otherwise it renders as a
+            # separate top-level "NOC_Beam" entry in the taskbar with
+            # its own chrome (small orphan window).
+            self._diagnostics_window = DiagnosticsView(self)
             self._diagnostics_window.setWindowTitle("NOC_Beam diagnostics")
             self._diagnostics_window.resize(900, 600)
         self._diagnostics_window.update_accounts(self.accounts)
@@ -2839,7 +2890,11 @@ class PhoneShell(QMainWindow):
             from PySide6.QtWidgets import QMainWindow, QSplitter
             from noc_beam.ui.accounts_detail import AccountDetail
 
-            self._accounts_window = QMainWindow()
+            # Parent to self so Windows treats the accounts window as
+            # a child of the main shell — otherwise it renders as a
+            # separate top-level "NOC_Beam" entry in the taskbar with
+            # its own chrome (small orphan window).
+            self._accounts_window = QMainWindow(self)
             self._accounts_window.setWindowTitle("NOC_Beam accounts")
             self._accounts_window.resize(1100, 600)
 
