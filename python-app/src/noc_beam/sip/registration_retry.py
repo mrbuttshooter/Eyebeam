@@ -128,6 +128,22 @@ class RegistrationRetry(QObject):
         # Late import to avoid the SIP endpoint being constructed by this
         # module's import (the controller is built in main_window before
         # the endpoint exists).
+        #
+        # NOTE: each retry triggers a fresh registration_changed event
+        # from PJSIP, which the UI subscribes to. A user-log spam
+        # ("Active supplier changed -> id=207" every 30 s for hours) was
+        # traced to that chain (NOT to this module). The call chain is:
+        #     _do_retry -> acc.setRegistration(True)
+        #         -> PJSIP fires registration_changed (still 5xx)
+        #         -> phone_shell._on_registration_changed (line 1536)
+        #         -> _set_active_account (line 864) if active acct matches
+        #         -> _refresh_supplier_picker (line 899)
+        #         -> _on_supplier_changed via QTimer.singleShot (line 940)
+        #         -> log.info "Active supplier changed -> id=..."
+        # Fix belongs in phone_shell.py (don't re-run the picker on every
+        # failed-registration tick — only run it when the active account
+        # changes or the supplier list itself changes). See
+        # AUTONOMOUS_LOOP_STATUS.md.
         from noc_beam.sip.endpoint import SipEndpoint
 
         ep = SipEndpoint.instance()
