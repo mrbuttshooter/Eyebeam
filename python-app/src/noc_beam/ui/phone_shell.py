@@ -187,6 +187,12 @@ class PhoneShell(QMainWindow):
         self._locally_finished_call_ids: set[int] = set()
         self._really_quitting = False
         self._reg_state: dict[str, int] = {}
+        # Last-rendered health bucket per account, used by
+        # _on_registration_changed to skip chip rebuilds when the bucket
+        # hasn't changed (otherwise every 30 s retry tick on a 5xx-pinned
+        # account would spam "Active supplier changed -> id=..." via
+        # the _set_active_account -> _refresh_supplier_picker chain).
+        self._last_reg_health: dict[str, str] = {}
         # Peer URI cache per call_id, used by _on_call_record_updated to
         # skip rebuilding the call card when only ancillary fields changed
         # (state/codec/FAS). Initialized here (not lazy via hasattr in the
@@ -1608,9 +1614,20 @@ class PhoneShell(QMainWindow):
         label = self._account_label(account_id)
         self._reg_state[account_id] = code
         # If the changed account is the one currently shown in the chip,
-        # refresh the chip so the health dot tracks the new code.
-        if account_id == self._active_account_id and acc is not None:
+        # refresh the chip so the health dot tracks the new code — but
+        # ONLY when the health bucket actually changes. Otherwise every
+        # 30 s retry tick on a 5xx-pinned account dragged the full chain
+        # _set_active_account -> _refresh_supplier_picker -> queued
+        # _on_supplier_changed, which logged "Active supplier changed
+        # -> id=..." on every tick (the field log showed hundreds of
+        # those lines per session). Health buckets match _set_status
+        # below: ok (2xx), warn (auth-class 4xx), danger (everything
+        # else). Same bucket -> no chip rebuild, no spam.
+        bucket = self._health_bucket(code)
+        last_bucket = self._last_reg_health.get(account_id)
+        if account_id == self._active_account_id and acc is not None and bucket != last_bucket:
             self._set_active_account(account_id, label)
+        self._last_reg_health[account_id] = bucket
         if 200 <= code < 300:
             self._set_status(f"Registered: {label}", "ok")
         elif code in (401, 403, 407, 423):
@@ -1621,6 +1638,22 @@ class PhoneShell(QMainWindow):
                 f"Account: {label} -- failed to enable.\nProblem at server (SIP error {code}). Try again later.",
                 "danger", "Click here to retry", "retry-register",
             )
+
+    @staticmethod
+    def _health_bucket(code: int) -> str:
+        """Collapse a SIP registration code into a 3-state health bucket
+        for chip-rebuild dedup. Buckets match the _set_status branches
+        in _on_registration_changed: 2xx -> ok, auth-class 4xx -> warn,
+        everything else -> danger. The 0 sentinel (never registered) is
+        a fourth bucket so the first event after a clean start still
+        renders the chip."""
+        if 200 <= code < 300:
+            return "ok"
+        if code in (401, 403, 407, 423):
+            return "warn"
+        if code == 0:
+            return "init"
+        return "danger"
 
     def _account_label(self, account_id):
         acc = next((a for a in self.accounts if a.id == account_id), None)
