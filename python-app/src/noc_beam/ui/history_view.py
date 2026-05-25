@@ -570,8 +570,16 @@ class HistoryView(QWidget):
         self._empty_label = QLabel(
             "No call history yet.\n\n"
             "Placed and received calls will appear here.\n"
-            "Double-click a row to call back, or use the (i) button for full detail."
+            "Double-click a row to call back, or use the (i) button for full detail.",
+            self,
         )
+        # parent=self prevents the label flashing as a top-level NOC_Beam
+        # window during HistoryView init. QStackedLayout.addWidget on the
+        # FIRST widget added auto-sets it as the current page (visible);
+        # before the parent QStackedLayout is installed on this widget,
+        # _empty_label has no parent of its own -- the resulting Show
+        # event fires while isWindow()==True, so Windows briefly renders
+        # an empty NOC_Beam frame next to the main shell.
         self._empty_label.setObjectName("ViewEmpty")
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_label.setWordWrap(True)

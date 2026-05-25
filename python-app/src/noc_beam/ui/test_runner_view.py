@@ -375,7 +375,13 @@ class TestRunnerView(QMainWindow):
 
         # Separator no longer needed in a grid layout; keep a hidden
         # widget so _refresh_supplier_picker() still finds the attr.
-        self._supplier_sep = QLabel("")
+        # parent=self (TestRunnerView) prevents this from rendering as a
+        # standalone NOC_Beam window when _refresh_supplier_picker()
+        # toggles setVisible(True/False). The label is never added to a
+        # layout (it's only a compat shim for callers that still touch
+        # the attr), so without a parent the setVisible(True) call fires
+        # a Show event on an unparented QWidget → top-level orphan window.
+        self._supplier_sep = QLabel("", self)
         self._supplier_sep.setVisible(False)
 
         # Bottom row: 5 config fields evenly spaced. Each field is a
