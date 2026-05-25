@@ -310,14 +310,6 @@ class TestRunnerView(QMainWindow):
         # ===== Top-level tabs =========================================
         self.tabs = QTabWidget(central)
         self.tabs.setObjectName("TestRunnerTabs")
-        # Document mode -- flat tabs without the "merge active tab
-        # into pane border" trick. The generic QTabWidget::pane rule
-        # (top:-1px, background:#FFFFFF) was rendering a white
-        # rectangle on top of the active "Configure" tab text in
-        # standard mode; document mode skips that pane-overlap
-        # behaviour entirely so the tab text always paints
-        # cleanly, regardless of QSS cascade.
-        self.tabs.setDocumentMode(True)
         outer.addWidget(self.tabs, 1)
 
         configure_page = QWidget()
@@ -391,13 +383,17 @@ class TestRunnerView(QMainWindow):
 
         # Separator no longer needed in a grid layout; keep a hidden
         # widget so _refresh_supplier_picker() still finds the attr.
-        # parent=self (TestRunnerView) prevents this from rendering as a
-        # standalone NOC_Beam window when _refresh_supplier_picker()
-        # toggles setVisible(True/False). The label is never added to a
-        # layout (it's only a compat shim for callers that still touch
-        # the attr), so without a parent the setVisible(True) call fires
-        # a Show event on an unparented QWidget → top-level orphan window.
-        self._supplier_sep = QLabel("", self)
+        # parent=toolbar (NOT self) -- parenting to self (the QMainWindow)
+        # parks the label at position (0, 0) of the QMainWindow,
+        # z-ordered ABOVE the central widget's tab bar. When
+        # _refresh_supplier_picker() called sep.setVisible(True) for a
+        # teles/genband account, the empty white QLabel appeared as a
+        # rectangle over the "Configure" tab text AND intercepted clicks
+        # on that tab (because a visible widget intercepts mouse events
+        # regardless of having no text). Parenting to `toolbar` puts it
+        # inside the toolbar's layout zone so even if it ever becomes
+        # visible by mistake, it doesn't render at QMainWindow (0,0).
+        self._supplier_sep = QLabel("", toolbar)
         self._supplier_sep.setVisible(False)
 
         # Bottom row: 5 config fields evenly spaced. Each field is a
@@ -894,8 +890,14 @@ class TestRunnerView(QMainWindow):
             "SUPPLIER (auth)" if kind == "teles" else "SUPPLIER (prefix)"
         )
         self.supplier_row.setVisible(True)
+        # NEVER show _supplier_sep -- it's a vestigial compat shim
+        # from when there was a real visual separator in the toolbar
+        # grid. Making it visible used to render a white rectangle
+        # over the "Configure" tab and steal clicks from it (Qt
+        # paints direct QMainWindow children at (0,0) above the
+        # central widget). Kept hidden regardless of switch type.
         if sep is not None:
-            sep.setVisible(True)
+            sep.setVisible(False)
 
     def _on_supplier_return_pressed(self) -> None:
         self._commit_supplier_text(focus_targets=True)

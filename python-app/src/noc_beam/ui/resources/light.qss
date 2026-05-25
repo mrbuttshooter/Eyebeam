@@ -2369,22 +2369,6 @@ QToolButton#TestRunnerTab:checked {
     border-bottom-color: #E85D04;
 }
 
-/* TestRunner QTabWidget pane: explicitly reset top + background +
-   border so we override the generic QTabWidget::pane rule earlier
-   in this file (which sets top: -1px and background: #FFFFFF as a
-   "merge the pane border with the active tab border" trick). With
-   the generic top: -1px in effect, the white pane was being pulled
-   up 1 px and rendering ON TOP of the active "Configure" tab text
-   -- a small white rectangle covering just the active tab label,
-   with the orange active-tab underline still showing through
-   because it's painted below the text area. background: transparent
-   lets the configure_page widget paint its own surface; top: 0
-   prevents the pane from creeping into the tab bar's row. */
-QTabWidget#TestRunnerTabs::pane {
-    border: none;
-    top: 0;
-    background: transparent;
-}
 
 /* Account dialog Advanced disclosure */
 QToolButton#AccountAdvancedToggle {
