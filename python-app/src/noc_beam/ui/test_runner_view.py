@@ -16,11 +16,16 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
+    QRadioButton,
     QSpinBox,
+    QStackedWidget,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -52,12 +57,16 @@ class _PasteAtEndTextEdit(QTextEdit):
         self.ensureCursorVisible()
 
 from noc_beam.config.store import AccountConfig
+from noc_beam.config import destinations as destinations_module
 from noc_beam.testing.plan import TestCall as PlanCall
 from noc_beam.testing.plan import TestSpec as PlanSpec
 from noc_beam.testing.plan import expand, normalise_lines
 from noc_beam.testing.runner import TestResult as RunnerResult
 from noc_beam.testing.runner import TestRunner as Runner
 from noc_beam.ui.supplier_dropdown import SupplierDropdown
+
+# Parallel is internally pinned to 10 (boss directive 2026-05-25). UI hidden.
+_PINNED_PARALLEL = 10
 
 
 CSV_HEADER = [
@@ -123,6 +132,9 @@ class TestRunnerView(QMainWindow):
              "Pairs callers and targets one-to-one by line number. Cuts off at the shorter list."),
             ("Fan-in — all callers dial 1 target",     "fan-in",
              "Every caller dials the first target. Use to stress one destination from multiple sources."),
+            ("FAS Sweep — matrix × N tries per pair",  "fas-sweep",
+             "Matrix-shaped: every caller × every target, repeated N times per pair "
+             "with jittered spacing. Auto-selects FAS Verdict as pass criterion."),
         ):
             self.mode_combo.addItem(label, value)
             idx = self.mode_combo.count() - 1
@@ -138,15 +150,58 @@ class TestRunnerView(QMainWindow):
         self.mode_combo.view().setMinimumWidth(360)
 
         self.pass_combo = QComboBox()
+        # Reachability (180) is the explicit label since Agent A tightened
+        # the semantics: only a real 180 Ringing now counts as reachable
+        # (200-without-180 falls back to a warning, no longer a pass).
+        # FAS Verdict is auto-selected by FAS Sweep mode.
         for label, value in (
-            ("Reachability", "reachability"),
+            ("Reachability (180)", "reachability"),
             ("Full call", "full-call"),
+            ("FAS Verdict", "fas-verdict"),
         ):
             self.pass_combo.addItem(label, value)
 
         self.parallel_spin = QSpinBox()
         self.parallel_spin.setRange(1, 16)
-        self.parallel_spin.setValue(4)
+        self.parallel_spin.setValue(_PINNED_PARALLEL)
+        # UI hidden -- value is pinned to 10 (boss directive 2026-05-25).
+        self.parallel_spin.setObjectName("TestRunnerParallelHidden")
+        self.parallel_spin.setVisible(False)
+
+        # Times: repeat every (caller, target) pair N times. Clamped to
+        # 50 in TestSpec, but the spinbox itself stops the user at 50
+        # too so the preflight count doesn't blow up to the wrong number
+        # while editing.
+        self.times_spin = QSpinBox()
+        self.times_spin.setObjectName("TestRunnerTimesSpin")
+        self.times_spin.setRange(1, 50)
+        self.times_spin.setValue(1)
+
+        # FAS Sweep — tries per pair preset group (Quick / Thorough / Custom).
+        self.tries_quick_radio = QRadioButton("Quick (2)")
+        self.tries_quick_radio.setObjectName("TestRunnerTriesQuick")
+        self.tries_thorough_radio = QRadioButton("Thorough (4)")
+        self.tries_thorough_radio.setObjectName("TestRunnerTriesThorough")
+        self.tries_custom_radio = QRadioButton("Custom")
+        self.tries_custom_radio.setObjectName("TestRunnerTriesCustom")
+        self.tries_quick_radio.setChecked(True)
+        self.tries_custom_spin = QSpinBox()
+        self.tries_custom_spin.setObjectName("TestRunnerTriesCustomSpin")
+        self.tries_custom_spin.setRange(1, 50)
+        self.tries_custom_spin.setValue(3)
+        self.tries_custom_spin.setEnabled(False)
+
+        # FAS Sweep jitter window (seconds between probes).
+        self.jitter_low_spin = QSpinBox()
+        self.jitter_low_spin.setObjectName("TestRunnerJitterLow")
+        self.jitter_low_spin.setRange(0, 3600)
+        self.jitter_low_spin.setValue(30)
+        self.jitter_low_spin.setSuffix(" s")
+        self.jitter_high_spin = QSpinBox()
+        self.jitter_high_spin.setObjectName("TestRunnerJitterHigh")
+        self.jitter_high_spin.setRange(0, 3600)
+        self.jitter_high_spin.setValue(120)
+        self.jitter_high_spin.setSuffix(" s")
 
         self.hold_spin = QSpinBox()
         self.hold_spin.setRange(0, 3600)
@@ -220,21 +275,19 @@ class TestRunnerView(QMainWindow):
         self._refresh_summary()
 
     def _build_ui(self) -> None:
-        """Modern Test Runner layout.
+        """Modern Test Runner layout: TABBED — Configure / Running / Results.
 
-        Top:    horizontal toolbar with supplier + mode + pass + parallel
-                + hold + timeout (replaces the tall CONFIGURATION card).
-        Strip:  one-line pre-flight summary -- "Will run N calls via X
-                @ parallel=Y ≈ ETA" + counter chips. Catches the classic
-                "I meant parallel=4 not 14" mistake before a 100-call
-                batch hits a real carrier.
-        Body:   35/65 split. Left: tabbed Targets/Callers textarea.
-                Right: live-streaming Results table.
-        Footer: sticky -- ghost actions on left, primary Run + Stop on right.
+        The header is a QTabBar — Configure (the form), Running N/M (live
+        progress), Results (FAS sweep results pane).
+        Inside Configure: supplier + ORIGINATION/DESTINATION dropdowns
+        + mode + pass + times + hold + timeout + the two Callers/Targets
+        textareas + preflight + Run.
+        Parallel is HIDDEN (pinned to 10 internally per boss directive
+        2026-05-25). Footer is sticky on every tab.
         """
         from PySide6.QtWidgets import (
-            QButtonGroup, QSplitter, QStackedWidget,
-            QToolButton, QWidget as _QWidget,
+            QButtonGroup, QListWidget, QSplitter,
+            QWidget as _QWidget,
         )
         central = QWidget(self)
         central.setObjectName("TestRunnerRoot")
@@ -253,6 +306,23 @@ class TestRunnerView(QMainWindow):
         subtitle.setWordWrap(True)
         outer.addWidget(title)
         outer.addWidget(subtitle)
+
+        # ===== Top-level tabs =========================================
+        self.tabs = QTabWidget(central)
+        self.tabs.setObjectName("TestRunnerTabs")
+        outer.addWidget(self.tabs, 1)
+
+        configure_page = QWidget()
+        configure_page.setObjectName("TestRunnerConfigurePage")
+        outer_configure = QVBoxLayout(configure_page)
+        outer_configure.setContentsMargins(0, 8, 0, 0)
+        outer_configure.setSpacing(12)
+
+        # Redirect the existing `outer` build-out into the Configure
+        # page. The footer (Run/Stop/etc) goes on the central layout
+        # so it stays sticky across tabs.
+        _form_outer_target = outer
+        outer = outer_configure
 
         # ===== Toolbar: supplier + config (all in one row) ============
         toolbar = QFrame()
@@ -322,17 +392,103 @@ class TestRunnerView(QMainWindow):
             fl.addWidget(widget)
             return f
 
+        # Parallel field is intentionally NOT added to the toolbar grid.
+        # _PINNED_PARALLEL keeps the spec.parallel value pinned to 10
+        # without exposing a knob to the operator.
+        # Times spinbox replaces the Parallel cell. FAS Sweep mode swaps
+        # Times for the tries-per-pair radio group via _times_stack.
+        self._times_stack = QStackedWidget()
+        self._times_stack.setObjectName("TestRunnerTimesStack")
+        # Page 0: plain Times spinbox.
+        _times_simple = _QWidget()
+        _ts_l = QVBoxLayout(_times_simple)
+        _ts_l.setContentsMargins(0, 0, 0, 0)
+        _ts_l.setSpacing(2)
+        _ts_l.addWidget(self.times_spin)
+        self._times_stack.addWidget(_times_simple)
+        # Page 1: tries-per-pair preset + custom.
+        _tries_widget = _QWidget()
+        _tries_l = QHBoxLayout(_tries_widget)
+        _tries_l.setContentsMargins(0, 0, 0, 0)
+        _tries_l.setSpacing(6)
+        _tries_l.addWidget(self.tries_quick_radio)
+        _tries_l.addWidget(self.tries_thorough_radio)
+        _tries_l.addWidget(self.tries_custom_radio)
+        _tries_l.addWidget(self.tries_custom_spin)
+        _tries_l.addStretch(1)
+        self._times_stack.addWidget(_tries_widget)
+
+        # FAS Sweep jitter widget — separate row, only visible when
+        # mode is FAS Sweep.
+        self.jitter_row = _QWidget()
+        _jr_l = QHBoxLayout(self.jitter_row)
+        _jr_l.setContentsMargins(0, 0, 0, 0)
+        _jr_l.setSpacing(8)
+        _jr_l.addWidget(QLabel("Jitter low"))
+        _jr_l.addWidget(self.jitter_low_spin)
+        _jr_l.addWidget(QLabel("Jitter high"))
+        _jr_l.addWidget(self.jitter_high_spin)
+        _jr_l.addStretch(1)
+        self.jitter_row.setVisible(False)
+
         config_fields = [
             _config_field("Mode", self.mode_combo, 120),
             _config_field("Pass criteria", self.pass_combo, 140),
-            _config_field("Parallel", self.parallel_spin, 80),
+            _config_field("Times", self._times_stack, 220),
             _config_field("Hold (s)", self.hold_spin, 80),
             _config_field("Timeout (s)", self.timeout_spin, 80),
         ]
         for col, widget in enumerate(config_fields):
             tb_l.addWidget(widget, 1, col)
             tb_l.setColumnStretch(col, 1)
+        # Jitter row tucks under the config strip — full-width when visible.
+        tb_l.addWidget(self.jitter_row, 2, 0, 1, 6)
         outer.addWidget(toolbar)
+
+        # ===== ORIGINATION / DESTINATION dest-picker rows =============
+        self._destinations_items: list[destinations_module.Destination] = []
+        try:
+            self._destinations_items = destinations_module.load_destinations()
+        except Exception:
+            self._destinations_items = []
+        _any_dest = destinations_module.any_zone_has_numbers(self._destinations_items)
+
+        def _build_dest_row(label_text: str, callback) -> tuple[_QWidget, SupplierDropdown, QComboBox, QToolButton]:
+            row = _QWidget()
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(0, 0, 0, 0)
+            rl.setSpacing(8)
+            lbl = QLabel(label_text)
+            lbl.setObjectName("TestRunnerToolbarLabel")
+            lbl.setMinimumWidth(110)
+            country = SupplierDropdown()
+            country.setObjectName(f"TestRunnerDest{label_text.title()}Country")
+            country.setMinimumWidth(180)
+            zone = QComboBox()
+            zone.setObjectName(f"TestRunnerDest{label_text.title()}Zone")
+            zone.setMinimumWidth(280)
+            reload_btn = QToolButton()
+            reload_btn.setObjectName(f"TestRunnerDest{label_text.title()}Reload")
+            reload_btn.setText("↻")
+            reload_btn.setToolTip("Reload destinations.json")
+            rl.addWidget(lbl)
+            rl.addWidget(country, 1)
+            rl.addWidget(zone, 2)
+            rl.addWidget(reload_btn)
+            return row, country, zone, reload_btn
+
+        self.origination_row, self.origination_country, self.origination_zone, self.origination_reload = (
+            _build_dest_row("ORIGINATION", None)
+        )
+        self.destination_row, self.destination_country, self.destination_zone, self.destination_reload = (
+            _build_dest_row("DESTINATION", None)
+        )
+        # Hide both rows when the catalogue has no populated zones.
+        self.origination_row.setVisible(_any_dest)
+        self.destination_row.setVisible(_any_dest)
+        outer.addWidget(self.origination_row)
+        outer.addWidget(self.destination_row)
+        self._populate_destination_pickers()
 
         # ===== Pre-flight strip ======================================
         # Shows what's ABOUT to run + live counters. Replaces the
@@ -405,6 +561,9 @@ class TestRunnerView(QMainWindow):
         self._target_stack.addWidget(self.targets_edit)
         self._target_stack.addWidget(self.callers_edit)
         lc_l.addWidget(self._target_stack, 1)
+        # Keep test_runner_view's old import-from-locals path happy
+        # (some code paths reference QStackedWidget via the local
+        # binding; it's now imported at module top-level).
         self._tab_targets_btn.toggled.connect(
             lambda checked: checked and self._target_stack.setCurrentIndex(0)
         )
@@ -441,7 +600,9 @@ class TestRunnerView(QMainWindow):
         # ===== Sticky footer ==========================================
         # Layout: ghost-secondary actions on left, Cancel + destructive
         # + primary on right. Run button label shows the call count so
-        # the operator sees what they're about to fire.
+        # the operator sees what they're about to fire. The footer is
+        # mounted on the CENTRAL layout (not the configure page), so it
+        # stays visible across all three tabs.
         footer = QFrame(central)
         footer.setObjectName("TestRunnerFooter")
         f_l = QHBoxLayout(footer)
@@ -453,7 +614,50 @@ class TestRunnerView(QMainWindow):
         f_l.addWidget(self.cancel_btn)
         f_l.addWidget(self.stop_btn)
         f_l.addWidget(self.run_btn)
-        outer.addWidget(footer)
+
+        # ===== Mount tabs ==============================================
+        # Configure page: everything added so far via outer (=outer_configure).
+        self.tabs.addTab(configure_page, "Configure")
+
+        # Running page: in-flight calls list (simple for now).
+        running_page = QWidget()
+        running_page.setObjectName("TestRunnerRunningPage")
+        rp_l = QVBoxLayout(running_page)
+        rp_l.setContentsMargins(8, 8, 8, 8)
+        rp_l.setSpacing(8)
+        self._running_list = QListWidget()
+        self._running_list.setObjectName("TestRunnerRunningList")
+        rp_l.addWidget(self._running_list, 1)
+        self.tabs.addTab(running_page, "Running 0/0")
+        self._running_tab_index = self.tabs.indexOf(running_page)
+
+        # Results page: FasResultsView, with a try/except fallback if
+        # Agent D's module isn't available yet.
+        results_page = QWidget()
+        results_page.setObjectName("TestRunnerResultsPage")
+        rs_l = QVBoxLayout(results_page)
+        rs_l.setContentsMargins(8, 8, 8, 8)
+        rs_l.setSpacing(8)
+        self._fas_results_view = None
+        try:
+            # TODO: replace with FasResultsView when Agent D lands
+            from noc_beam.ui.fas_results_view import FasResultsView
+            from noc_beam.audio.fas_sweep_db import FasSweepDb
+            self._fas_results_view = FasResultsView(FasSweepDb())
+            rs_l.addWidget(self._fas_results_view, 1)
+        except Exception:
+            placeholder = QLabel("FAS Results view not yet available")
+            placeholder.setObjectName("TestRunnerResultsPlaceholder")
+            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            rs_l.addWidget(placeholder, 1)
+        self.tabs.addTab(results_page, "Results")
+        self._results_tab_index = self.tabs.indexOf(results_page)
+        self._results_dirty = False
+
+        # Now the footer goes on the form's original outer layout
+        # (the central widget — _form_outer_target), so it sits below
+        # the tab body.
+        _form_outer_target.addWidget(footer)
 
         self.setCentralWidget(central)
 
@@ -732,35 +936,240 @@ class TestRunnerView(QMainWindow):
     def _connect_ui(self) -> None:
         self.callers_edit.textChanged.connect(self._refresh_plan_preview)
         self.targets_edit.textChanged.connect(self._refresh_plan_preview)
+        self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         self.mode_combo.currentIndexChanged.connect(self._refresh_plan_preview)
         self.pass_combo.currentIndexChanged.connect(self._refresh_hold_enabled)
         self.pass_combo.currentIndexChanged.connect(self._refresh_plan_preview)
         self.parallel_spin.valueChanged.connect(self._refresh_plan_preview)
         self.hold_spin.valueChanged.connect(self._refresh_plan_preview)
         self.timeout_spin.valueChanged.connect(self._refresh_plan_preview)
+        self.times_spin.valueChanged.connect(self._refresh_plan_preview)
+        # FAS sweep tries-per-pair widgets
+        self.tries_quick_radio.toggled.connect(self._on_tries_preset_changed)
+        self.tries_thorough_radio.toggled.connect(self._on_tries_preset_changed)
+        self.tries_custom_radio.toggled.connect(self._on_tries_preset_changed)
+        self.tries_custom_spin.valueChanged.connect(self._refresh_plan_preview)
         self.run_btn.clicked.connect(self._on_run_clicked)
         self.stop_btn.clicked.connect(self._on_cancel_clicked)
         self.clear_btn.clicked.connect(self._on_clear_clicked)
         self.cancel_btn.clicked.connect(self.close)
         self.export_btn.clicked.connect(self._on_export_clicked)
+        # Destination picker rows
+        if hasattr(self, "origination_zone"):
+            self.origination_zone.activated.connect(self._on_origination_zone_activated)
+            self.origination_country.currentIndexChanged.connect(
+                self._on_origination_country_changed
+            )
+            self.origination_reload.clicked.connect(self._on_destinations_reload)
+            self.destination_zone.activated.connect(self._on_destination_zone_activated)
+            self.destination_country.currentIndexChanged.connect(
+                self._on_destination_country_changed
+            )
+            self.destination_reload.clicked.connect(self._on_destinations_reload)
+        # Tab change wires Results dirty-clear
+        if hasattr(self, "tabs"):
+            self.tabs.currentChanged.connect(self._on_tab_changed)
+        # Initialise mode-dependent visibility.
+        self._on_mode_changed()
+
+    # ------------------------------------------------------------------
+    # Mode / tries-per-pair handling
+    # ------------------------------------------------------------------
+    def _is_fas_sweep_mode(self) -> bool:
+        return (self.mode_combo.currentData() or "") == "fas-sweep"
+
+    def _on_mode_changed(self, *_args) -> None:
+        is_sweep = self._is_fas_sweep_mode()
+        # Times stack swap
+        if hasattr(self, "_times_stack"):
+            self._times_stack.setCurrentIndex(1 if is_sweep else 0)
+        if hasattr(self, "jitter_row"):
+            self.jitter_row.setVisible(is_sweep)
+        # Pass criterion auto-switch / disable in FAS Sweep mode.
+        if is_sweep:
+            idx = self.pass_combo.findData("fas-verdict")
+            if idx >= 0:
+                self.pass_combo.setCurrentIndex(idx)
+            self.pass_combo.setEnabled(False)
+        else:
+            self.pass_combo.setEnabled(True)
+            # When leaving sweep mode, restore Reachability default if
+            # pass is still on fas-verdict.
+            if self.pass_combo.currentData() == "fas-verdict":
+                idx = self.pass_combo.findData("reachability")
+                if idx >= 0:
+                    self.pass_combo.setCurrentIndex(idx)
+
+    def _on_tries_preset_changed(self, *_args) -> None:
+        self.tries_custom_spin.setEnabled(self.tries_custom_radio.isChecked())
+        self._refresh_plan_preview()
+
+    def _tries_per_pair_value(self) -> int:
+        if self.tries_quick_radio.isChecked():
+            return 2
+        if self.tries_thorough_radio.isChecked():
+            return 4
+        return int(self.tries_custom_spin.value())
+
+    # ------------------------------------------------------------------
+    # Destination picker (ORIGINATION / DESTINATION) handling
+    # ------------------------------------------------------------------
+    def _populate_destination_pickers(self) -> None:
+        """Populate the country dropdowns with countries that have at
+        least one zone with numbers."""
+        items = self._destinations_items
+        # Build the list of country names that have at least one
+        # populated zone (otherwise picker is useless).
+        country_list = sorted({
+            d.country for d in items if d.numbers
+        })
+        if not country_list:
+            return
+        rendered = [(c, c) for c in country_list]
+        if hasattr(self, "origination_country"):
+            self.origination_country.set_items(rendered, "")
+            self.destination_country.set_items(rendered, "")
+            self._refresh_origination_zones()
+            self._refresh_destination_zones()
+
+    def _refresh_origination_zones(self) -> None:
+        country = (self.origination_country.currentText() or "").strip()
+        zones = destinations_module.zones_with_numbers(
+            self._destinations_items, country
+        )
+        self.origination_zone.blockSignals(True)
+        self.origination_zone.clear()
+        self.origination_zone.addItem("", "")
+        for z in zones:
+            self.origination_zone.addItem(z, z)
+        self.origination_zone.blockSignals(False)
+
+    def _refresh_destination_zones(self) -> None:
+        country = (self.destination_country.currentText() or "").strip()
+        zones = destinations_module.zones_with_numbers(
+            self._destinations_items, country
+        )
+        self.destination_zone.blockSignals(True)
+        self.destination_zone.clear()
+        self.destination_zone.addItem("", "")
+        for z in zones:
+            self.destination_zone.addItem(z, z)
+        self.destination_zone.blockSignals(False)
+
+    def _on_origination_country_changed(self, _index: int) -> None:
+        self._refresh_origination_zones()
+
+    def _on_destination_country_changed(self, _index: int) -> None:
+        self._refresh_destination_zones()
+
+    def _confirm_replace(self, kind: str) -> bool:
+        """Ask before clobbering a non-empty CALLERS or TARGETS box.
+        Returns True if the user approved the replace."""
+        reply = QMessageBox.question(
+            self,
+            f"Replace {kind}?",
+            f"This will replace the current {kind} list. Continue?",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return reply == QMessageBox.StandardButton.Ok
+
+    def _on_origination_zone_activated(self, index: int) -> None:
+        if index < 0:
+            return
+        zone = self.origination_zone.itemData(index) or self.origination_zone.itemText(index)
+        if not zone:
+            return
+        country = (self.origination_country.currentText() or "").strip()
+        dest = destinations_module.lookup(self._destinations_items, country, zone)
+        if dest is None or not dest.numbers:
+            return
+        existing = (self.callers_edit.toPlainText() or "").strip()
+        if existing and not self._confirm_replace("callers"):
+            # Revert selection
+            self.origination_zone.blockSignals(True)
+            self.origination_zone.setCurrentIndex(0)
+            self.origination_zone.blockSignals(False)
+            return
+        self.callers_edit.setPlainText("\n".join(dest.numbers) + "\n")
+
+    def _on_destination_zone_activated(self, index: int) -> None:
+        if index < 0:
+            return
+        zone = self.destination_zone.itemData(index) or self.destination_zone.itemText(index)
+        if not zone:
+            return
+        country = (self.destination_country.currentText() or "").strip()
+        dest = destinations_module.lookup(self._destinations_items, country, zone)
+        if dest is None or not dest.numbers:
+            return
+        existing = (self.targets_edit.toPlainText() or "").strip()
+        if existing and not self._confirm_replace("targets"):
+            self.destination_zone.blockSignals(True)
+            self.destination_zone.setCurrentIndex(0)
+            self.destination_zone.blockSignals(False)
+            return
+        self.targets_edit.setPlainText("\n".join(dest.numbers) + "\n")
+
+    def _on_destinations_reload(self) -> None:
+        """Reload destinations.json, preserving the current selection if
+        it's still valid."""
+        prev_orig_country = self.origination_country.currentText() if hasattr(self, "origination_country") else ""
+        prev_dest_country = self.destination_country.currentText() if hasattr(self, "destination_country") else ""
+        try:
+            self._destinations_items = destinations_module.load_destinations()
+        except Exception:
+            return
+        _any = destinations_module.any_zone_has_numbers(self._destinations_items)
+        if hasattr(self, "origination_row"):
+            self.origination_row.setVisible(_any)
+            self.destination_row.setVisible(_any)
+        self._populate_destination_pickers()
+        # Restore selections if still present.
+        if prev_orig_country:
+            idx = self.origination_country.findData(prev_orig_country)
+            if idx >= 0:
+                self.origination_country.setCurrentIndex(idx)
+        if prev_dest_country:
+            idx = self.destination_country.findData(prev_dest_country)
+            if idx >= 0:
+                self.destination_country.setCurrentIndex(idx)
+
+    def _on_tab_changed(self, idx: int) -> None:
+        if idx == getattr(self, "_results_tab_index", -1) and self._results_dirty:
+            self._results_dirty = False
+            self._refresh_tab_titles()
 
     def _spec_from_ui(self) -> PlanSpec:
+        # Pass criterion in the spec stays as the legacy "reachability"
+        # / "full-call" literal so the runner (Agent A's lane) doesn't
+        # need to learn a new value. FAS Verdict in the UI maps to
+        # reachability under the hood (FAS scoring is layered on top
+        # of the runner's reachability semantics).
+        pc = self.pass_combo.currentData() or "reachability"
+        if pc == "fas-verdict":
+            pc = "reachability"
         return PlanSpec(
             callers=normalise_lines(self.callers_edit.toPlainText()),
             targets=normalise_lines(self.targets_edit.toPlainText()),
             mode=self.mode_combo.currentData(),
-            pass_criterion=self.pass_combo.currentData(),
-            parallel=self.parallel_spin.value(),
+            pass_criterion=pc,
+            parallel=_PINNED_PARALLEL,
             hold_seconds=float(self.hold_spin.value()),
             timeout_seconds=float(self.timeout_spin.value()),
+            times=int(self.times_spin.value()),
+            tries_per_pair=self._tries_per_pair_value(),
+            jitter_low_s=float(self.jitter_low_spin.value()),
+            jitter_high_s=float(self.jitter_high_spin.value()),
         )
 
     def _refresh_plan_preview(self) -> None:
         spec = self._spec_from_ui()
         count = len(expand(spec))
         self.run_btn.setText(
-            "▶ Run 1 call" if count == 1 else f"▶ Run {count} calls"
+            "Run 1 call" if count == 1 else f"Run {count} calls"
         )
+        self._refresh_tab_titles()
         self.run_btn.setEnabled(count > 0 and self.runner is None)
         # Update the targets-tab badge with the live count.
         if hasattr(self, "_tab_targets_btn"):
@@ -794,24 +1203,41 @@ class TestRunnerView(QMainWindow):
         per_call_s = (hold if spec.pass_criterion == "full-call" else 0) + 4
         per_call_s = max(per_call_s, 2)
         per_call_s = min(per_call_s, timeout + 2)
-        # Total wall time = ceil(count / parallel) * per_call duration
         import math
         eta_s = max(per_call_s, math.ceil(count / parallel) * per_call_s)
         m, s = divmod(int(eta_s), 60)
         eta_str = f"{m}m {s:02d}s" if m else f"{s}s"
-        # Active supplier label (if any)
-        supplier_part = ""
-        try:
-            if self._batch_supplier_id and self.supplier_combo.count():
-                supplier_part = " via " + (self.supplier_combo.currentText() or "")
-        except Exception:
-            pass
-        account_part = f" from {self._account_label(self._selected_batch_account())}"
+
+        # FAS Sweep gets its own preflight string format.
+        if getattr(spec, "mode", "") == "fas-sweep":
+            n_suppliers = len(spec.callers) if spec.callers else 1
+            n_dests = len(spec.targets)
+            tries = int(getattr(spec, "tries_per_pair", 1))
+            return (
+                f"{count} calls ({n_suppliers} suppliers × {n_dests} "
+                f"targets × {tries} tries) · ETA ~{eta_str}"
+            )
+
+        # Default (non-sweep) modes.
+        times = int(getattr(spec, "times", 1))
         plural = "call" if count == 1 else "calls"
-        return (
-            f"Will run {count} {plural}{account_part}{supplier_part} @ "
-            f"parallel={parallel}, hold={hold}s  ≈  {eta_str}"
-        )
+        return f"{count} {plural} (callers × targets × times={times}) · ETA ~{eta_str}"
+
+    def _refresh_tab_titles(self) -> None:
+        if not hasattr(self, "tabs"):
+            return
+        # Running tab — "Running done/total". Total comes from the
+        # table rowCount (set up by _on_run_clicked); done from results.
+        running_idx = getattr(self, "_running_tab_index", -1)
+        if running_idx >= 0:
+            total = self.table.rowCount() if hasattr(self, "table") else 0
+            done = len(self.results)
+            self.tabs.setTabText(running_idx, f"Running {done}/{total}")
+        # Results tab — dot when new verdicts have landed since last view.
+        results_idx = getattr(self, "_results_tab_index", -1)
+        if results_idx >= 0:
+            label = "Results ●" if self._results_dirty else "Results"
+            self.tabs.setTabText(results_idx, label)
 
     def _refresh_hold_enabled(self) -> None:
         self.hold_spin.setEnabled(self.pass_combo.currentData() == "full-call")
@@ -828,6 +1254,8 @@ class TestRunnerView(QMainWindow):
         self.results = []
         self._row_by_call_index = {}
         self.table.setRowCount(0)
+        if hasattr(self, "_running_list"):
+            self._running_list.clear()
         for call in calls:
             self._append_call_row(call)
 
@@ -867,6 +1295,25 @@ class TestRunnerView(QMainWindow):
         self.runner.start()
 
     def _on_call_started(self, call_index: int) -> None:
+        # Append to the Running tab list (in-flight log).
+        if hasattr(self, "_running_list"):
+            try:
+                from datetime import datetime as _dt
+                ts = _dt.now().strftime("%H:%M:%S")
+                # Look up the row for nicer FROM / TO context.
+                row = self._row_by_call_index.get(call_index)
+                from_text = ""
+                to_text = ""
+                if row is not None:
+                    item_from = self.table.item(row, 1)
+                    item_to = self.table.item(row, 2)
+                    from_text = item_from.text() if item_from else ""
+                    to_text = item_to.text() if item_to else ""
+                self._running_list.addItem(
+                    f"[{ts}] #{call_index} {from_text} → {to_text}"
+                )
+            except Exception:
+                pass
         row = self._row_by_call_index.get(call_index)
         if row is not None:
             # Install a proper RUNNING badge widget; previous code wrote
@@ -887,7 +1334,12 @@ class TestRunnerView(QMainWindow):
         self._populate_result_row(row, result)
         self.export_btn.setEnabled(True)
         self._running_count = max(0, getattr(self, "_running_count", 0) - 1)
+        # Mark Results tab dirty unless the operator is already there.
+        if hasattr(self, "tabs"):
+            if self.tabs.currentIndex() != getattr(self, "_results_tab_index", -1):
+                self._results_dirty = True
         self._refresh_summary()
+        self._refresh_tab_titles()
 
     def _on_run_complete(self, results: list[RunnerResult]) -> None:
         self.results = list(results)
