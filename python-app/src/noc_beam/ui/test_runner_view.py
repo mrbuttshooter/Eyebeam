@@ -294,8 +294,11 @@ class TestRunnerView(QMainWindow):
         central = QWidget(self)
         central.setObjectName("TestRunnerRoot")
         outer = QVBoxLayout(central)
-        outer.setContentsMargins(16, 16, 16, 16)
-        outer.setSpacing(12)
+        # Zero top margin so the Configure/Running/Results tab strip
+        # sits flush against the OS title bar -- no empty gray band
+        # above it (was 16 px which read as wasted space).
+        outer.setContentsMargins(12, 0, 12, 8)
+        outer.setSpacing(8)
 
         # In-content title removed -- the OS title bar already says
         # "NOC_Beam test runner", and the old #SettingsTitle h1 was
@@ -492,14 +495,20 @@ class TestRunnerView(QMainWindow):
             reload_btn.setObjectName(f"TestRunnerDest{label_text.title()}Reload")
             reload_btn.setText("↻")
             reload_btn.setToolTip("Reload destinations.json")
+            # Hint label kept as an instance attr for backwards-compat
+            # with _apply_destination_empty_state() but NOT added to the
+            # row layout -- it was eating horizontal space on every
+            # render even when destinations.json was populated. The
+            # disabled-state of country/zone is enough to signal "empty"
+            # when the catalogue is unconfigured; the operator opens
+            # Settings → Destinations to fix it.
             hint = QLabel("Configure in Settings → Destinations")
             hint.setObjectName(f"TestRunnerDest{label_text.title()}Hint")
-            hint.setStyleSheet("color: palette(mid); font-style: italic;")
+            hint.setVisible(False)
             rl.addWidget(lbl)
             rl.addWidget(country)
             rl.addWidget(zone)
             rl.addWidget(reload_btn)
-            rl.addWidget(hint, 1)
             return cell, country, zone, reload_btn, hint
 
         # ===== Combined routing row: SUPPLIER + ORIGINATION + DESTINATION ====
@@ -583,58 +592,51 @@ class TestRunnerView(QMainWindow):
         lc_l.setContentsMargins(0, 0, 0, 0)
         lc_l.setSpacing(0)
 
-        # Tab strip
-        tabs_row = QHBoxLayout()
-        tabs_row.setContentsMargins(10, 8, 10, 0)
-        tabs_row.setSpacing(4)
-        self._tab_targets_btn = QToolButton()
-        self._tab_targets_btn.setObjectName("TestRunnerTab")
-        self._tab_targets_btn.setText("Targets (0)")
-        self._tab_targets_btn.setCheckable(True)
-        self._tab_targets_btn.setChecked(True)
-        self._tab_targets_btn.setAutoRaise(True)
-        self._tab_targets_btn.setProperty("active", True)
-        self._tab_callers_btn = QToolButton()
-        self._tab_callers_btn.setObjectName("TestRunnerTab")
-        self._tab_callers_btn.setText("Callers (auto)")
-        self._tab_callers_btn.setCheckable(True)
-        self._tab_callers_btn.setAutoRaise(True)
-        _grp = QButtonGroup(left_card)
-        _grp.setExclusive(True)
-        _grp.addButton(self._tab_targets_btn)
-        _grp.addButton(self._tab_callers_btn)
-        tabs_row.addWidget(self._tab_targets_btn)
-        tabs_row.addWidget(self._tab_callers_btn)
-        tabs_row.addStretch(1)
-        # Run count badge here (it's the legacy name)
-        self._run_count_badge = QLabel("0 calls")
+        # BOTH Targets AND Callers visible at the same time, stacked
+        # vertically -- not behind a tab toggle. The old tab pattern
+        # forced operators to flip back and forth to remember what was
+        # in the other box; with both panes onscreen the whole batch
+        # reads at a glance.
+        #
+        # _tab_targets_btn / _tab_callers_btn / _run_count_badge are
+        # kept as QLabel attributes (not buttons) so the existing
+        # _refresh_plan_preview() / _refresh_tab_titles() calls to
+        # .setText() on them still work without conditional branches.
+        # Acts as both the section header and the live counter.
+        self._tab_targets_btn = QLabel("Targets (0)", left_card)
+        self._tab_targets_btn.setObjectName("TestRunnerPasteHeader")
+        self._tab_callers_btn = QLabel("Callers (auto)", left_card)
+        self._tab_callers_btn.setObjectName("TestRunnerPasteHeader")
+        self._run_count_badge = QLabel("0 calls", left_card)
         self._run_count_badge.setObjectName("TestRunnerCountBadge")
-        self._run_count_badge.setVisible(False)  # info now in preflight
-        tabs_row.addWidget(self._run_count_badge)
-        lc_l.addLayout(tabs_row)
+        self._run_count_badge.setVisible(False)
 
-        # Stacked widget for tab content. Cap at ~90px so the paste
-        # box stays as a tight strip and the results table dominates
-        # the body. Operators paste a few numbers; they don't write
-        # essays in here. The whole left_card is non-stretching
-        # (setStretchFactor(0,0) on the splitter) so this cap is the
-        # effective height of the strip.
+        # Targets pane (top)
+        _targets_hdr = QHBoxLayout()
+        _targets_hdr.setContentsMargins(10, 6, 10, 0)
+        _targets_hdr.setSpacing(4)
+        _targets_hdr.addWidget(self._tab_targets_btn)
+        _targets_hdr.addStretch(1)
+        lc_l.addLayout(_targets_hdr)
+        self.targets_edit.setMaximumHeight(72)
+        lc_l.addWidget(self.targets_edit)
+
+        # Callers pane (directly below)
+        _callers_hdr = QHBoxLayout()
+        _callers_hdr.setContentsMargins(10, 4, 10, 0)
+        _callers_hdr.setSpacing(4)
+        _callers_hdr.addWidget(self._tab_callers_btn)
+        _callers_hdr.addStretch(1)
+        lc_l.addLayout(_callers_hdr)
+        self.callers_edit.setMaximumHeight(72)
+        lc_l.addWidget(self.callers_edit)
+
+        # _target_stack: legacy attr that some test helpers / consumer
+        # code references. Kept as an invisible stub so setCurrentIndex
+        # calls on it are no-ops (no widgets added, never shown).
         self._target_stack = QStackedWidget()
-        self._target_stack.addWidget(self.targets_edit)
-        self._target_stack.addWidget(self.callers_edit)
-        self._target_stack.setMaximumHeight(90)
-        self.targets_edit.setMaximumHeight(86)
-        self.callers_edit.setMaximumHeight(86)
-        lc_l.addWidget(self._target_stack, 1)
-        # Keep test_runner_view's old import-from-locals path happy
-        # (some code paths reference QStackedWidget via the local
-        # binding; it's now imported at module top-level).
-        self._tab_targets_btn.toggled.connect(
-            lambda checked: checked and self._target_stack.setCurrentIndex(0)
-        )
-        self._tab_callers_btn.toggled.connect(
-            lambda checked: checked and self._target_stack.setCurrentIndex(1)
-        )
+        self._target_stack.setVisible(False)
+
         split.addWidget(left_card)
 
         # ---- RIGHT: results table ----
@@ -662,10 +664,11 @@ class TestRunnerView(QMainWindow):
         # of the body on the default window.
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
-        # Tighter starting split so the empty results table grid is the
-        # first thing the operator sees -- 100 px paste box up top,
-        # everything else for results.
-        split.setSizes([100, 700])
+        # Strip now hosts BOTH Targets and Callers stacked vertically
+        # (was one tabbed view at ~100 px). ~180 px is the tight fit
+        # for two 72 px text boxes + their headers + spacing; the rest
+        # of the body goes to the results table grid.
+        split.setSizes([180, 620])
         outer.addWidget(split, 1)
 
         # ===== Sticky footer ==========================================

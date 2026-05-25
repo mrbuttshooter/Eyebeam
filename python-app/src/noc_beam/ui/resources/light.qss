@@ -2342,6 +2342,18 @@ QLabel#TestRunnerPreflightLabel {
     font-size: 12px;
     background: transparent;
 }
+/* Section header above each paste box (Targets / Callers). Acts as
+   both label and live counter (text updated by _refresh_plan_preview).
+   Styled like a settings card label so the two panes read as parallel
+   stacked sections rather than as a tab. */
+QLabel#TestRunnerPasteHeader {
+    color: #57606A;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 2px 0;
+    background: transparent;
+}
 QToolButton#TestRunnerTab {
     background: transparent;
     border: none;

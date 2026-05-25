@@ -3011,13 +3011,37 @@ class PhoneShell(QMainWindow):
 
     def _on_open_test_runner(self):
         from noc_beam.ui.test_runner_view import TestRunnerView
+        from PySide6.QtCore import QSettings, QByteArray
         if not hasattr(self, "_test_runner_window"):
             self._test_runner_window = TestRunnerView(
                 self.accounts,
                 self,
                 active_account_id=self._active_account_id,
             )
-            self._test_runner_window.resize(900, 620)
+            # Persist Test Runner window geometry across launches: the
+            # operator's preferred size sticks. First-launch default is
+            # 1400x860 (big enough that supplier+orig+dest fit on one
+            # row AND the results grid has serious vertical room for a
+            # live FAS sweep -- the old 900x620 felt cramped). Resize
+            # the user does is captured on closeEvent and replayed on
+            # the next show().
+            _s = QSettings("NOC_Beam", "NOC_Beam")
+            _geom = _s.value("TestRunnerWindow/geometry")
+            if isinstance(_geom, QByteArray) and not _geom.isEmpty():
+                self._test_runner_window.restoreGeometry(_geom)
+            else:
+                self._test_runner_window.resize(1400, 860)
+            _orig_close = self._test_runner_window.closeEvent
+            def _save_geom_on_close(ev, _w=self._test_runner_window, _orig=_orig_close):
+                try:
+                    QSettings("NOC_Beam", "NOC_Beam").setValue(
+                        "TestRunnerWindow/geometry",
+                        _w.saveGeometry(),
+                    )
+                except Exception:
+                    pass
+                _orig(ev)
+            self._test_runner_window.closeEvent = _save_geom_on_close
         self._test_runner_window.accounts = list(self.accounts)
         try:
             self._test_runner_window.set_active_account_id(self._active_account_id)
