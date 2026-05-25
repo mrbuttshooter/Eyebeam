@@ -315,8 +315,11 @@ class TestRunnerView(QMainWindow):
         configure_page = QWidget()
         configure_page.setObjectName("TestRunnerConfigurePage")
         outer_configure = QVBoxLayout(configure_page)
-        outer_configure.setContentsMargins(0, 8, 0, 0)
-        outer_configure.setSpacing(12)
+        # Zero top margin -- the user called out the empty band
+        # between the tab strip and the Mode row as wasted space.
+        # Configure body now sits flush against the tab strip.
+        outer_configure.setContentsMargins(0, 0, 0, 0)
+        outer_configure.setSpacing(10)
 
         # Redirect the existing `outer` build-out into the Configure
         # page. The footer (Run/Stop/etc) goes on the central layout
@@ -573,19 +576,24 @@ class TestRunnerView(QMainWindow):
         pf_l.addWidget(self.summary_pending)
         outer.addWidget(preflight)
 
-        # ===== Body: vertical split — small Targets/Callers on top, =
-        # big Results below. (Was a horizontal 35/65 split that gave
-        # Targets/Callers the entire height of the body even though the
-        # paste boxes only need ~120px. Operators wanted the paste box
-        # compact so the results table dominates.)
-        split = QSplitter(Qt.Orientation.Vertical, central)
+        # ===== Body: HORIZONTAL split -- narrow Targets/Callers strip
+        # on the LEFT, wide Results table on the RIGHT. The paste box
+        # is tall and narrow ("vertical proportions") so multiple
+        # pasted lines read naturally; the results table gets all the
+        # remaining width for FAS / RTT / NOTES columns to breathe.
+        split = QSplitter(Qt.Orientation.Horizontal, central)
         split.setObjectName("TestRunnerSplit")
         split.setChildrenCollapsible(False)
         split.setHandleWidth(6)
 
-        # ---- TOP: tabbed Targets/Callers (compact) ----
+        # ---- LEFT: tabbed Targets/Callers (narrow vertical strip) ----
         left_card = QFrame()
         left_card.setObjectName("SettingsCard")
+        # Capped width keeps it compact -- "minimal spacing" per the
+        # user. The paste boxes are 240-300 px wide; phone numbers
+        # and short SIP URIs fit comfortably without wrapping.
+        left_card.setMinimumWidth(240)
+        left_card.setMaximumWidth(320)
         # Hidden legacy marker for back-compat selectors
         _legacy_paste_grid = QFrame(left_card)
         _legacy_paste_grid.setObjectName("TestRunnerPasteGrid")
@@ -595,13 +603,9 @@ class TestRunnerView(QMainWindow):
         lc_l.setContentsMargins(0, 0, 0, 0)
         lc_l.setSpacing(0)
 
-        # Tabbed Targets / Callers -- ONE panel visible at a time,
-        # toggle via the tab strip at the top. The user's preference
-        # is the original tabbed pattern (compact, panel reads
-        # full-width inside the strip) over the stacked-both-at-once
-        # variant we briefly tried (which read as two horizontal
-        # bands and felt cluttered). Cap each text box at 90 px so
-        # the results table grid still dominates the body.
+        # Tab strip at the top of the strip (Targets | Callers). One
+        # paste panel visible at a time, both share the full vertical
+        # height of the strip via QStackedWidget.
         tabs_row = QHBoxLayout()
         tabs_row.setContentsMargins(10, 8, 10, 0)
         tabs_row.setSpacing(4)
@@ -630,12 +634,12 @@ class TestRunnerView(QMainWindow):
         tabs_row.addWidget(self._run_count_badge)
         lc_l.addLayout(tabs_row)
 
+        # Paste boxes fill the full vertical height of the strip --
+        # no maximumHeight cap since the strip is narrow and tall;
+        # the operator pastes a list and scrolls if needed.
         self._target_stack = QStackedWidget()
         self._target_stack.addWidget(self.targets_edit)
         self._target_stack.addWidget(self.callers_edit)
-        self._target_stack.setMaximumHeight(100)
-        self.targets_edit.setMaximumHeight(90)
-        self.callers_edit.setMaximumHeight(90)
         lc_l.addWidget(self._target_stack, 1)
         self._tab_targets_btn.toggled.connect(
             lambda checked: checked and self._target_stack.setCurrentIndex(0)
@@ -670,8 +674,12 @@ class TestRunnerView(QMainWindow):
         # of the body on the default window.
         split.setStretchFactor(0, 0)
         split.setStretchFactor(1, 1)
-        # Compact tabbed paste strip up top, results table dominates.
-        split.setSizes([130, 700])
+        # Horizontal split: paste strip on the LEFT gets ~280 px
+        # (its own min/max), results table on the RIGHT gets the
+        # rest of the body width. Stretch factor 0/1 means resizing
+        # the window expands the results table only -- the paste
+        # strip stays at its preferred width.
+        split.setSizes([280, 1100])
         outer.addWidget(split, 1)
 
         # ===== Sticky footer ==========================================

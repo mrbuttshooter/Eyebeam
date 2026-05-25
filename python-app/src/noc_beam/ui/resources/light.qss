@@ -2369,6 +2369,19 @@ QToolButton#TestRunnerTab:checked {
     border-bottom-color: #E85D04;
 }
 
+/* TestRunner QTabWidget: kill the pane's default top padding so the
+   Configure body sits flush against the tab strip -- no empty white
+   band between "Configure | Running | Results" and the Mode row. */
+QTabWidget#TestRunnerTabs::pane {
+    border: none;
+    padding: 0;
+    margin: 0;
+    top: 0;
+}
+QTabWidget#TestRunnerTabs::tab-bar {
+    left: 0;
+}
+
 /* Account dialog Advanced disclosure */
 QToolButton#AccountAdvancedToggle {
     background: transparent;
