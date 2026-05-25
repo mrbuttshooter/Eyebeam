@@ -142,3 +142,175 @@ def test_parallel_is_clamped_to_one_through_sixteen(
     spec = make_spec(["1001"], ["2001"], "paired", parallel=requested_parallel)
 
     assert spec.parallel == expected_parallel
+
+
+# ---------------------------------------------------------------------------
+# times multiplier (non-fas-sweep modes)
+# ---------------------------------------------------------------------------
+
+
+def _make_spec_with_times(
+    callers: list[str],
+    targets: list[str],
+    mode: str,
+    times: int,
+) -> plan.TestSpec:
+    return plan.TestSpec(
+        callers=callers,
+        targets=targets,
+        mode=mode,  # type: ignore[arg-type]
+        pass_criterion="reachability",
+        parallel=4,
+        hold_seconds=5.0,
+        timeout_seconds=30.0,
+        times=times,
+    )
+
+
+@pytest.mark.parametrize("mode", ["matrix", "paired", "fan-out", "fan-in"])
+def test_times_multiplies_call_count(mode: str) -> None:
+    """times=N repeats every (caller, target) pair N times. So 1 caller x
+    1 target x times=3 -> 3 TestCall rows with ids 1, 2, 3."""
+    spec = _make_spec_with_times(["1001"], ["2001"], mode, times=3)
+    calls = plan.expand(spec)
+    assert len(calls) == 3
+    assert [c.index for c in calls] == [1, 2, 3]
+    assert all(c.caller_number == "1001" for c in calls)
+    assert all(c.target_number == "2001" for c in calls)
+
+
+def test_times_multiplies_matrix_pairs() -> None:
+    """2 callers x 3 targets x times=4 -> 24 calls."""
+    spec = _make_spec_with_times(
+        callers=["1001", "1002"],
+        targets=["2001", "2002", "2003"],
+        mode="matrix",
+        times=4,
+    )
+    calls = plan.expand(spec)
+    assert len(calls) == 24
+    # First pair (1001, 2001) repeats 4 times consecutively.
+    first_four = calls[:4]
+    assert all(c.caller_number == "1001" and c.target_number == "2001" for c in first_four)
+
+
+@pytest.mark.parametrize(
+    ("requested_times", "expected_times"),
+    [(-3, 1), (0, 1), (1, 1), (25, 25), (50, 50), (51, 50), (1000, 50)],
+)
+def test_times_is_clamped_to_one_through_fifty(
+    requested_times: int, expected_times: int
+) -> None:
+    spec = _make_spec_with_times(["1001"], ["2001"], "paired", times=requested_times)
+    assert spec.times == expected_times
+
+
+# ---------------------------------------------------------------------------
+# fas-sweep mode + tries_per_pair
+# ---------------------------------------------------------------------------
+
+
+def test_fas_sweep_uses_matrix_shape_times_tries_per_pair() -> None:
+    """fas-sweep is matrix-shaped (every caller x every target) and each
+    pair repeats tries_per_pair times."""
+    spec = plan.TestSpec(
+        callers=["1001", "1002"],
+        targets=["2001", "2002"],
+        mode="fas-sweep",
+        pass_criterion="reachability",
+        parallel=4,
+        hold_seconds=5.0,
+        timeout_seconds=30.0,
+        tries_per_pair=3,
+    )
+    calls = plan.expand(spec)
+    # 2 callers * 2 targets * 3 tries = 12 calls
+    assert len(calls) == 12
+    # First pair (1001, 2001) repeats 3 times consecutively.
+    first_three = calls[:3]
+    assert all(c.caller_number == "1001" and c.target_number == "2001" for c in first_three)
+
+
+def test_fas_sweep_ignores_times_field_uses_tries_per_pair() -> None:
+    """In fas-sweep mode, `times` is ignored; only `tries_per_pair`
+    multiplies the matrix."""
+    spec = plan.TestSpec(
+        callers=["1001"],
+        targets=["2001"],
+        mode="fas-sweep",
+        pass_criterion="reachability",
+        parallel=4,
+        hold_seconds=5.0,
+        timeout_seconds=30.0,
+        times=10,            # should NOT multiply for fas-sweep
+        tries_per_pair=2,
+    )
+    calls = plan.expand(spec)
+    assert len(calls) == 2
+
+
+def test_unknown_mode_still_raises_after_fas_sweep_added() -> None:
+    spec = plan.TestSpec(
+        callers=[],
+        targets=[],
+        mode="unknown",  # type: ignore[arg-type]
+        pass_criterion="reachability",
+        parallel=4,
+        hold_seconds=5.0,
+        timeout_seconds=30.0,
+    )
+    with pytest.raises(ValueError):
+        plan.expand(spec)
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected"),
+    [(-1, 1), (0, 1), (1, 1), (4, 4), (50, 50), (51, 50)],
+)
+def test_tries_per_pair_is_clamped_to_one_through_fifty(
+    requested: int, expected: int
+) -> None:
+    spec = plan.TestSpec(
+        callers=["1001"],
+        targets=["2001"],
+        mode="fas-sweep",
+        pass_criterion="reachability",
+        parallel=4,
+        hold_seconds=5.0,
+        timeout_seconds=30.0,
+        tries_per_pair=requested,
+    )
+    assert spec.tries_per_pair == expected
+
+
+def test_jitter_fields_default_to_30_and_120_seconds() -> None:
+    spec = plan.TestSpec(
+        callers=["1001"],
+        targets=["2001"],
+        mode="fas-sweep",
+        pass_criterion="reachability",
+        parallel=4,
+        hold_seconds=5.0,
+        timeout_seconds=30.0,
+    )
+    assert spec.jitter_low_s == 30.0
+    assert spec.jitter_high_s == 120.0
+
+
+def test_jitter_high_clamped_to_at_least_jitter_low() -> None:
+    """If the caller passes jitter_high < jitter_low (operator typo),
+    bump high up to low so the runtime jitter rng never errors with
+    high < low."""
+    spec = plan.TestSpec(
+        callers=["1001"],
+        targets=["2001"],
+        mode="fas-sweep",
+        pass_criterion="reachability",
+        parallel=4,
+        hold_seconds=5.0,
+        timeout_seconds=30.0,
+        jitter_low_s=60.0,
+        jitter_high_s=10.0,
+    )
+    assert spec.jitter_low_s == 60.0
+    assert spec.jitter_high_s == 60.0

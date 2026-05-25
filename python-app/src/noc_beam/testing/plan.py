@@ -3,8 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-TestMode = Literal["matrix", "paired", "fan-out", "fan-in"]
+TestMode = Literal["matrix", "paired", "fan-out", "fan-in", "fas-sweep"]
 PassCriterion = Literal["reachability", "full-call"]
+
+_VALID_MODES = ("matrix", "paired", "fan-out", "fan-in", "fas-sweep")
+
+
+def _clamp_int(value: int, lo: int, hi: int) -> int:
+    try:
+        v = int(value)
+    except Exception:
+        v = lo
+    return max(lo, min(hi, v))
 
 
 @dataclass
@@ -16,11 +26,36 @@ class TestSpec:
     parallel: int
     hold_seconds: float
     timeout_seconds: float
+    # Number of repeated dials per (caller, target) pair for the
+    # non-fas-sweep modes. Clamped to [1, 50].
+    times: int = 1
+    # Number of repeated dials per (caller, target) pair for the
+    # fas-sweep mode. Clamped to [1, 50]. Quick=2, Thorough=4 are
+    # the operator-facing presets.
+    tries_per_pair: int = 2
+    # Inter-call jitter window for fas-sweep mode (seconds). Used by
+    # the runtime scheduler to space sweep dials so far-end pattern
+    # detection has cooling-off time between probes.
+    jitter_low_s: float = 30.0
+    jitter_high_s: float = 120.0
 
     def __post_init__(self) -> None:
-        self.parallel = min(max(self.parallel, 1), 16)
+        self.parallel = _clamp_int(self.parallel, 1, 16)
         self.hold_seconds = max(self.hold_seconds, 0.0)
         self.timeout_seconds = max(self.timeout_seconds, 0.1)
+        self.times = _clamp_int(self.times, 1, 50)
+        self.tries_per_pair = _clamp_int(self.tries_per_pair, 1, 50)
+        # Jitter window: keep low <= high; both non-negative.
+        try:
+            self.jitter_low_s = max(0.0, float(self.jitter_low_s))
+        except Exception:
+            self.jitter_low_s = 30.0
+        try:
+            self.jitter_high_s = max(0.0, float(self.jitter_high_s))
+        except Exception:
+            self.jitter_high_s = 120.0
+        if self.jitter_high_s < self.jitter_low_s:
+            self.jitter_high_s = self.jitter_low_s
 
 
 @dataclass(frozen=True)
@@ -35,7 +70,7 @@ def normalise_lines(text: str) -> list[str]:
 
 
 def expand(spec: TestSpec) -> list[TestCall]:
-    if spec.mode not in ("matrix", "paired", "fan-out", "fan-in"):
+    if spec.mode not in _VALID_MODES:
         raise ValueError(f"Unknown test plan mode: {spec.mode}")
 
     if not spec.targets:
@@ -48,7 +83,7 @@ def expand(spec: TestSpec) -> list[TestCall]:
     callers = spec.callers if spec.callers else ["*"]
 
     pairs: list[tuple[str, str]]
-    if spec.mode == "matrix":
+    if spec.mode in ("matrix", "fas-sweep"):
         pairs = [(caller, target) for caller in callers for target in spec.targets]
     elif spec.mode == "paired":
         # Paired mode is a strict 1:1 zip — but historically (and per
@@ -72,9 +107,19 @@ def expand(spec: TestSpec) -> list[TestCall]:
     elif spec.mode == "fan-out":
         pairs = [(callers[0], target) for target in spec.targets]
     else:
+        # fan-in
         pairs = [(caller, spec.targets[0]) for caller in callers]
+
+    # Multiplier: fas-sweep uses tries_per_pair; everything else uses times.
+    multiplier = spec.tries_per_pair if spec.mode == "fas-sweep" else spec.times
+    multiplier = max(1, int(multiplier))
+
+    expanded_pairs: list[tuple[str, str]] = []
+    for pair in pairs:
+        for _ in range(multiplier):
+            expanded_pairs.append(pair)
 
     return [
         TestCall(index=index, caller_number=caller, target_number=target)
-        for index, (caller, target) in enumerate(pairs, start=1)
+        for index, (caller, target) in enumerate(expanded_pairs, start=1)
     ]
