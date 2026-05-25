@@ -2369,17 +2369,17 @@ QToolButton#TestRunnerTab:checked {
     border-bottom-color: #E85D04;
 }
 
-/* TestRunner QTabWidget: kill the pane's default top padding so the
-   Configure body sits flush against the tab strip -- no empty white
-   band between "Configure | Running | Results" and the Mode row. */
+/* TestRunner QTabWidget pane: just kill the default border so the
+   transition from tab bar to body content reads as one continuous
+   surface. Earlier we also set { top: 0; padding: 0; margin: 0; }
+   plus a ::tab-bar { left: 0 } rule -- but `top: 0` pulled the
+   pane UP so it rendered ON TOP of the active tab, covering the
+   "Configure" tab text with a white rectangle (orange underline
+   showed through because that's painted below the tab text area).
+   Default pane positioning is correct; we just don't want the
+   1 px border line. */
 QTabWidget#TestRunnerTabs::pane {
     border: none;
-    padding: 0;
-    margin: 0;
-    top: 0;
-}
-QTabWidget#TestRunnerTabs::tab-bar {
-    left: 0;
 }
 
 /* Account dialog Advanced disclosure */
