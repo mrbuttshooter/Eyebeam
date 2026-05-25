@@ -310,7 +310,13 @@ class AudioStrip(QFrame):
 
     def _toggle_volume_popover(self) -> None:
         if self._vol_popover is None:
-            pop = QFrame(self, Qt.WindowType.Popup)
+            # Parent the popover to the top-level window (not the audio
+            # strip widget) so Windows treats it as a child of the real
+            # window — otherwise Qt.WindowType.Popup with a non-top-level
+            # parent produces an orphan "NOC_Beam" mini-window with its
+            # own taskbar / chrome the moment the popover opens.
+            owner = self.window() or self
+            pop = QFrame(owner, Qt.WindowType.Popup)
             pop.setObjectName("VolumePopover")
             v = QVBoxLayout(pop)
             v.setContentsMargins(10, 8, 10, 8)
@@ -330,7 +336,9 @@ class AudioStrip(QFrame):
 
     def _toggle_mic_popover(self) -> None:
         if self._mic_popover is None:
-            pop = QFrame(self, Qt.WindowType.Popup)
+            # Same top-level reparenting trick as volume popover above.
+            owner = self.window() or self
+            pop = QFrame(owner, Qt.WindowType.Popup)
             pop.setObjectName("VolumePopover")
             v = QVBoxLayout(pop)
             v.setContentsMargins(10, 8, 10, 8)

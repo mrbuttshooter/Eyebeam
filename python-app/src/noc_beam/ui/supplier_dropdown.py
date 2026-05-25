@@ -183,6 +183,20 @@ class SupplierDropdown(QWidget):
         if not self._filtered_indexes:
             self.hidePopup()
             return
+        # Re-parent the popup to the dropdown's CURRENT top-level window
+        # right before showing it. The popup was created in __init__ when
+        # the dropdown may have had no parent yet (e.g. when it's built
+        # by `_build_dest_row(...)` and added to a layout later) — Windows
+        # bakes the popup's owner HWND at native-window-creation time, and
+        # if that was NULL the popup will appear as a separate top-level
+        # NOC_Beam window with its own taskbar / chrome. Re-parenting at
+        # show time forces the popup to be owned by the real top-level
+        # window so it renders frameless on top of it, with no orphan
+        # mini-window. setParent with a flag argument re-creates the
+        # native window with the new owner.
+        top = self.window()
+        if top is not None and self._popup.parent() is not top:
+            self._popup.setParent(top, Qt.WindowType.Popup)
         self._popup.setMinimumWidth(max(self.width(), 320))
         row_h = max(self._list.sizeHintForRow(0), self.fontMetrics().height() + 10)
         visible_rows = min(len(self._filtered_indexes), self._max_visible_items)
