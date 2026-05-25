@@ -77,7 +77,12 @@ def synthesise(
     panns: dict[str, float] | None,
     fingerprint_sim: float,         # 0..1, similarity to closest prior FP
     fingerprint_match: dict[str, Any] | None = None,
-    fingerprint_threshold: float = 0.90,
+    # Lowered 0.90 -> 0.82 per LOGIC_REVIEW_2026-05-25.md F4: real-world
+    # carrier audio crosses G.711 + multiple transcoding hops, so the
+    # same canned recording typically returns 0.82-0.88 similarity, not
+    # the >=0.90 a clean reference would yield. Matching is already
+    # scoped to (account, supplier) so the wider net is low-risk.
+    fingerprint_threshold: float = 0.82,
     sensitivity: str = "balanced",
     analyzed_seconds: float = 0.0,
     sustained_silence_seconds: float = 0.0,
