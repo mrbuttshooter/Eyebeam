@@ -40,9 +40,28 @@ class _ShellHarness:
         self._final_call_results: dict[int, tuple[int, bool]] = {}
         self._last_snapshots = {}
         self._selected_call_id = None
+        # Added by CANCEL-fix commit e4603e1: PhoneShell tracks which
+        # calls reached CONFIRMED so it knows whether to play the
+        # answered-then-disconnected vs failure-tone path. The test
+        # harness needs the attribute to exist (any iterable works).
+        self._fas_confirmed_call_ids: set[int] = set()
+        self._pending_fas_media: dict[int, object] = {}
+        self._test_runner_call_ids: set[int] = set()
 
     def _maybe_write_cdr(self, _call_id: int) -> None:
         pass
+
+    # Added by CANCEL-fix commit e4603e1: PhoneShell._on_call_state now
+    # calls _note_fas_call_state + _is_test_runner_call on every state
+    # change so the FAS engine can correlate evidence with call
+    # lifecycle. The test harness only stubs the methods it needs;
+    # provide no-ops so the cached-failure-tone test still exercises
+    # _on_call_state cleanly without depending on FAS / runner state.
+    def _note_fas_call_state(self, _call_id: int, _state) -> None:
+        pass
+
+    def _is_test_runner_call(self, _call_id: int) -> bool:
+        return False
 
 
 def test_failure_tone_uses_cached_final_code_after_call_record_removed(
