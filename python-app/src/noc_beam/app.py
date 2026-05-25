@@ -117,16 +117,17 @@ def run(argv: list[str]) -> int:
     app = QApplication(argv)
     app.setWindowIcon(_load_icon())
 
-    # Optional orphan-window detector. Enabled by setting the env var
-    # NOC_BEAM_DEBUG_ORPHANS=1 before launching. When on, every top-
-    # level QWidget shown during the session logs a one-shot line:
+    # Orphan-window detector. Logs one WARNING line per unique top-
+    # level QWidget shown during the session so we can identify any
+    # stray window that surfaces as its own NOC_Beam taskbar entry:
     #     [ORPHAN-WINDOW] <ClassName> title='<title>' parent=<None|...>
-    # This lets us identify any stray QMainWindow/QWidget that gets
-    # constructed without a parent and surfaces as its own taskbar
-    # entry / mini-window. Cost is one event filter on the Qt event
-    # loop; do not enable in production unless debugging.
-    import os
-    if os.environ.get("NOC_BEAM_DEBUG_ORPHANS") == "1":
+    # Force-on for the current debug rollout (was env-var-gated). Once
+    # the orphan is identified and patched, drop this block or revert
+    # to the env-var gate. Cost is one event filter on the Qt event
+    # loop + a one-shot warning per top-level widget — not a per-frame
+    # hit.
+    if True:  # set to False to disable; was: os.environ.get("NOC_BEAM_DEBUG_ORPHANS") == "1"
+        import os  # kept inside the block so the env-var gate is trivial to restore
         from PySide6.QtCore import QEvent, QObject
         from PySide6.QtWidgets import QWidget
 
