@@ -509,6 +509,17 @@ class PhoneShell(QMainWindow):
         dialpad_page = QWidget(self)
         dpl = QVBoxLayout(dialpad_page); dpl.setContentsMargins(4, 2, 4, 2); dpl.setSpacing(2)
         self.call_widget = CallWidget()
+        # FAS verdict badge hidden on the dialpad call card per boss
+        # directive 2026-05-25: verdicts now surface only in the Test
+        # Runner FAS Sweep Results pane. The FAS engine + per-call
+        # scoring + CDR write all stay in place -- this is purely a
+        # UI-suppression of the live badge so operators stop reacting
+        # to mid-call ANALYZING flickers on production trunks.
+        try:
+            self.call_widget.fas_badge.setVisible(False)
+            self.call_widget.fas_badge.setMaximumHeight(0)
+        except Exception:
+            pass
         self.call_widget.answer_clicked.connect(self._on_answer)
         self.call_widget.reject_clicked.connect(self._on_reject)
         self.call_widget.hangup_clicked.connect(self._on_hangup_by_id)
@@ -1889,14 +1900,13 @@ class PhoneShell(QMainWindow):
             self.call_widget.update_state(rec.state.value, rec.last_code, rec.last_reason)
             if rec.codec:
                 self.call_widget.update_media(rec.codec, rec.clock_rate, rec.channels)
-            # FAS verdict badge: hidden until the engine fires, then
-            # tinted by verdict severity. Empty string hides it.
+            # FAS verdict badge hidden on the dialpad per boss
+            # directive 2026-05-25 -- verdicts now surface in the Test
+            # Runner FAS Sweep Results pane. Engine + CDR write remain;
+            # this just keeps the badge from re-appearing if some other
+            # caller pokes it. (No update_fas call here on purpose.)
             try:
-                self.call_widget.update_fas(
-                    getattr(rec, "fas_verdict", "") or "",
-                    float(getattr(rec, "fas_confidence", 0.0) or 0.0),
-                    getattr(rec, "fas_reasons", "") or "",
-                )
+                self.call_widget.fas_badge.setVisible(False)
             except Exception:
                 pass
             # Re-apply per-call mute on resume (re-INVITE creates a new
