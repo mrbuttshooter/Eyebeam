@@ -769,16 +769,18 @@ class SipEndpoint:
         # vanished, drop the call from acc.calls (best-effort), tear
         # down the call, and surface a clear error so the caller knows.
         with self._lock:
-            if account_id not in self._accounts:
+            current_acc = self._accounts.get(account_id)
+            if current_acc is not acc:
+                # Account was removed (or replaced) during the makeCall
+                # window. acc.shutdown() has already been called by
+                # remove_account; touching deleteCall on a shutdown
+                # pjsua2.Account can segfault past Python's try/except.
+                # Safest: skip the C++ deleteCall and let the destructor
+                # handle cleanup. Just drop the Python-side list entry.
                 try:
                     acc.calls.remove(call)
                 except Exception:
                     pass
-                try:
-                    acc.deleteCall(call)
-                except Exception:
-                    pass
-                call = None
                 raise RuntimeError("Account removed during call setup")
         return call
 

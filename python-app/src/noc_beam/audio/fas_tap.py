@@ -180,16 +180,28 @@ class FasWavTap:
         if not PJSUA2_AVAILABLE:
             log.warning("FasWavTap: pjsua2 not available")
             return False
+        # Build the tail-reader FIRST so a disconnect that fires between
+        # startTransmit() and _started=True still gets cleaned up via stop().
+        # Previously, if the call disconnected in that window, stop() saw
+        # _started==False and returned early, leaking the recorder + bridge
+        # port. We set _started=True before any I/O so stop() always runs.
+        self._reader = _WavTailReader(self.call_id, self.wav_path, self._stop_event)
+        self._started = True
         try:
             self._recorder = pj.AudioMediaRecorder()
             self._recorder.createRecorder(str(self.wav_path))
             self._call_audio.startTransmit(self._recorder)
+            self._reader.start()
         except Exception:
             log.exception("FasWavTap start failed for call %s", self.call_id)
+            # Roll back the optimistic state and let stop() finish cleanup
+            # via the normal path.
+            try:
+                self.stop()
+            except Exception:
+                log.exception("FasWavTap rollback stop() raised")
+            self._started = False
             return False
-        self._reader = _WavTailReader(self.call_id, self.wav_path, self._stop_event)
-        self._reader.start()
-        self._started = True
         log.info("FasWavTap started call=%s wav=%s", self.call_id, self.wav_path)
         return True
 

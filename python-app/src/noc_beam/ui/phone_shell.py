@@ -1634,10 +1634,14 @@ class PhoneShell(QMainWindow):
             self._set_status(f"Account: {label} -- auth failed ({code})", "warn",
                              "Click here to retry", "retry-register")
         else:
-            self._set_status(
-                f"Account: {label} -- failed to enable.\nProblem at server (SIP error {code}). Try again later.",
-                "danger", "Click here to retry", "retry-register",
-            )
+            # Operator deployment: their switches don't support REGISTER, so
+            # non-auth registration failures (408/5xx) are expected and the
+            # status-bar banner is pure noise. Keep the chip's health-bucket
+            # tracking above for diagnostics, but don't surface a popup.
+            # registration_retry still runs in the background for accounts
+            # that DO register; failures land in the log at WARN.
+            log.warning("Account %s registration error code=%d reason=%r",
+                        label, code, reason)
 
     @staticmethod
     def _health_bucket(code: int) -> str:
@@ -3156,7 +3160,7 @@ class PhoneShell(QMainWindow):
         # PySide6 doesn't reliably fire destroyed on embedded widgets,
         # so the subscribers used to leak for the whole app lifetime
         # plus accumulate one per Settings/Trace/Accounts re-open.
-        for view_attr in ("_accounts_detail", "trace_page", "trace_view", "trace_drawer"):
+        for view_attr in ("_accounts_detail", "trace_page", "trace_view", "trace_drawer", "_popup_trace_view"):
             view = getattr(self, view_attr, None)
             if view is None:
                 continue

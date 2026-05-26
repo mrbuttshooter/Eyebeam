@@ -375,6 +375,12 @@ class AccountDialog(QDialog):
     # Test registration
     # ------------------------------------------------------------------
     def _on_test(self) -> None:
+        # If a previous test is still in flight, tear it down first.
+        # Without this, a rapid double-click overwrote _test_id / _test_timer
+        # without unsubscribing the prior signal handler -- leaking a sentinel
+        # account in the endpoint plus a dangling signal connection.
+        self._cleanup_test()
+
         username = self.username.text().strip()
         domain = self.domain.text().strip()
         if not username or not domain:

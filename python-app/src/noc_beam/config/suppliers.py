@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -136,15 +137,23 @@ def save_suppliers(suppliers: list[Supplier]) -> None:
     payload = [asdict(s) for s in suppliers]
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    try:
-        tmp.replace(path)
-    except PermissionError:
-        log.warning("Atomic replace failed for %s; falling back to direct write", path)
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Windows: retry under transient AV/file-watcher locks. Previously
+    # fell back to a non-atomic path.write_text which could corrupt the
+    # file on a crash mid-write.
+    last_err: BaseException | None = None
+    for _ in range(3):
         try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
+            tmp.replace(path)
+            return
+        except PermissionError as exc:
+            last_err = exc
+            time.sleep(0.05)
+    try:
+        tmp.unlink(missing_ok=True)
+    except OSError:
+        pass
+    log.error("Atomic replace failed for %s after retries: %s", path, last_err)
+    raise last_err  # type: ignore[misc]
 
 
 def _parse(raw: list) -> list[Supplier]:

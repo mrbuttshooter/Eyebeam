@@ -233,13 +233,11 @@ class FasInferenceWorker(QThread):
                     fp, call_id=call_id, account_id=account_id, supplier=supplier,
                 )
 
-            fingerprint_match = None
-            if entry is not None:
-                fingerprint_match = {
-                    "matched_call_id": entry.call_id,
-                    "matched_account_id": entry.account_id,
-                    "matched_supplier": entry.supplier,
-                }
+            # Carry only the non-PII signal that a prior match existed.
+            # Earlier versions passed matched_call_id / matched_account_id /
+            # matched_supplier through into FasEvidence.metadata, which is
+            # persisted and exported in CSV -- a cross-call PII leak.
+            fingerprint_match = {"prior_match": True} if entry is not None else None
 
             verdict_obj = synthesise(
                 features=features,

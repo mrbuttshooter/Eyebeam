@@ -1548,6 +1548,43 @@ class TestRunnerView(QMainWindow):
             return "'" + s
         return s
 
+    def _account_a_number(self, token: str) -> str:
+        """Resolve a from_account token to the operator's A-number for CSV.
+
+        Operator convention: display_name carries the actual A-number on
+        the SIP wire (e.g. "33415835"); `label` is the human-friendly UI
+        nickname ("Teles UK"); username is the per-supplier Uid ("U080").
+        Billing review needs the A-number, so prefer display_name --
+        falling back through username@domain / username / token. The
+        raw token (often a UUID) is the LAST resort and must not be
+        the typical output.
+        """
+        t = (token or "").strip()
+        if not t or t in ("*", "auto", "any"):
+            account = self._selected_batch_account()
+            if account is None:
+                return t
+        else:
+            account = None
+            for acc in self.accounts:
+                if t in (
+                    getattr(acc, "id", ""),
+                    getattr(acc, "username", ""),
+                    getattr(acc, "account_id", ""),
+                ):
+                    account = acc
+                    break
+            if account is None:
+                return t
+        display = (getattr(account, "display_name", "") or "").strip()
+        if display:
+            return display
+        username = (getattr(account, "username", "") or "").strip()
+        domain = (getattr(account, "domain", "") or "").strip()
+        if username and domain:
+            return f"{username}@{domain}"
+        return username or t
+
     def export_csv(self, path: Path) -> None:
         """Write the lean 5-column CSV: A Number, B Number, Date,
         Duration, FAS Verdict. Operator request -- previously this
@@ -1567,9 +1604,14 @@ class TestRunnerView(QMainWindow):
                 # B Number: strip sip:/sips:/tel:, ;params, and @domain
                 # so the CSV shows '96109901' not 'sip:96109901@host'.
                 b_num = _peer_userpart(result.to_uri) or result.to_uri
+                # A Number: resolve from_account (may be a UUID) to the
+                # operator's display_name. Previously this wrote the raw
+                # token straight to CSV, so billing review saw UUIDs
+                # instead of the carrier A-numbers.
+                a_num = self._account_a_number(result.from_account)
                 writer.writerow(
                     [
-                        safe(result.from_account),
+                        safe(a_num),
                         safe(b_num),
                         self._format_started_at(started),
                         f"{result.duration_s:.1f}",

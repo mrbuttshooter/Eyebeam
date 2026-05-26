@@ -83,13 +83,18 @@ if PJSUA2_AVAILABLE:
                 log.exception("onRegState error")
 
         def onIncomingCall(self, prm) -> None:  # noqa: N802, ANN001
+            # Append to self.calls ONLY after construction + getInfo() +
+            # signal emit all succeed. Previously, the append happened
+            # eagerly and a later exception left a half-initialised SipCall
+            # in self.calls -- PJSIP couldn't clean up its native side and
+            # the next find_call() iteration could deref a broken wrapper.
             try:
                 call = SipCall(self, prm.callId, self.cfg.id)
-                self.calls.append(call)
                 info = call.getInfo()
                 sip_events().call_incoming.emit(
                     self.cfg.id, info.id, info.remoteUri, True
                 )
+                self.calls.append(call)
             except Exception:
                 log.exception("onIncomingCall error")
 

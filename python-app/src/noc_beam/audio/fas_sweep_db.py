@@ -162,16 +162,25 @@ class FasSweepDb:
         now = datetime.now()
         started_at = now.isoformat(timespec="seconds")
         base_id = f"sweep_{now.strftime('%Y-%m-%d_%H:%M:%S')}"
+        # Atomic insert with collision retry. The previous SELECT-then-
+        # INSERT pattern had a TOCTOU race: two concurrent open_run calls
+        # could both see no row and both attempt the INSERT, hitting the
+        # PRIMARY KEY constraint on the second one. INSERT OR IGNORE +
+        # rowcount lets the loser pick a new suffix without an exception.
         run_id = base_id
-        suffix = 1
-        while True:
-            existing = self._conn.execute(
-                "SELECT 1 FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
-            if existing is None:
-                break
-            suffix += 1
-            run_id = f"{base_id}-{suffix}"
+        for suffix in range(1, 1000):
+            if suffix > 1:
+                run_id = f"{base_id}-{suffix}"
+            cursor = self._conn.execute(
+                "INSERT OR IGNORE INTO runs(run_id, started_at, mode, tries_per_pair, notes) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (run_id, started_at, mode, int(tries_per_pair), notes or ""),
+            )
+            if cursor.rowcount == 1:
+                self._conn.commit()
+                return run_id
+        # 1000 collisions in the same second is pathological -- last attempt
+        # raises naturally if it still collides.
         self._conn.execute(
             "INSERT INTO runs(run_id, started_at, mode, tries_per_pair, notes) "
             "VALUES(?, ?, ?, ?, ?)",

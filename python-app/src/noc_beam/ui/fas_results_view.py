@@ -330,6 +330,14 @@ class FasResultsView(QWidget):
         # Disable sorting during bulk repopulate -- pyside trips up on
         # itemChanged callbacks during a sort pass.
         self.table.setSortingEnabled(False)
+        # Clear selection BEFORE shrinking the model. Qt retains selected
+        # row indices across setRowCount cycles; without this, a row that
+        # was selected pre-reload (e.g. row 5) ends up auto-selected in
+        # the new run -- and the user clicking Play hears audio from a
+        # different call than they intended.
+        sel = self.table.selectionModel()
+        if sel is not None:
+            sel.clearSelection()
         self.table.setRowCount(0)
         self.table.setRowCount(len(self._visible_rows))
         for row_idx, row in enumerate(self._visible_rows):

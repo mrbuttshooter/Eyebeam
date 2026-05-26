@@ -210,14 +210,13 @@ def _append_to_archive(overflow: list[CdrEntry]) -> None:
 
 def save_history(entries: list[CdrEntry]) -> None:
     path = history_file()
-    # Cap to MAX_ENTRIES. The slice direction here depends on caller
-    # ordering: append_entry passes the cache in chronological order
-    # (oldest first, newest appended) so the trailing slice keeps the
-    # newest N. The HistoryView delete path passes the same list back
-    # but pre-sorted newest-first via the reverse=True call in
-    # _refresh_rows, where -MAX_ENTRIES would drop newest -- BUT the
-    # cap is rarely hit in practice and fixing the delete path needs
-    # the caller, not this function. Tracked.
+    # Normalise to chronological order (oldest first) before capping so
+    # the trailing slice consistently keeps the NEWEST entries regardless
+    # of caller input ordering. Previously, the delete path passed a
+    # newest-first list (HistoryView sorts reverse=True), and entries[-N:]
+    # silently kept the OLDEST N -- dropping the most recent calls. Fixed
+    # by sorting here.
+    entries = sorted(entries, key=lambda e: getattr(e, "ended_at", 0) or 0)
     if len(entries) > MAX_ENTRIES:
         overflow = entries[:-MAX_ENTRIES]
         trimmed = entries[-MAX_ENTRIES:]
@@ -227,7 +226,7 @@ def save_history(entries: list[CdrEntry]) -> None:
         # save.
         _append_to_archive(overflow)
     else:
-        trimmed = entries[-MAX_ENTRIES:]
+        trimmed = entries
     payload = [asdict(e) for e in trimmed]
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")

@@ -187,8 +187,14 @@ class TraceLogWriter(_LogWriterBase):
             # blank line could be body separator, keep going for a few lines
             return
 
-        # End of capture heuristic: a new pjsip log header (timestamp/source)
-        if re.match(r"^\d{2}:\d{2}:\d{2}\.\d{3}", line):
+        # End of capture heuristic: a new pjsip log header. Pjsip log
+        # lines have the shape "HH:MM:SS.mmm  source.tag  ..." -- after
+        # the timestamp there's whitespace, then the source category
+        # (alphanumerics + dots, e.g. `sip_endpoint.c`). Requiring the
+        # source-tag suffix prevents premature flush on SIP body lines
+        # that happen to start with a timestamp-shaped string (e.g.
+        # a Date header value or an SDP attribute).
+        if re.match(r"^\d{2}:\d{2}:\d{2}\.\d{3}\s+\S", line):
             self._flush()
             return
 
