@@ -503,3 +503,98 @@ def test_getinfo_failure_holds_parallel_slot_until_cleanup_release(
     emit_state(events, endpoint, second_id, "DISCONNECTED", 487, "Request Terminated")
     assert len(results) == 2
     assert results[1].result == "PASS"
+
+
+# ---------------------------------------------------------------------------
+# Per-target serialization: never two simultaneous calls to the same URI.
+# Was previously broken — `times=N` on one number fired N concurrent INVITEs
+# to the same destination, calls 2..N got 486 Busy / 408 from the carrier
+# and produced meaningless FAS verdicts on those duplicates.
+# ---------------------------------------------------------------------------
+
+
+def test_single_target_times_n_runs_strictly_sequentially() -> None:
+    """5 calls to the same number, parallel=10 — only one in flight at a
+    time. With the old grouped queue + no collision check, all 5 INVITEs
+    would have fired concurrently."""
+    events = SipEvents()
+    endpoint = StubEndpoint()
+    spec_ = RunnerSpec(
+        callers=["1001"],
+        targets=["2001"],
+        mode="paired",
+        pass_criterion="reachability",
+        parallel=10,
+        hold_seconds=0.01,
+        timeout_seconds=0.2,
+        times=5,
+    )
+    runner = Runner(spec_, [account()], endpoint=endpoint, events=events)
+    results: list[RunnerResult] = []
+    runner.call_completed.connect(results.append)
+    runner.start()
+
+    # Drain each call: at every moment, exactly 1 in flight.
+    for _ in range(5):
+        assert len(endpoint.calls) == 1, (
+            f"per-target serialization broken: {len(endpoint.calls)} concurrent "
+            "calls to the same target"
+        )
+        call_id = first_call_id(endpoint)
+        emit_state(events, endpoint, call_id, "EARLY", 180, "Ringing")
+        emit_state(events, endpoint, call_id, "DISCONNECTED", 487, "Request Terminated")
+        # Cleanup timer needs a tick to release the slot and refill.
+        wait_until(lambda: call_id not in endpoint.calls, timeout_ms=500)
+
+    wait_for_completed(results, count=5)
+    assert len(results) == 5
+    assert endpoint.max_active == 1, (
+        f"expected max 1 concurrent call to a single target, saw {endpoint.max_active}"
+    )
+
+
+def test_three_distinct_targets_cycle_three_wide_not_ten() -> None:
+    """3 distinct targets × times=2 with parallel=10 → at most 3 concurrent
+    calls (one per distinct destination URI), dispatched round-robin."""
+    events = SipEvents()
+    endpoint = StubEndpoint()
+    spec_ = RunnerSpec(
+        callers=["1001"],
+        targets=["2001", "2002", "2003"],
+        mode="paired",  # 1 caller × 3 targets promotes to fan-out shape
+        pass_criterion="reachability",
+        parallel=10,
+        hold_seconds=0.01,
+        timeout_seconds=0.2,
+        times=2,
+    )
+    runner = Runner(spec_, [account()], endpoint=endpoint, events=events)
+    results: list[RunnerResult] = []
+    runner.call_completed.connect(results.append)
+    runner.start()
+
+    # All 3 distinct targets dispatch immediately (round-robin queue).
+    assert len(endpoint.calls) == 3
+    target_uris = {tup[1] for tup in endpoint.calls.values()}
+    assert target_uris == {
+        "sip:2001@pbx.example.test",
+        "sip:2002@pbx.example.test",
+        "sip:2003@pbx.example.test",
+    }, f"expected one in-flight call per distinct target, got {target_uris}"
+
+    # Drain the first cycle; the second cycle (times=2) should kick in.
+    for cid in list(endpoint.calls.keys()):
+        emit_state(events, endpoint, cid, "EARLY", 180, "Ringing")
+        emit_state(events, endpoint, cid, "DISCONNECTED", 487, "Request Terminated")
+    wait_until(lambda: len(endpoint.calls) >= 3 or len(results) >= 6, timeout_ms=500)
+
+    # Drain second cycle.
+    for cid in list(endpoint.calls.keys()):
+        emit_state(events, endpoint, cid, "EARLY", 180, "Ringing")
+        emit_state(events, endpoint, cid, "DISCONNECTED", 487, "Request Terminated")
+    wait_for_completed(results, count=6)
+
+    assert len(results) == 6
+    assert endpoint.max_active == 3, (
+        f"expected max 3 concurrent calls (one per distinct target), saw {endpoint.max_active}"
+    )

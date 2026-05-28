@@ -114,9 +114,16 @@ def expand(spec: TestSpec) -> list[TestCall]:
     multiplier = spec.tries_per_pair if spec.mode == "fas-sweep" else spec.times
     multiplier = max(1, int(multiplier))
 
+    # Round-robin order: [t1, t2, t3, t1, t2, t3, ...] instead of the
+    # older grouped order [t1, t1, ..., t2, t2, ...]. With the runner's
+    # per-target serialization (only one in-flight call per distinct
+    # target URI), the natural FIFO dispatch path now spreads concurrent
+    # calls across DIFFERENT targets first — so 3 numbers × N times
+    # actually runs 3-wide. With the old grouped order, every dispatch
+    # past the first would collide on t1 and stall until t1 finished.
     expanded_pairs: list[tuple[str, str]] = []
-    for pair in pairs:
-        for _ in range(multiplier):
+    for _ in range(multiplier):
+        for pair in pairs:
             expanded_pairs.append(pair)
 
     return [

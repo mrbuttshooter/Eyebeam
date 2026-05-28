@@ -180,7 +180,17 @@ def test_times_multiplies_call_count(mode: str) -> None:
 
 
 def test_times_multiplies_matrix_pairs() -> None:
-    """2 callers x 3 targets x times=4 -> 24 calls."""
+    """2 callers x 3 targets x times=4 -> 24 calls in ROUND-ROBIN order.
+
+    Was previously grouped — all 4 (1001,2001) entries first, then all 4
+    (1001,2002), etc. That worked against the runner's per-target
+    serialization: every dispatch past the first would collide on the
+    same target URI and stall until the previous call finished.
+
+    New invariant: the 6 distinct pairs cycle through once per times-
+    iteration, so the queue spreads concurrent dispatches across
+    different targets and effective parallelism = min(parallel, N pairs).
+    """
     spec = _make_spec_with_times(
         callers=["1001", "1002"],
         targets=["2001", "2002", "2003"],
@@ -189,9 +199,17 @@ def test_times_multiplies_matrix_pairs() -> None:
     )
     calls = plan.expand(spec)
     assert len(calls) == 24
-    # First pair (1001, 2001) repeats 4 times consecutively.
-    first_four = calls[:4]
-    assert all(c.caller_number == "1001" and c.target_number == "2001" for c in first_four)
+    # First 6 entries are one full cycle through every distinct pair.
+    first_cycle = [(c.caller_number, c.target_number) for c in calls[:6]]
+    expected_cycle = [
+        ("1001", "2001"), ("1001", "2002"), ("1001", "2003"),
+        ("1002", "2001"), ("1002", "2002"), ("1002", "2003"),
+    ]
+    assert first_cycle == expected_cycle
+    # And the same cycle repeats 4 times back-to-back.
+    for i in range(4):
+        cycle = [(c.caller_number, c.target_number) for c in calls[i * 6 : (i + 1) * 6]]
+        assert cycle == expected_cycle, f"cycle {i} drifted: {cycle}"
 
 
 @pytest.mark.parametrize(
@@ -212,7 +230,9 @@ def test_times_is_clamped_to_one_through_fifty(
 
 def test_fas_sweep_uses_matrix_shape_times_tries_per_pair() -> None:
     """fas-sweep is matrix-shaped (every caller x every target) and each
-    pair repeats tries_per_pair times."""
+    pair repeats tries_per_pair times — ROUND-ROBIN across distinct
+    pairs so the runner's per-target serialization can dispatch them
+    concurrently instead of stalling on same-target collisions."""
     spec = plan.TestSpec(
         callers=["1001", "1002"],
         targets=["2001", "2002"],
@@ -226,9 +246,14 @@ def test_fas_sweep_uses_matrix_shape_times_tries_per_pair() -> None:
     calls = plan.expand(spec)
     # 2 callers * 2 targets * 3 tries = 12 calls
     assert len(calls) == 12
-    # First pair (1001, 2001) repeats 3 times consecutively.
-    first_three = calls[:3]
-    assert all(c.caller_number == "1001" and c.target_number == "2001" for c in first_three)
+    # Each round-robin cycle covers all 4 distinct pairs once.
+    expected_cycle = [
+        ("1001", "2001"), ("1001", "2002"),
+        ("1002", "2001"), ("1002", "2002"),
+    ]
+    for i in range(3):
+        cycle = [(c.caller_number, c.target_number) for c in calls[i * 4 : (i + 1) * 4]]
+        assert cycle == expected_cycle, f"cycle {i} drifted: {cycle}"
 
 
 def test_fas_sweep_ignores_times_field_uses_tries_per_pair() -> None:

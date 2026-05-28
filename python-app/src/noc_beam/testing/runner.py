@@ -259,7 +259,20 @@ class TestRunner(QObject):
             while self._queue and self._slots_in_use() < self.spec.parallel:
                 if self._cancelled:
                     return
-                self._dispatch_one_call()
+                # Per-target serialization: never dispatch a call whose
+                # target URI already has an in-flight call. With N
+                # distinct targets, this caps effective parallelism at
+                # min(spec.parallel, N) — a single number runs strictly
+                # sequentially, 3 numbers cycle 3-wide, etc. Without
+                # this, `times=N` on one number fired N INVITEs at the
+                # same destination and calls 2..N got 486 Busy / 408
+                # from the carrier and produced meaningless FAS verdicts.
+                call = self._pick_next_dispatchable_call()
+                if call is None:
+                    # Every queued call collides with an active target.
+                    # A completion event will re-trigger _fill_slots.
+                    return
+                self._dispatch_one_call(call)
                 self._yield_to_event_loop()
         finally:
             self._dispatching = False
@@ -274,8 +287,36 @@ class TestRunner(QObject):
         except Exception:
             pass
 
-    def _dispatch_one_call(self) -> None:
-        call = self._queue.popleft()
+    def _pick_next_dispatchable_call(self) -> TestCall | None:
+        """Return the next queued call whose target URI is not currently
+        in flight. Pops it from the queue (possibly from the middle) so
+        the caller can dispatch immediately. Returns None when every
+        queued call collides with an active target — caller should exit
+        and wait for a completion to re-enter _fill_slots.
+
+        Resolving the account and building the target URI for queue
+        peeking is pure (no side effects on AccountConfig or endpoint),
+        so this is safe to do for each candidate.
+        """
+        if not self._queue:
+            return None
+        # Build the active-target set once; small (bounded by parallel).
+        active_targets = {a.target_uri for a in self._active.values()}
+        if not active_targets:
+            return self._queue.popleft()
+        for idx, candidate in enumerate(self._queue):
+            account = self._resolve_account(candidate.caller_number)
+            target_uri = (
+                self._build_target_uri(candidate.target_number, account)
+                if account is not None
+                else candidate.target_number
+            )
+            if target_uri not in active_targets:
+                del self._queue[idx]
+                return candidate
+        return None
+
+    def _dispatch_one_call(self, call: TestCall) -> None:
         account = self._resolve_account(call.caller_number)
         started_at_mono = time.monotonic()
         started_at_wall = time.time()
